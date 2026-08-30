@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Klondike solitaire — a Grok Build app",
+  "homepage": "https://radls.github.io/solitaire/",
   "type": "module",
   "scripts": {
     "dev": "vite",

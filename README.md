@@ -2,7 +2,9 @@
 
 Klondike solitaire for the browser. First app in [Grok Build Apps](../).
 
-## Play
+**Play:** [https://radls.github.io/solitaire/](https://radls.github.io/solitaire/)
+
+## Local
 
 ```bash
 npm install
@@ -10,6 +12,8 @@ npm run dev
 ```
 
 Open [http://127.0.0.1:5180](http://127.0.0.1:5180).
+
+GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/` base path. Local `npm run dev` still serves at `/`.
 
 ## Rules (Klondike)
 

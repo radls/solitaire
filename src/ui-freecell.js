@@ -1,0 +1,639 @@
+import { SUIT_GLYPH } from "./game/cards.js";
+import { makeCardElement } from "./card-view.js";
+import {
+  cloneState,
+  deal,
+  elapsedMs,
+  listLegalMoves,
+  userMove,
+} from "./game/freecell.js";
+import { resumeAudio, sounds } from "./audio.js";
+import { load, loadFreeCell, save, saveFreeCell } from "./storage.js";
+
+const DRAG_THRESHOLD = 7;
+const DOUBLE_MS = 420;
+const HISTORY_CAP = 200;
+const GAP = 4;
+
+const ICONS = {
+  mute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>`,
+  unmute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5-4.5-1.4 1.4A6.5 6.5 0 0 1 18 12a6.5 6.5 0 0 1-3.9 5.9l1.4 1.4A8.5 8.5 0 0 0 20 12a8.5 8.5 0 0 0-4.5-7.5zM16 4.2 4.2 16l1.4 1.4L17.4 5.6 16 4.2z"/></svg>`,
+};
+
+function randomDeal() {
+  return 1 + Math.floor(Math.random() * 32000);
+}
+
+export function mount() {
+  const ac = new AbortController();
+  const listen = (target, type, handler, options) => {
+    if (!target) return;
+    target.addEventListener(type, handler, { ...options, signal: ac.signal });
+  };
+
+  const kicker = document.getElementById("game-kicker");
+  if (kicker) kicker.textContent = "FreeCell";
+  const scoreWrap = document.getElementById("meter-score-wrap");
+  if (scoreWrap) scoreWrap.hidden = true;
+  document.body.dataset.game = "freecell";
+
+  const toolbar = document.getElementById("toolbar");
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new">New deal</button>
+      <button type="button" class="btn" id="btn-deal-number" data-testid="deal-number">Deal #1</button>
+      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>`;
+  }
+
+  const root = {
+    table: document.getElementById("table"),
+    overlay: document.getElementById("overlay"),
+    dragLayer: document.getElementById("drag-layer"),
+    time: document.getElementById("meter-time"),
+    moves: document.getElementById("meter-moves"),
+    status: document.getElementById("status-text"),
+    seed: document.getElementById("status-seed"),
+    undo: document.getElementById("btn-undo"),
+    dealBtn: document.getElementById("btn-deal-number"),
+    mute: document.getElementById("btn-mute"),
+  };
+
+  const stored = load();
+  const saved = loadFreeCell();
+  const session = {
+    state: null,
+    history: [],
+    stats: saved.stats,
+    selected: null,
+    drag: null,
+    lastClick: { key: "", at: 0 },
+    muted: stored.muted,
+    countedPlay: false,
+    countedWin: false,
+    winShown: false,
+  };
+
+  if (saved.state && !saved.state.won) {
+    session.state = saved.state;
+    session.history = (saved.history ?? []).slice(-HISTORY_CAP);
+    session.countedPlay = session.state.moves > 0;
+  } else {
+    session.state = deal(randomDeal());
+  }
+
+  let alive = true;
+
+  function persist() {
+    const klondike = load();
+    klondike.muted = session.muted;
+    save(klondike);
+    saveFreeCell({
+      state: session.state,
+      history: session.history.slice(-HISTORY_CAP),
+      stats: session.stats,
+    });
+  }
+
+  function setStatus(text) {
+    root.status.textContent = text;
+  }
+
+  function formatTime(ms) {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function locKey(loc) {
+    if (!loc) return "";
+    return `${loc.zone}:${loc.index ?? ""}:${loc.count ?? 1}`;
+  }
+
+  function parseLoc(el) {
+    if (!el?.dataset?.zone) return null;
+    return {
+      zone: el.dataset.zone,
+      index: el.dataset.index == null || el.dataset.index === "" ? undefined : Number(el.dataset.index),
+      count: Number(el.dataset.count || 1),
+    };
+  }
+
+  function parseDrop(el) {
+    const raw = el?.closest?.("[data-drop]")?.dataset.drop;
+    if (!raw) return null;
+    const [zone, index] = raw.split(":");
+    return { zone, index: Number(index) };
+  }
+
+  function isSelected(loc, count) {
+    const sel = session.selected;
+    if (!sel) return false;
+    return sel.zone === loc.zone && sel.index === loc.index && (sel.count ?? 1) === count;
+  }
+
+  function makeCard(card, loc, count, playable) {
+    const el = makeCardElement(card, loc, count, playable, isSelected(loc, count));
+    if (el.classList.contains("selected")) el.style.zIndex = "40";
+    return el;
+  }
+
+  function well(content = "") {
+    const el = document.createElement("div");
+    el.className = "well";
+    el.innerHTML = content;
+    return el;
+  }
+
+  function renderSlot(zone, index, fill) {
+    const slot = document.createElement("div");
+    slot.className = `slot ${zone}`;
+    slot.dataset.drop = `${zone}:${index}`;
+    slot.dataset.zone = zone;
+    slot.dataset.index = String(index);
+    fill(slot);
+    return slot;
+  }
+
+  function clearLayoutVars() {
+    for (const key of ["--card-w", "--card-h", "--fc-peek", "--col-gap"]) {
+      document.body.style.removeProperty(key);
+    }
+  }
+
+  function fit() {
+    const board = root.table.querySelector(".board.freecell");
+    if (!board) return;
+    const width = board.clientWidth;
+    if (!width) return;
+    const cardW = Math.max(30, Math.min(96, Math.floor((width - GAP * 7) / 8)));
+    const cardH = Math.round(cardW * 1.42);
+    const longest = Math.max(1, ...session.state.cascades.map((pile) => pile.length));
+    const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
+    const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
+    const topH = board.querySelector(".fc-top")?.offsetHeight || cardH;
+    const availH = window.innerHeight - headerH - statusH - topH - 28;
+    let peek = 0;
+    if (longest > 1) {
+      const room = Math.floor((availH - cardH) / (longest - 1));
+      peek = Math.max(1, Math.min(Math.round(cardW * 0.34), room));
+    }
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--fc-peek", `${peek}px`);
+    style.setProperty("--col-gap", `${GAP}px`);
+  }
+
+  function updateMute() {
+    root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
+    root.mute.setAttribute("aria-label", session.muted ? "Unmute" : "Mute");
+  }
+
+  function render() {
+    const state = session.state;
+    const board = document.createElement("div");
+    board.className = "board freecell";
+
+    const top = document.createElement("div");
+    top.className = "fc-top";
+    top.setAttribute("aria-label", "Free cells and foundations");
+    state.freecells.forEach((card, index) => {
+      top.appendChild(
+        renderSlot("freecell", index, (slot) => {
+          slot.appendChild(well(""));
+          if (card) slot.appendChild(makeCard(card, { zone: "freecell", index }, 1, true));
+        }),
+      );
+    });
+    state.foundations.forEach((pile, index) => {
+      top.appendChild(
+        renderSlot("foundation", index, (slot) => {
+          const glyph = pile.length ? SUIT_GLYPH[pile[pile.length - 1].suit] : "A";
+          slot.appendChild(well(glyph));
+          if (pile.length) {
+            const card = pile[pile.length - 1];
+            slot.appendChild(makeCard(card, { zone: "foundation", index }, 1, false));
+          }
+        }),
+      );
+    });
+
+    const cascades = document.createElement("div");
+    cascades.className = "fc-cascades";
+    cascades.setAttribute("aria-label", "Cascades");
+    state.cascades.forEach((pile, index) => {
+      cascades.appendChild(
+        renderSlot("cascade", index, (slot) => {
+          slot.appendChild(well(""));
+          const stack = document.createElement("div");
+          stack.className = "pile";
+          pile.forEach((card, row) => {
+            const count = pile.length - row;
+            const el = makeCard(card, { zone: "cascade", index }, count, true);
+            if (!el.style.zIndex) el.style.zIndex = String(row + 1);
+            stack.appendChild(el);
+          });
+          slot.appendChild(stack);
+        }),
+      );
+    });
+
+    board.append(top, cascades);
+    root.table.replaceChildren(board);
+    root.moves.textContent = String(state.moves);
+    root.seed.textContent = "";
+    root.undo.disabled = session.history.length === 0;
+    root.dealBtn.textContent = `Deal #${state.dealNumber}`;
+    updateMute();
+    fit();
+    requestAnimationFrame(() => {
+      if (alive) fit();
+    });
+  }
+
+  function refreshMeters() {
+    if (!alive) return;
+    root.time.textContent = formatTime(elapsedMs(session.state));
+  }
+
+  function hideOverlay() {
+    root.overlay.hidden = true;
+    root.overlay.innerHTML = "";
+  }
+
+  function showWin() {
+    const state = session.state;
+    session.winShown = true;
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+      <p class="big">Well played</p>
+      <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
+      <div class="modal-actions">
+        <button type="button" class="btn primary" data-act="new">New deal</button>
+      </div>
+    </div>`;
+  }
+
+  function showDealModal() {
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<form class="modal deal-modal" data-deal-form>
+      <h2>Deal number</h2>
+      <p>Microsoft FreeCell deals run from 1 to 32000.</p>
+      <div class="deal-form">
+        <input data-testid="deal-input" inputmode="numeric" type="text" autocomplete="off" value="${session.state.dealNumber}" aria-label="Deal number" />
+        <button type="submit" class="btn primary">Deal</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close">Close</button>
+      </div>
+    </form>`;
+    const input = root.overlay.querySelector("[data-testid='deal-input']");
+    input?.focus();
+    input?.select();
+  }
+
+  function startDeal(dealNumber) {
+    hideOverlay();
+    session.history = [];
+    session.selected = null;
+    session.winShown = false;
+    session.countedWin = false;
+    session.countedPlay = false;
+    session.state = deal(dealNumber);
+    persist();
+    render();
+    setStatus(`Deal #${dealNumber}.`);
+  }
+
+  function commit(result) {
+    if (!result.ok) {
+      sounds.illegal(session.muted);
+      setStatus("That card cannot move there.");
+      return false;
+    }
+    if (!session.countedPlay) {
+      session.stats.played += 1;
+      session.countedPlay = true;
+    }
+    session.history.push(cloneState(session.state));
+    if (session.history.length > HISTORY_CAP) session.history.shift();
+    session.state = result.state;
+    session.selected = null;
+    const justWon = session.state.won && !session.countedWin;
+    if (justWon) {
+      session.stats.won += 1;
+      session.countedWin = true;
+    }
+    persist();
+    render();
+    sounds.place(session.muted);
+    if (justWon) {
+      sounds.win(session.muted);
+      showWin();
+      setStatus("All cards are home.");
+    }
+    return true;
+  }
+
+  function tryMove(from, to) {
+    return commit(userMove(session.state, { ...from, count: from.count ?? 1 }, to));
+  }
+
+  function doDouble(from) {
+    if ((from.count ?? 1) !== 1 || from.zone === "foundation") return;
+    const single = { zone: from.zone, index: from.index, count: 1 };
+    const toFoundation = userMove(session.state, single, { zone: "foundation" });
+    if (toFoundation.ok) {
+      commit(toFoundation);
+      return;
+    }
+    if (from.zone === "freecell") {
+      sounds.illegal(session.muted);
+      setStatus("That card cannot move to a foundation.");
+      return;
+    }
+    const index = session.state.freecells.findIndex((card) => card == null);
+    if (index < 0) {
+      sounds.illegal(session.muted);
+      setStatus("No free cell is open.");
+      return;
+    }
+    const toCell = userMove(session.state, single, { zone: "freecell", index });
+    if (!commit(toCell)) setStatus("That card cannot move there.");
+  }
+
+  function doUndo() {
+    if (!session.history.length) return;
+    const wasWin = session.countedWin && session.state.won;
+    session.state = session.history.pop();
+    session.selected = null;
+    session.winShown = false;
+    if (wasWin && !session.state.won) {
+      session.stats.won = Math.max(0, session.stats.won - 1);
+      session.countedWin = false;
+    }
+    hideOverlay();
+    persist();
+    render();
+    sounds.undo(session.muted);
+    setStatus("Undid the last move.");
+  }
+
+  function cardsFor(from) {
+    if (from.zone === "freecell") {
+      const card = session.state.freecells[from.index];
+      return card ? [card] : [];
+    }
+    const pile = session.state.cascades[from.index] ?? [];
+    return pile.slice(pile.length - (from.count ?? 1));
+  }
+
+  function highlightDrops(from, on) {
+    document.querySelectorAll(".slot.drop-ok").forEach((el) => el.classList.remove("drop-ok"));
+    if (!on || !from) return;
+    for (const move of listLegalMoves(session.state)) {
+      if (locKey(move.from) !== locKey(from)) continue;
+      document.querySelector(`[data-drop="${move.to.zone}:${move.to.index}"]`)?.classList.add("drop-ok");
+    }
+  }
+
+  function startDrag(from, x, y, originEl) {
+    const cards = cardsFor(from);
+    if (!cards.length) return;
+    session.drag = { from, x, y, originEl };
+    const ghost = document.createElement("div");
+    ghost.className = "ghost";
+    cards.forEach((card, i) => {
+      ghost.appendChild(makeCard(card, from, cards.length - i, false));
+    });
+    root.dragLayer.appendChild(ghost);
+    session.drag.ghost = ghost;
+    originEl.classList.add("is-ghost-source");
+    if (from.zone === "cascade") {
+      originEl.parentElement?.querySelectorAll(".card").forEach((el) => {
+        if (Number(el.dataset.count) <= from.count) el.classList.add("is-ghost-source");
+      });
+    }
+    moveGhost(x, y);
+    highlightDrops(from, true);
+  }
+
+  function moveGhost(x, y) {
+    const ghost = session.drag?.ghost;
+    if (!ghost) return;
+    const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
+    ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+  }
+
+  function endDrag(x, y) {
+    const drag = session.drag;
+    session.drag = null;
+    root.dragLayer.innerHTML = "";
+    document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
+    highlightDrops(null, false);
+    if (!drag) return false;
+    const to = parseDrop(document.elementFromPoint(x, y));
+    if (to && tryMove(drag.from, to)) return true;
+    sounds.illegal(session.muted);
+    return false;
+  }
+
+  function onActivate(loc, cardEl, isDouble) {
+    if (isDouble) {
+      doDouble(loc);
+      return;
+    }
+    const dest = { zone: loc.zone, index: loc.index };
+    if (session.selected) {
+      if (locKey(session.selected) === locKey(loc)) {
+        session.selected = null;
+        render();
+        return;
+      }
+      if (canMove(session.selected, dest)) {
+        tryMove(session.selected, dest);
+        return;
+      }
+    }
+    if (cardEl?.classList.contains("playable")) {
+      session.selected = loc;
+      render();
+      setStatus("Tap a destination, or drag the card.");
+      return;
+    }
+    if (session.selected) tryMove(session.selected, dest);
+  }
+
+  function canMove(from, to) {
+    return listLegalMoves(session.state).some(
+      (move) =>
+        locKey(move.from) === locKey(from) &&
+        move.to.zone === to.zone &&
+        move.to.index === to.index,
+    );
+  }
+
+  function onPointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    if (!root.overlay.hidden) return;
+    resumeAudio();
+    const cardEl = event.target.closest(".card");
+    const slot = event.target.closest("[data-drop]");
+    if (!cardEl && !slot) {
+      if (session.selected) {
+        session.selected = null;
+        render();
+      }
+      return;
+    }
+    if (!cardEl || cardEl.dataset.zone === "foundation") {
+      const dest = parseDrop(slot);
+      if (session.selected && dest) tryMove(session.selected, dest);
+      return;
+    }
+    const loc = parseLoc(cardEl);
+    if (!loc) return;
+    event.preventDefault();
+    cardEl.setPointerCapture?.(event.pointerId);
+    session.drag = {
+      from: loc,
+      x: event.clientX,
+      y: event.clientY,
+      originEl: cardEl,
+      pending: true,
+    };
+  }
+
+  function onPointerMove(event) {
+    const drag = session.drag;
+    if (!drag?.pending && !drag?.ghost) return;
+    if (!drag || drag.clickOnly) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (drag.pending && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (drag.pending) {
+      drag.pending = false;
+      startDrag(drag.from, event.clientX, event.clientY, drag.originEl);
+    } else {
+      moveGhost(event.clientX, event.clientY);
+    }
+  }
+
+  function onPointerUp(event) {
+    const drag = session.drag;
+    if (!drag) return;
+    if (drag.ghost) {
+      endDrag(event.clientX, event.clientY);
+      session.lastClick = { key: "", at: 0 };
+      return;
+    }
+    session.drag = null;
+    const key = locKey(drag.from);
+    const now = performance.now();
+    const isDouble = key && key === session.lastClick.key && now - session.lastClick.at < DOUBLE_MS;
+    session.lastClick = { key, at: now };
+    onActivate(drag.from, drag.originEl, isDouble);
+  }
+
+  listen(root.table, "pointerdown", onPointerDown);
+  listen(window, "pointermove", onPointerMove);
+  listen(window, "pointerup", onPointerUp);
+  listen(window, "pointercancel", () => {
+    if (session.drag?.ghost) endDrag(-1, -1);
+    session.drag = null;
+  });
+  listen(window, "resize", () => fit());
+  listen(root.undo, "click", doUndo);
+  listen(document.getElementById("btn-new"), "click", () => startDeal(randomDeal()));
+  listen(root.dealBtn, "click", showDealModal);
+  listen(root.mute, "click", () => {
+    session.muted = !session.muted;
+    persist();
+    updateMute();
+  });
+  listen(root.overlay, "click", (event) => {
+    const btn = event.target.closest("[data-act]");
+    if (!btn) return;
+    if (btn.dataset.act === "close") hideOverlay();
+    else if (btn.dataset.act === "new") startDeal(randomDeal());
+  });
+  listen(root.overlay, "submit", (event) => {
+    if (!event.target.closest("[data-deal-form]")) return;
+    event.preventDefault();
+    const input = root.overlay.querySelector("[data-testid='deal-input']");
+    const raw = String(input?.value ?? "").trim();
+    const n = Number(raw);
+    if (!/^\d+$/.test(raw) || n < 1 || n > 32000) {
+      setStatus("Enter a deal from 1 to 32000.");
+      return;
+    }
+    startDeal(n);
+  });
+  listen(window, "keydown", (event) => {
+    if (event.target.matches("input, textarea")) {
+      if (event.key === "Escape") hideOverlay();
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      if (!root.overlay.hidden) hideOverlay();
+      else if (session.selected) {
+        session.selected = null;
+        render();
+      }
+      return;
+    }
+    if (!root.overlay.hidden) return;
+    if (key === "u" || (key === "z" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      doUndo();
+    } else if (key === "n") startDeal(randomDeal());
+  });
+
+  const timer = window.setInterval(refreshMeters, 250);
+  render();
+  refreshMeters();
+  setStatus("Move a card into a free cell, cascade, or foundation.");
+  persist();
+
+  return {
+    getState: () => session.state,
+    setState(next) {
+      session.state = next;
+      session.selected = null;
+      session.winShown = false;
+      persist();
+      render();
+      refreshMeters();
+      if (session.state?.won) showWin();
+      else hideOverlay();
+    },
+    newGame: (dealNumber) => startDeal(Number.isInteger(dealNumber) ? dealNumber : randomDeal()),
+    undo: doUndo,
+    move(from, to) {
+      const result = userMove(session.state, from, to);
+      if (!result.ok) {
+        sounds.illegal(session.muted);
+        setStatus("That card cannot move there.");
+        return result;
+      }
+      commit(result);
+      return { ok: true, state: session.state };
+    },
+    historyLength: () => session.history.length,
+    listMoves: () => listLegalMoves(session.state),
+    unmount() {
+      alive = false;
+      ac.abort();
+      window.clearInterval(timer);
+      session.drag = null;
+      clearLayoutVars();
+      if (root.dragLayer) root.dragLayer.innerHTML = "";
+      if (root.table) root.table.innerHTML = "";
+      if (toolbar) toolbar.innerHTML = "";
+      hideOverlay();
+    },
+  };
+}

@@ -75,6 +75,7 @@ export function canAutoComplete(state) {
     !state.won &&
     !isWon(state) &&
     state.stock.length === 0 &&
+    state.waste.length === 0 &&
     allTableauFaceUp(state)
   );
 }

@@ -340,6 +340,24 @@ describe("auto-move, hints, win", () => {
     expect(canAutoComplete(state)).toBe(false);
   });
 
+  it("refuses auto-complete while a card remains on the waste", () => {
+    const ready = game({
+      stock: [],
+      waste: [],
+      tableau: [
+        [C("spades", 13)],
+        [C("hearts", 12)],
+        [C("diamonds", 11)],
+        [C("clubs", 10)],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(canAutoComplete(ready)).toBe(true);
+    expect(canAutoComplete(game({ ...ready, waste: [C("hearts", 5)] }))).toBe(false);
+  });
+
   it("auto-completes the next foundation card and marks a win", () => {
     const foundations = ["spades", "hearts", "diamonds", "clubs"].map((suit) =>
       Array.from({ length: 12 }, (_, i) => C(suit, i + 1)),

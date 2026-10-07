@@ -1,4 +1,5 @@
-import { cardName, rankLabel, SUIT_GLYPH, suitColor } from "./game/cards.js";
+import { SUIT_GLYPH } from "./game/cards.js";
+import { makeCardElement } from "./card-view.js";
 import {
   autoCompleteStep,
   autoMove,
@@ -15,81 +16,6 @@ import {
 import { resumeAudio, sounds } from "./audio.js";
 import { load, save } from "./storage.js";
 
-const PIP = {
-  2: [
-    [50, 18],
-    [50, 80, 1],
-  ],
-  3: [
-    [50, 18],
-    [50, 49],
-    [50, 80, 1],
-  ],
-  4: [
-    [24, 18],
-    [76, 18],
-    [24, 80, 1],
-    [76, 80, 1],
-  ],
-  5: [
-    [24, 18],
-    [76, 18],
-    [50, 49],
-    [24, 80, 1],
-    [76, 80, 1],
-  ],
-  6: [
-    [24, 18],
-    [76, 18],
-    [24, 49],
-    [76, 49],
-    [24, 80, 1],
-    [76, 80, 1],
-  ],
-  7: [
-    [24, 18],
-    [76, 18],
-    [50, 34],
-    [24, 49],
-    [76, 49],
-    [24, 80, 1],
-    [76, 80, 1],
-  ],
-  8: [
-    [24, 18],
-    [76, 18],
-    [50, 34],
-    [24, 49],
-    [76, 49],
-    [50, 64, 1],
-    [24, 80, 1],
-    [76, 80, 1],
-  ],
-  9: [
-    [24, 16],
-    [76, 16],
-    [24, 38],
-    [76, 38],
-    [50, 49],
-    [24, 62, 1],
-    [76, 62, 1],
-    [24, 84, 1],
-    [76, 84, 1],
-  ],
-  10: [
-    [24, 14],
-    [76, 14],
-    [50, 26],
-    [24, 36],
-    [76, 36],
-    [24, 64, 1],
-    [76, 64, 1],
-    [50, 74, 1],
-    [24, 84, 1],
-    [76, 84, 1],
-  ],
-};
-
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
 
@@ -100,6 +26,33 @@ const ICONS = {
 };
 
 export function mount() {
+  const ac = new AbortController();
+  const listen = (target, type, handler, options) => {
+    if (!target) return;
+    target.addEventListener(type, handler, { ...options, signal: ac.signal });
+  };
+
+  const kicker = document.getElementById("game-kicker");
+  if (kicker) kicker.textContent = "Klondike";
+  const scoreWrap = document.getElementById("meter-score-wrap");
+  if (scoreWrap) scoreWrap.hidden = false;
+  document.body.dataset.game = "klondike";
+
+  const toolbar = document.getElementById("toolbar");
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <div class="segmented" role="group" aria-label="Draw mode">
+        <button type="button" id="btn-draw-1" data-draw="1">Draw 1</button>
+        <button type="button" id="btn-draw-3" data-draw="3">Draw 3</button>
+      </div>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" title="New game (N)">New</button>
+      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo" title="Undo (U)">Undo</button>
+      <button type="button" class="btn" id="btn-hint" title="Hint (H)">Hint</button>
+      <button type="button" class="btn" id="btn-finish" hidden title="Send remaining cards to foundations (A)">Finish</button>
+      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>
+      <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>`;
+  }
+
   const root = {
     table: document.getElementById("table"),
     overlay: document.getElementById("overlay"),
@@ -203,39 +156,8 @@ export function mount() {
     return sel.zone === loc.zone && sel.index === loc.index && (sel.count ?? 1) === count;
   }
 
-  function cardFaceHTML(card) {
-    const glyph = SUIT_GLYPH[card.suit];
-    const label = rankLabel(card.rank);
-    const corner = `<span class="corner tl">${label}<span class="suit">${glyph}</span></span><span class="corner br">${label}<span class="suit">${glyph}</span></span>`;
-    if (card.rank === 1) {
-      return `${corner}<div class="pips ace">${glyph}</div>`;
-    }
-    if (card.rank >= 11) {
-      return `${corner}<div class="face-mark">${label}<span>${glyph}</span></div>`;
-    }
-    const pips = (PIP[card.rank] ?? [])
-      .map(
-        ([x, y, rot]) =>
-          `<span class="pip" style="left:${x}%;top:${y}%;${rot ? "transform:translate(-50%,-50%) rotate(180deg)" : ""}">${glyph}</span>`,
-      )
-      .join("");
-    return `${corner}<div class="pips">${pips}</div>`;
-  }
-
   function makeCardEl(card, loc, count, playable) {
-    const el = document.createElement("article");
-    const color = card.faceUp ? suitColor(card.suit) : "";
-    el.className = `card ${card.faceUp ? "face-up" : "face-down"} ${color}`.trim();
-    if (playable && card.faceUp) el.classList.add("playable");
-    if (isSelected(loc, count)) el.classList.add("selected");
-    el.dataset.id = card.id;
-    el.dataset.zone = loc.zone;
-    if (loc.index != null) el.dataset.index = String(loc.index);
-    el.dataset.count = String(count);
-    el.setAttribute("role", "button");
-    el.setAttribute("aria-label", card.faceUp ? cardName(card) : "Face-down card");
-    if (card.faceUp) el.innerHTML = cardFaceHTML(card);
-    return el;
+    return makeCardElement(card, loc, count, playable, isSelected(loc, count));
   }
 
   function well(content = "") {
@@ -726,28 +648,28 @@ export function mount() {
     onActivate(drag.from, drag.originEl, isDouble);
   }
 
-  root.table.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("pointermove", onPointerMove);
-  window.addEventListener("pointerup", onPointerUp);
-  window.addEventListener("pointercancel", () => {
+  listen(root.table, "pointerdown", onPointerDown);
+  listen(window, "pointermove", onPointerMove);
+  listen(window, "pointerup", onPointerUp);
+  listen(window, "pointercancel", () => {
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
 
-  document.getElementById("btn-new").addEventListener("click", () => confirmNew(session.state.drawCount));
-  root.undo.addEventListener("click", doUndo);
-  document.getElementById("btn-hint").addEventListener("click", doHint);
-  root.finish.addEventListener("click", doFinish);
-  root.mute.addEventListener("click", () => {
+  listen(document.getElementById("btn-new"), "click", () => confirmNew(session.state.drawCount));
+  listen(root.undo, "click", doUndo);
+  listen(document.getElementById("btn-hint"), "click", doHint);
+  listen(root.finish, "click", doFinish);
+  listen(root.mute, "click", () => {
     session.muted = !session.muted;
     persist();
     updateMuteButton();
   });
-  document.getElementById("btn-help").addEventListener("click", showHelp);
-  root.draw1.addEventListener("click", () => confirmNew(1));
-  root.draw3.addEventListener("click", () => confirmNew(3));
+  listen(document.getElementById("btn-help"), "click", showHelp);
+  listen(root.draw1, "click", () => confirmNew(1));
+  listen(root.draw3, "click", () => confirmNew(3));
 
-  root.overlay.addEventListener("click", (event) => {
+  listen(root.overlay, "click", (event) => {
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     const act = btn.dataset.act;
@@ -755,7 +677,7 @@ export function mount() {
     else if (act === "again" || act === "new") startNewGame(Number(btn.dataset.draw || session.state.drawCount));
   });
 
-  window.addEventListener("keydown", (event) => {
+  listen(window, "keydown", (event) => {
     if (event.target.matches("input, textarea")) return;
     const key = event.key.toLowerCase();
     if (key === "escape") {
@@ -779,16 +701,45 @@ export function mount() {
     else if (key === "?" || (event.shiftKey && key === "/")) showHelp();
   });
 
-  window.setInterval(refreshMeters, 250);
+  const timer = window.setInterval(refreshMeters, 250);
   render();
   setStatus("Move cards on the tableau, or draw from the stock.");
 
-  window.__solitaire = {
+  return {
     getState: () => session.state,
+    setState(next) {
+      session.state = next;
+      session.selected = null;
+      session.hintMove = null;
+      persist();
+      render();
+      if (session.state?.won) showWin();
+    },
     newGame: startNewGame,
     draw: doDraw,
     undo: doUndo,
     hint: doHint,
     listMoves: () => listLegalMoves(session.state),
+    move(from, to) {
+      const result = moveCards(session.state, from, to);
+      if (!result.ok) {
+        sounds.illegal(session.muted);
+        setStatus("That card cannot move there.");
+        return result;
+      }
+      commit(result, "place");
+      return { ok: true, state: session.state };
+    },
+    historyLength: () => session.history.length,
+    unmount() {
+      ac.abort();
+      window.clearInterval(timer);
+      if (session.autoTimer) window.clearTimeout(session.autoTimer);
+      session.autoTimer = 0;
+      if (root.dragLayer) root.dragLayer.innerHTML = "";
+      if (root.table) root.table.innerHTML = "";
+      if (toolbar) toolbar.innerHTML = "";
+      hideOverlay();
+    },
   };
 }

@@ -1,6 +1,6 @@
 # Solitaire
 
-Klondike solitaire for the browser. First app in [Grok Build Apps](../).
+Klondike and FreeCell for the browser. First app in [Grok Build Apps](../).
 
 **Play:** [https://radls.github.io/solitaire/](https://radls.github.io/solitaire/)
 
@@ -47,4 +47,16 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 
 In-progress games and stats are stored in `localStorage` under `grok-solitaire`.
 
-Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game.
+Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`. The last game you opened is remembered in `localStorage` under `grok-solitaire:prefs`.
+
+## Rules (FreeCell)
+
+- Microsoft deal numbers **1–32000**. Deal #1 is the classic first shuffle. The generator is `seed = (seed * 214013 + 2531011) mod 2^31`, `rand = seed >> 16`.
+- Eight cascades, all cards face up. Four free cells, four foundations.
+- Build cascades **down by alternating color**. Any card or legal run may move to an empty cascade.
+- Build foundations **up by suit**, ace through king.
+- A free cell holds one card.
+- Supermove limit onto a cascade: `(emptyFreeCells + 1) * 2^emptyCascades`. An empty cascade you are moving onto is not counted.
+- After each move, safe cards (aces, twos, or a card whose both opposite-color foundations are at least one rank lower) go to the foundations in the same undo step.
+
+In-progress FreeCell games are stored under `grok-solitaire:freecell`. Klondike stays on `grok-solitaire-v1`. Sound starts muted.

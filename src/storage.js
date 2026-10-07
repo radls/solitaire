@@ -56,6 +56,7 @@ export function loadFreeCell() {
       state: parsed.state ?? null,
       history,
       stats: { ...defaultFreeCell().stats, ...(parsed.stats ?? {}) },
+      savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
     };
   } catch {
     return defaultFreeCell();
@@ -71,6 +72,7 @@ export function saveFreeCell(data) {
         state: data.state ?? null,
         history,
         stats: data.stats ?? defaultFreeCell().stats,
+        savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
       }),
     );
   } catch {
@@ -94,6 +96,7 @@ export function loadGolf() {
       state: parsed.state ?? null,
       history,
       stats: { ...defaultGolf().stats, ...(parsed.stats ?? {}) },
+      savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
     };
   } catch {
     return defaultGolf();
@@ -109,6 +112,7 @@ export function saveGolf(data) {
         state: data.state ?? null,
         history,
         stats: { ...defaultGolf().stats, ...(data.stats ?? {}) },
+        savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
       }),
     );
   } catch {
@@ -116,20 +120,36 @@ export function saveGolf(data) {
   }
 }
 
+const GAMES = new Set(["klondike", "freecell", "golf"]);
+
+function defaultPrefs() {
+  return { lastGame: null, theme: "night", sound: false };
+}
+
 export function loadPrefs() {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return { lastGame: null };
+    if (!raw) return defaultPrefs();
     const parsed = JSON.parse(raw);
-    return { lastGame: parsed.lastGame ?? null };
+    const lastGame = GAMES.has(parsed.lastGame) ? parsed.lastGame : null;
+    const theme = parsed.theme === "classic" ? "classic" : "night";
+    return { lastGame, theme, sound: parsed.sound === true };
   } catch {
-    return { lastGame: null };
+    return defaultPrefs();
   }
 }
 
-export function savePrefs(prefs) {
+export function savePrefs(partial) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ lastGame: prefs.lastGame ?? null }));
+    const prev = loadPrefs();
+    const next = { ...prev, ...partial };
+    if (!GAMES.has(next.lastGame)) next.lastGame = null;
+    if (next.theme !== "classic") next.theme = "night";
+    next.sound = next.sound === true;
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({ lastGame: next.lastGame, theme: next.theme, sound: next.sound }),
+    );
   } catch {
     /* quota / private mode */
   }

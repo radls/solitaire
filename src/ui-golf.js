@@ -4,6 +4,7 @@ import {
   canPlay,
   cardsLeft,
   cloneState,
+  continueClock,
   deal,
   elapsedMs,
   isCleared,
@@ -11,7 +12,7 @@ import {
   score,
 } from "./game/golf.js";
 import { resumeAudio, sounds } from "./audio.js";
-import { load, loadGolf, save, saveGolf } from "./storage.js";
+import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
 
 const DRAG_THRESHOLD = 7;
 const HISTORY_CAP = 200;
@@ -41,11 +42,11 @@ export function mount() {
   if (toolbar) {
     toolbar.innerHTML = `
       <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
-      <button type="button" class="btn" id="btn-new" data-testid="btn-new">New deal</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal">New</button>
       <button type="button" class="btn" id="btn-replay" data-testid="btn-replay">Replay</button>
       <span class="seed-chip" id="deal-number" data-testid="deal-number">Seed 0</span>
       <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>
-      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>`;
+      <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>`;
   }
 
   const root = {
@@ -62,14 +63,13 @@ export function mount() {
     mute: document.getElementById("btn-mute"),
   };
 
-  const stored = load();
   const saved = loadGolf();
   const session = {
     state: null,
     history: [],
     stats: saved.stats,
     drag: null,
-    muted: stored.muted,
+    muted: loadPrefs().sound !== true,
     endShown: false,
     notedEnd: false,
     countedClear: false,
@@ -85,18 +85,20 @@ export function mount() {
   if (resume) {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
+    if (typeof saved.savedAt === "number") {
+      const frozen = elapsedMs(session.state, saved.savedAt);
+      session.state.startedAt = Date.now() - frozen;
+    }
   }
 
   let alive = true;
 
   function persist() {
-    const klondike = load();
-    klondike.muted = session.muted;
-    save(klondike);
     saveGolf({
       state: session.state,
       history: session.history.slice(-HISTORY_CAP),
       stats: session.stats,
+      savedAt: Date.now(),
     });
   }
 
@@ -157,7 +159,7 @@ export function mount() {
   }
 
   function clearLayoutVars() {
-    for (const key of ["--card-w", "--card-h", "--golf-peek", "--fc-peek", "--col-gap"]) {
+    for (const key of ["--card-w", "--card-h", "--golf-peek", "--fc-peek", "--peek-up", "--peek-down", "--col-gap", "--waste-extra", "--waste-spread"]) {
       document.body.style.removeProperty(key);
     }
   }
@@ -188,7 +190,16 @@ export function mount() {
   function updateMute() {
     if (!root.mute) return;
     root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
-    root.mute.setAttribute("aria-label", session.muted ? "Unmute" : "Mute");
+    root.mute.setAttribute("aria-label", session.muted ? "Turn sound on" : "Turn sound off");
+    root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
+  }
+
+  function nudgeBoard() {
+    const el = root.table;
+    if (!el) return;
+    el.classList.remove("nudge");
+    void el.offsetWidth;
+    el.classList.add("nudge");
   }
 
   function render() {
@@ -356,6 +367,7 @@ export function mount() {
     const result = apply(session.state, action);
     if (!result.ok) {
       setStatus(statusFor(result));
+      nudgeBoard();
       return result;
     }
     session.history.push(cloneState(session.state));
@@ -381,7 +393,7 @@ export function mount() {
     if (!session.history.length) return;
     const wasOver = session.state.over;
     const wasCleared = wasOver && session.countedClear && isCleared(session.state);
-    session.state = session.history.pop();
+    session.state = continueClock(session.state, session.history.pop());
     if (wasCleared && !isCleared(session.state)) {
       session.stats.cleared = Math.max(0, session.stats.cleared - 1);
       session.countedClear = false;
@@ -417,6 +429,7 @@ export function mount() {
     const card = exposedCard(from.index);
     if (!card || !originEl) return;
     session.drag = { from, x, y, originEl };
+    document.documentElement.classList.add("is-dragging");
     const ghost = document.createElement("div");
     ghost.className = "ghost";
     ghost.appendChild(makeCardElement(card, from, 1, false, false));
@@ -430,6 +443,7 @@ export function mount() {
   function endDrag(x, y) {
     const drag = session.drag;
     session.drag = null;
+    document.documentElement.classList.remove("is-dragging");
     if (root.dragLayer) root.dragLayer.innerHTML = "";
     document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
     highlightWaste(null, false);
@@ -515,6 +529,7 @@ export function mount() {
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
   listen(window, "pointercancel", () => {
+    document.documentElement.classList.remove("is-dragging");
     if (session.drag?.ghost) {
       if (root.dragLayer) root.dragLayer.innerHTML = "";
       document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
@@ -529,7 +544,7 @@ export function mount() {
   listen(document.getElementById("btn-help"), "click", showHelp);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
-    persist();
+    savePrefs({ sound: !session.muted });
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
@@ -601,6 +616,7 @@ export function mount() {
     listMoves: () => listLegalMoves(session.state),
     unmount() {
       alive = false;
+      document.documentElement.classList.remove("is-dragging");
       ac.abort();
       window.clearInterval(timer);
       session.drag = null;

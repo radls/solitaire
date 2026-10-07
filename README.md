@@ -28,13 +28,18 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 
 | Action | How |
 | --- | --- |
-| Move | Drag a face-up card or run, or click source then destination |
-| To foundation | Double-click a playable card |
-| Draw | Click the stock, or <kbd>Space</kbd> |
+| Move | Drag a face-up card or run, or tap the source then the destination (an empty slot counts) |
+| To foundation | Double-tap a playable card (pointer timing, so it does not zoom the page) |
+| Clear a selection | Tap empty table |
+| Draw | Tap the stock, or <kbd>Space</kbd> |
 | New game | Button, or <kbd>N</kbd> |
 | Undo | Button, or <kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>Z</kbd> |
 | Hint | Button, or <kbd>H</kbd> |
 | Draw 1 / 3 | Toggle in the header (starts a new game) |
+| Theme | Moon / sun button in the header. Night is the default; Classic is the green felt |
+| Sound | Speaker button. Off until you turn it on |
+
+FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a drag onto the waste plays that card. The header stays within two rows on a phone, with 36px tap targets.
 
 ## Scripts
 
@@ -45,9 +50,20 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 | `npm run build` | Production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
 
-In-progress games and stats are stored in `localStorage` under `grok-solitaire`.
+In-progress games and stats are stored in `localStorage`:
 
-Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal). The last game you opened is remembered in `localStorage` under `grok-solitaire:prefs`.
+| Key | Contents |
+| --- | --- |
+| `grok-solitaire-v1` | Klondike deal, undo history, and stats |
+| `grok-solitaire:freecell` | FreeCell deal, undo history, and stats |
+| `grok-solitaire:golf` | Golf deal, undo history, and stats |
+| `grok-solitaire:prefs` | `lastGame`, `theme` (`night` or `classic`), and `sound` (default `false`) |
+
+Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload returns to `lastGame`.
+
+Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal).
+
+Night is the default theme (dark table, dim gold, muted suits). Classic keeps the green felt. The choice is applied before first paint. Sound stays off until the speaker button is turned on, and that choice is shared by all three games.
 
 ## Rules (FreeCell)
 
@@ -59,7 +75,7 @@ Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). U
 - Supermove limit onto a cascade: `(emptyFreeCells + 1) * 2^emptyCascades`. An empty cascade you are moving onto is not counted.
 - After each move, safe cards (aces, twos, or a card whose both opposite-color foundations are at least one rank lower) go to the foundations in the same undo step.
 
-In-progress FreeCell games are stored under `grok-solitaire:freecell`. Klondike stays on `grok-solitaire-v1`. Sound starts muted.
+Sound starts off.
 
 ## Rules (Golf)
 
@@ -69,4 +85,4 @@ In-progress FreeCell games are stored under `grok-solitaire:freecell`. Klondike 
 - Draw the stock one card at a time, once through. The stock does not recycle.
 - Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when the columns are clear. Lower is better.
 
-In-progress Golf games are stored under `grok-solitaire:golf`.
+

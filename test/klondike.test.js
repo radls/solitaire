@@ -6,10 +6,13 @@ import {
   canAutoComplete,
   canStackFoundation,
   canStackTableau,
+  continueClock,
   deal,
   draw,
+  elapsedMs,
   emptyState,
   hint,
+  hintMoves,
   isWon,
   listLegalMoves,
   moveCards,
@@ -328,7 +331,97 @@ describe("auto-move, hints, win", () => {
     const kingMoves = listLegalMoves(state).filter(
       (m) => m.from.zone === "tableau" && m.to.zone === "tableau",
     );
-    expect(kingMoves).toHaveLength(0);
+    expect(kingMoves.length).toBeGreaterThan(0);
+    expect(hintMoves(state).some((m) => m.from.zone === "tableau" && m.to.zone === "tableau")).toBe(
+      false,
+    );
+    expect(hint(state)).toBeNull();
+  });
+
+  it("does not hint back-and-forth tableau shuffles", () => {
+    const state = game({
+      stock: [],
+      waste: [],
+      tableau: [
+        [C("spades", 8), C("hearts", 7)],
+        [C("clubs", 8)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const shuffles = listLegalMoves(state).filter(
+      (m) => m.from.zone === "tableau" && m.to.zone === "tableau",
+    );
+    expect(shuffles.length).toBeGreaterThan(0);
+    const suggested = hint(state);
+    expect(
+      shuffles.some(
+        (m) =>
+          suggested &&
+          m.from.zone === suggested.from.zone &&
+          m.from.index === suggested.from.index &&
+          (m.from.count ?? 1) === (suggested.from.count ?? 1) &&
+          m.to.index === suggested.to.index,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not hint a draw when the stock and waste are empty", () => {
+    const state = game({ stock: [], waste: [] });
+    expect(listLegalMoves(state).some((m) => m.kind === "draw")).toBe(false);
+    expect(hintMoves(state).some((m) => m.kind === "draw")).toBe(false);
+    expect(hint(state)?.kind).not.toBe("draw");
+  });
+
+  it("hints a recycle only when a buried waste card can be played", () => {
+    const useful = game({
+      stock: [],
+      waste: [C("hearts", 7), C("spades", 9)],
+      tableau: [[C("clubs", 8)], [], [], [], [], [], []],
+    });
+    expect(hint(useful)?.kind).toBe("draw");
+
+    const stuck = game({
+      stock: [],
+      waste: [C("hearts", 2), C("spades", 9)],
+      tableau: [[C("clubs", 8)], [], [], [], [], [], []],
+    });
+    expect(hint(stuck)?.kind).not.toBe("draw");
+    expect(hintMoves(stuck).some((m) => m.kind === "draw")).toBe(false);
+  });
+
+  it("hints a face-up transfer that frees a foundation card", () => {
+    const state = game({
+      stock: [],
+      waste: [],
+      foundations: [[], [C("hearts", 1)], [], []],
+      tableau: [
+        [C("hearts", 2), C("spades", 3)],
+        [C("diamonds", 4)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const suggested = hint(state);
+    expect(suggested?.from).toEqual({ zone: "tableau", index: 0, count: 1 });
+    expect(suggested?.to).toEqual({ zone: "tableau", index: 1 });
+  });
+
+  it("keeps elapsed time when an undo snapshot is restored", () => {
+    const live = game({ startedAt: 50_000, moves: 4, score: 10 });
+    const snapshot = game({ startedAt: 1_000, moves: 3, score: 5 });
+    const restored = continueClock(live, snapshot);
+    expect(restored.startedAt).toBe(50_000);
+    expect(restored.moves).toBe(3);
+    expect(restored.score).toBe(5);
+    expect(snapshot.startedAt).toBe(1_000);
+    expect(elapsedMs(restored, 80_000)).toBe(elapsedMs(live, 80_000));
   });
 
   it("detects a win when all foundations have 13 cards", () => {

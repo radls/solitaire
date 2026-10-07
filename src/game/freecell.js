@@ -63,6 +63,13 @@ export function cloneState(state) {
   return structuredClone(state);
 }
 
+/** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
+export function continueClock(current, snapshot) {
+  const next = cloneState(snapshot);
+  next.startedAt = current.startedAt;
+  return next;
+}
+
 export function top(pile) {
   return pile.length ? pile[pile.length - 1] : null;
 }

@@ -2,13 +2,14 @@ import { SUIT_GLYPH } from "./game/cards.js";
 import { makeCardElement } from "./card-view.js";
 import {
   cloneState,
+  continueClock,
   deal,
   elapsedMs,
   listLegalMoves,
   userMove,
 } from "./game/freecell.js";
 import { resumeAudio, sounds } from "./audio.js";
-import { load, loadFreeCell, save, saveFreeCell } from "./storage.js";
+import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -41,9 +42,9 @@ export function mount() {
   if (toolbar) {
     toolbar.innerHTML = `
       <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
-      <button type="button" class="btn" id="btn-new" data-testid="btn-new">New deal</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal">New</button>
       <button type="button" class="btn" id="btn-deal-number" data-testid="deal-number">Deal #1</button>
-      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>`;
+      <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>`;
   }
 
   const root = {
@@ -59,7 +60,6 @@ export function mount() {
     mute: document.getElementById("btn-mute"),
   };
 
-  const stored = load();
   const saved = loadFreeCell();
   const session = {
     state: null,
@@ -68,7 +68,7 @@ export function mount() {
     selected: null,
     drag: null,
     lastClick: { key: "", at: 0 },
-    muted: stored.muted,
+    muted: loadPrefs().sound !== true,
     countedPlay: false,
     countedWin: false,
     winShown: false,
@@ -78,6 +78,10 @@ export function mount() {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
     session.countedPlay = session.state.moves > 0;
+    if (typeof saved.savedAt === "number") {
+      const frozen = elapsedMs(session.state, saved.savedAt);
+      session.state.startedAt = Date.now() - frozen;
+    }
   } else {
     session.state = deal(randomDeal());
   }
@@ -85,13 +89,11 @@ export function mount() {
   let alive = true;
 
   function persist() {
-    const klondike = load();
-    klondike.muted = session.muted;
-    save(klondike);
     saveFreeCell({
       state: session.state,
       history: session.history.slice(-HISTORY_CAP),
       stats: session.stats,
+      savedAt: Date.now(),
     });
   }
 
@@ -157,7 +159,7 @@ export function mount() {
   }
 
   function clearLayoutVars() {
-    for (const key of ["--card-w", "--card-h", "--fc-peek", "--col-gap"]) {
+    for (const key of ["--card-w", "--card-h", "--fc-peek", "--peek-up", "--peek-down", "--col-gap", "--waste-extra", "--waste-spread"]) {
       document.body.style.removeProperty(key);
     }
   }
@@ -174,10 +176,12 @@ export function mount() {
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
     const topH = board.querySelector(".fc-top")?.offsetHeight || cardH;
     const availH = window.innerHeight - headerH - statusH - topH - 28;
-    let peek = 0;
+    let peek = Math.round(cardW * 0.34);
     if (longest > 1) {
       const room = Math.floor((availH - cardH) / (longest - 1));
-      peek = Math.max(1, Math.min(Math.round(cardW * 0.34), room));
+      const natural = Math.round(cardW * 0.34);
+      if (room >= 14) peek = Math.min(natural, room);
+      else peek = Math.max(1, Math.min(natural, room));
     }
     const style = document.body.style;
     style.setProperty("--card-w", `${cardW}px`);
@@ -188,7 +192,16 @@ export function mount() {
 
   function updateMute() {
     root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
-    root.mute.setAttribute("aria-label", session.muted ? "Unmute" : "Mute");
+    root.mute.setAttribute("aria-label", session.muted ? "Turn sound on" : "Turn sound off");
+    root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
+  }
+
+  function nudgeBoard() {
+    const el = root.table;
+    if (!el) return;
+    el.classList.remove("nudge");
+    void el.offsetWidth;
+    el.classList.add("nudge");
   }
 
   function render() {
@@ -282,7 +295,7 @@ export function mount() {
       <h2>Deal number</h2>
       <p>Microsoft FreeCell deals run from 1 to 32000.</p>
       <div class="deal-form">
-        <input data-testid="deal-input" inputmode="numeric" type="text" autocomplete="off" value="${session.state.dealNumber}" aria-label="Deal number" />
+        <input data-testid="deal-input" inputmode="numeric" type="text" autocomplete="off" value="${session.state.dealNumber}" aria-label="Deal number" style="font-size:16px" />
         <button type="submit" class="btn primary">Deal</button>
       </div>
       <div class="modal-actions">
@@ -311,6 +324,7 @@ export function mount() {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
+      nudgeBoard();
       return false;
     }
     if (!session.countedPlay) {
@@ -352,12 +366,14 @@ export function mount() {
     if (from.zone === "freecell") {
       sounds.illegal(session.muted);
       setStatus("That card cannot move to a foundation.");
+      nudgeBoard();
       return;
     }
     const index = session.state.freecells.findIndex((card) => card == null);
     if (index < 0) {
       sounds.illegal(session.muted);
       setStatus("No free cell is open.");
+      nudgeBoard();
       return;
     }
     const toCell = userMove(session.state, single, { zone: "freecell", index });
@@ -367,7 +383,7 @@ export function mount() {
   function doUndo() {
     if (!session.history.length) return;
     const wasWin = session.countedWin && session.state.won;
-    session.state = session.history.pop();
+    session.state = continueClock(session.state, session.history.pop());
     session.selected = null;
     session.winShown = false;
     if (wasWin && !session.state.won) {
@@ -403,6 +419,7 @@ export function mount() {
     const cards = cardsFor(from);
     if (!cards.length) return;
     session.drag = { from, x, y, originEl };
+    document.documentElement.classList.add("is-dragging");
     const ghost = document.createElement("div");
     ghost.className = "ghost";
     cards.forEach((card, i) => {
@@ -430,13 +447,16 @@ export function mount() {
   function endDrag(x, y) {
     const drag = session.drag;
     session.drag = null;
+    document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
     document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to && tryMove(drag.from, to)) return true;
+    if (to) return tryMove(drag.from, to);
     sounds.illegal(session.muted);
+    setStatus("That card cannot move there.");
+    nudgeBoard();
     return false;
   }
 
@@ -541,6 +561,7 @@ export function mount() {
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
   listen(window, "pointercancel", () => {
+    document.documentElement.classList.remove("is-dragging");
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
@@ -550,7 +571,7 @@ export function mount() {
   listen(root.dealBtn, "click", showDealModal);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
-    persist();
+    savePrefs({ sound: !session.muted });
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
@@ -626,6 +647,7 @@ export function mount() {
     listMoves: () => listLegalMoves(session.state),
     unmount() {
       alive = false;
+      document.documentElement.classList.remove("is-dragging");
       ac.abort();
       window.clearInterval(timer);
       session.drag = null;

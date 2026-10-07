@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { makeCard } from "../src/game/cards.js";
 import {
   autoPlaySafe,
+  continueClock,
   deal,
   isWon,
   listLegalMoves,
@@ -293,6 +294,21 @@ describe("autoPlaySafe", () => {
     expect(played.state.won).toBe(true);
     expect(isWon(played.state)).toBe(true);
     expect(played.state.freecells.every((card) => card == null)).toBe(true);
+  });
+});
+
+describe("undo clock", () => {
+  it("keeps the live clock when restoring an undo snapshot", () => {
+    const live = blank();
+    live.startedAt = 8_000;
+    live.moves = 3;
+    const snapshot = blank();
+    snapshot.startedAt = 500;
+    snapshot.moves = 2;
+    const restored = continueClock(live, snapshot);
+    expect(restored.startedAt).toBe(8_000);
+    expect(restored.moves).toBe(2);
+    expect(snapshot.startedAt).toBe(500);
   });
 });
 

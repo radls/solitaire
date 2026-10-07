@@ -5,6 +5,7 @@ import {
   autoMove,
   canAutoComplete,
   cloneState,
+  continueClock,
   deal,
   draw,
   elapsedMs,
@@ -14,7 +15,7 @@ import {
   timedScore,
 } from "./game/klondike.js";
 import { resumeAudio, sounds } from "./audio.js";
-import { load, save } from "./storage.js";
+import { load, loadPrefs, save, savePrefs } from "./storage.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -42,14 +43,14 @@ export function mount() {
   if (toolbar) {
     toolbar.innerHTML = `
       <div class="segmented" role="group" aria-label="Draw mode">
-        <button type="button" id="btn-draw-1" data-draw="1">Draw 1</button>
-        <button type="button" id="btn-draw-3" data-draw="3">Draw 3</button>
+        <button type="button" id="btn-draw-1" data-draw="1" aria-label="Draw 1"><span class="long">Draw 1</span><span class="short">1</span></button>
+        <button type="button" id="btn-draw-3" data-draw="3" aria-label="Draw 3"><span class="long">Draw 3</span><span class="short">3</span></button>
       </div>
       <button type="button" class="btn" id="btn-new" data-testid="btn-new" title="New game (N)">New</button>
       <button type="button" class="btn" id="btn-undo" data-testid="btn-undo" title="Undo (U)">Undo</button>
       <button type="button" class="btn" id="btn-hint" title="Hint (H)">Hint</button>
       <button type="button" class="btn" id="btn-finish" hidden title="Send remaining cards to foundations (A)">Finish</button>
-      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>
+      <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>
       <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>`;
   }
 
@@ -77,7 +78,7 @@ export function mount() {
     hintMove: null,
     drag: null,
     lastClick: { key: "", at: 0 },
-    muted: stored.muted,
+    muted: loadPrefs().sound !== true,
     stats: stored.stats,
     autoTimer: 0,
   };
@@ -220,7 +221,7 @@ export function mount() {
         shown.forEach((card, i) => {
           const playable = i === shown.length - 1;
           const el = makeCardEl(card, { zone: "waste" }, 1, playable);
-          el.style.left = `${i * 1.25}rem`;
+          el.style.left = `calc(${i} * var(--waste-spread, 20px))`;
           if (!playable) el.style.pointerEvents = "none";
           slot.appendChild(el);
         });
@@ -276,6 +277,74 @@ export function mount() {
     refreshMeters();
     applyHintHighlight();
     updateMuteButton();
+    fit();
+    requestAnimationFrame(() => fit());
+  }
+
+  function clearLayoutVars() {
+    for (const key of ["--card-w", "--card-h", "--peek-up", "--peek-down", "--col-gap", "--waste-extra", "--waste-spread"]) {
+      document.body.style.removeProperty(key);
+    }
+  }
+
+  function pileHeight(pile, cardH, peekUp, peekDown) {
+    if (!pile.length) return cardH;
+    let height = cardH;
+    for (let i = 1; i < pile.length; i++) height += pile[i].faceUp ? peekUp : peekDown;
+    return height;
+  }
+
+  function fit() {
+    const board = root.table?.querySelector(".board");
+    if (!board || !session.state) return;
+    const width = board.clientWidth;
+    if (!width) return;
+    const gap = width < 800 ? 4 : Math.min(16, Math.round(width * 0.012));
+    const cardW = Math.min(108, Math.floor((width - gap * 6) / 7));
+    if (cardW < 28) return;
+    const cardH = Math.round(cardW * 1.42);
+    let peekUp = Math.round(cardW * 0.3);
+    let peekDown = Math.round(cardW * 0.16);
+    const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
+    const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
+    const topH = board.querySelector(".row.top")?.offsetHeight || cardH;
+    const avail = window.innerHeight - headerH - statusH - topH - 36;
+    const fits = (up, down) =>
+      session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
+    if (avail > cardH && !fits(peekUp, peekDown)) {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 14; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(Math.max(1, Math.round(peekUp * mid)), Math.max(1, Math.round(peekDown * mid)))) lo = mid;
+        else hi = mid;
+      }
+      const up = Math.max(1, Math.round(peekUp * lo));
+      const down = Math.max(1, Math.round(peekDown * lo));
+      if (fits(Math.max(14, up), Math.max(7, down))) {
+        peekUp = Math.max(14, up);
+        peekDown = Math.max(7, down);
+      } else {
+        peekUp = up;
+        peekDown = down;
+      }
+    }
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--peek-up", `${peekUp}px`);
+    style.setProperty("--peek-down", `${peekDown}px`);
+    style.setProperty("--col-gap", `${gap}px`);
+    style.setProperty("--waste-extra", width < 720 ? "26px" : "2.6rem");
+    style.setProperty("--waste-spread", width < 720 ? "12px" : "20px");
+  }
+
+  function nudgeBoard() {
+    const el = root.table;
+    if (!el) return;
+    el.classList.remove("nudge");
+    void el.offsetWidth;
+    el.classList.add("nudge");
   }
 
   function refreshMeters() {
@@ -286,7 +355,8 @@ export function mount() {
 
   function updateMuteButton() {
     root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
-    root.mute.setAttribute("aria-label", session.muted ? "Unmute" : "Mute");
+    root.mute.setAttribute("aria-label", session.muted ? "Turn sound on" : "Turn sound off");
+    root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
   }
 
   function applyHintHighlight() {
@@ -335,7 +405,7 @@ export function mount() {
     const s = session.state;
     const stats = session.stats;
     showOverlay(
-      `<div class="modal win">
+      `<div class="modal win" data-testid="win-modal">
         <p class="big">You won</p>
         <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt)} points</p>
         <ul class="stats-line">
@@ -363,7 +433,7 @@ export function mount() {
         <li><kbd>H</kbd> hint</li>
         <li><kbd>Space</kbd> draw</li>
         <li><kbd>A</kbd> finish (when every card is face up)</li>
-        <li>Double-click a card to send it to a foundation</li>
+        <li>Double-tap a card to send it to a foundation</li>
       </ul>
       <p>Won ${stats.won} of ${stats.played} games. Streak ${stats.streak}.</p>
       <div class="modal-actions">
@@ -411,6 +481,7 @@ export function mount() {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
+      nudgeBoard();
       return false;
     }
     countPlay();
@@ -445,7 +516,7 @@ export function mount() {
 
   function doUndo() {
     if (!session.history.length || session.state.won) return;
-    session.state = session.history.pop();
+    session.state = continueClock(session.state, session.history.pop());
     session.selected = null;
     session.hintMove = null;
     persist();
@@ -458,7 +529,7 @@ export function mount() {
     const move = findHint(session.state);
     session.hintMove = move;
     render();
-    if (!move) setStatus("No moves — try drawing or undoing.");
+    if (!move) setStatus("No useful moves — try undo or a new game.");
     else if (move.kind === "draw") setStatus("Draw from the stock.");
     else setStatus("A legal move is highlighted.");
   }
@@ -519,6 +590,7 @@ export function mount() {
     const cards = cardsFor(from).filter((c) => c.faceUp);
     if (!cards.length) return;
     session.drag = { from, x, y, originEl };
+    document.documentElement.classList.add("is-dragging");
     const ghost = document.createElement("div");
     ghost.className = "ghost";
     cards.forEach((card, i) => {
@@ -546,13 +618,16 @@ export function mount() {
   function endDrag(x, y) {
     const drag = session.drag;
     session.drag = null;
+    document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
     document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to && tryMove(drag.from, to)) return true;
+    if (to) return tryMove(drag.from, to);
     sounds.illegal(session.muted);
+    setStatus("That card cannot move there.");
+    nudgeBoard();
     return false;
   }
 
@@ -652,9 +727,11 @@ export function mount() {
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
   listen(window, "pointercancel", () => {
+    document.documentElement.classList.remove("is-dragging");
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
+  listen(window, "resize", () => fit());
 
   listen(document.getElementById("btn-new"), "click", () => confirmNew(session.state.drawCount));
   listen(root.undo, "click", doUndo);
@@ -662,6 +739,7 @@ export function mount() {
   listen(root.finish, "click", doFinish);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
+    savePrefs({ sound: !session.muted });
     persist();
     updateMuteButton();
   });
@@ -702,6 +780,7 @@ export function mount() {
   });
 
   const timer = window.setInterval(refreshMeters, 250);
+  persist();
   render();
   setStatus("Move cards on the tableau, or draw from the stock.");
 
@@ -725,6 +804,7 @@ export function mount() {
       if (!result.ok) {
         sounds.illegal(session.muted);
         setStatus("That card cannot move there.");
+        nudgeBoard();
         return result;
       }
       commit(result, "place");
@@ -732,8 +812,11 @@ export function mount() {
     },
     historyLength: () => session.history.length,
     unmount() {
+      persist();
       ac.abort();
       window.clearInterval(timer);
+      document.documentElement.classList.remove("is-dragging");
+      clearLayoutVars();
       if (session.autoTimer) window.clearTimeout(session.autoTimer);
       session.autoTimer = 0;
       if (root.dragLayer) root.dragLayer.innerHTML = "";

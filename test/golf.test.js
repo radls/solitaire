@@ -5,6 +5,7 @@ import {
   apply,
   canPlay,
   cardsLeft,
+  continueClock,
   deal,
   drawStock,
   isCleared,
@@ -260,6 +261,17 @@ describe("round over and score", () => {
     expect(isCleared(clear)).toBe(true);
     expect(isRoundOver(clear)).toBe(true);
     expect(score(clear)).toBe(-1);
+  });
+});
+
+describe("undo clock", () => {
+  it("keeps the live clock when restoring an undo snapshot", () => {
+    const live = blank({ startedAt: 5_000, moves: 2 });
+    const snapshot = blank({ startedAt: 100, moves: 1 });
+    const restored = continueClock(live, snapshot);
+    expect(restored.startedAt).toBe(5_000);
+    expect(restored.moves).toBe(1);
+    expect(snapshot.startedAt).toBe(100);
   });
 });
 

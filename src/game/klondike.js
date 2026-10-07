@@ -296,14 +296,6 @@ function runStarts(pile) {
   return starts;
 }
 
-function isPointlessKingToEmpty(state, fromCol, start) {
-  const pile = state.tableau[fromCol];
-  const moving = pile[start];
-  if (moving.rank !== 13) return false;
-  if (start !== 0) return false;
-  return pile.every((card) => card.faceUp);
-}
-
 export function listLegalMoves(state) {
   const moves = [];
   if (state.won) return moves;
@@ -339,7 +331,6 @@ export function listLegalMoves(state) {
       for (let dest = 0; dest < TABLEAU_COUNT; dest++) {
         if (dest === col) continue;
         const onto = top(state.tableau[dest]);
-        if (!onto && isPointlessKingToEmpty(state, col, start)) continue;
         if (canStackTableau(moving, onto)) {
           const uncovers = start > 0 && !pile[start - 1].faceUp;
           const clears = start === 0;
@@ -372,11 +363,58 @@ const HINT_RANK = {
   draw: 5,
 };
 
+function canPlaceCard(state, card) {
+  if (!card) return false;
+  if (acceptingFoundations(state, card).length > 0) return true;
+  for (let i = 0; i < TABLEAU_COUNT; i++) {
+    if (canStackTableau(card, top(state.tableau[i]))) return true;
+  }
+  return false;
+}
+
+function isUsefulDraw(state) {
+  if (state.stock.length > 0) return true;
+  if (state.waste.length <= 1) return false;
+  return state.waste.some((card) => canPlaceCard(state, card));
+}
+
+/** Tableau transfers that uncover, open a column, or free a foundation card. */
+function isUsefulTableauTransfer(state, move) {
+  const pile = state.tableau[move.from.index];
+  if (!pile) return false;
+  const count = move.from.count ?? 1;
+  const start = pile.length - count;
+  const moving = pile[start];
+  if (!moving) return false;
+  if (start > 0 && pile[start - 1] && !pile[start - 1].faceUp) return true;
+  const onto = top(state.tableau[move.to.index]);
+  if (start === 0) return !(moving.rank === 13 && !onto);
+  const under = pile[start - 1];
+  return !!(under?.faceUp && acceptingFoundations(state, under).length);
+}
+
+export function hintMoves(state) {
+  return listLegalMoves(state).filter((move) => {
+    if (move.kind === "draw") return isUsefulDraw(state);
+    if (move.from?.zone === "tableau" && move.to?.zone === "tableau") {
+      return isUsefulTableauTransfer(state, move);
+    }
+    return true;
+  });
+}
+
 export function hint(state) {
-  const moves = listLegalMoves(state);
+  const moves = hintMoves(state);
   if (!moves.length) return null;
   moves.sort((a, b) => (HINT_RANK[a.kind] ?? 9) - (HINT_RANK[b.kind] ?? 9));
   return moves[0];
+}
+
+/** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
+export function continueClock(current, snapshot) {
+  const next = cloneState(snapshot);
+  next.startedAt = current.startedAt;
+  return next;
 }
 
 export function autoCompleteStep(state) {

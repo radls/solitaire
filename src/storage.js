@@ -1,5 +1,6 @@
 const KEY = "grok-solitaire-v1";
 const FREECELL_KEY = "grok-solitaire:freecell";
+const GOLF_KEY = "grok-solitaire:golf";
 const PREFS_KEY = "grok-solitaire:prefs";
 
 const defaultData = () => ({
@@ -70,6 +71,44 @@ export function saveFreeCell(data) {
         state: data.state ?? null,
         history,
         stats: data.stats ?? defaultFreeCell().stats,
+      }),
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+const defaultGolf = () => ({
+  state: null,
+  history: [],
+  stats: { played: 0, cleared: 0, bestScore: null },
+});
+
+export function loadGolf() {
+  try {
+    const raw = localStorage.getItem(GOLF_KEY);
+    if (!raw) return defaultGolf();
+    const parsed = JSON.parse(raw);
+    const history = Array.isArray(parsed.history) ? parsed.history.slice(-200) : [];
+    return {
+      state: parsed.state ?? null,
+      history,
+      stats: { ...defaultGolf().stats, ...(parsed.stats ?? {}) },
+    };
+  } catch {
+    return defaultGolf();
+  }
+}
+
+export function saveGolf(data) {
+  try {
+    const history = Array.isArray(data.history) ? data.history.slice(-200) : [];
+    localStorage.setItem(
+      GOLF_KEY,
+      JSON.stringify({
+        state: data.state ?? null,
+        history,
+        stats: { ...defaultGolf().stats, ...(data.stats ?? {}) },
       }),
     );
   } catch {

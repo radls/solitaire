@@ -1,0 +1,615 @@
+import { makeCardElement } from "./card-view.js";
+import {
+  apply,
+  canPlay,
+  cardsLeft,
+  cloneState,
+  deal,
+  elapsedMs,
+  isCleared,
+  listLegalMoves,
+  score,
+} from "./game/golf.js";
+import { resumeAudio, sounds } from "./audio.js";
+import { load, loadGolf, save, saveGolf } from "./storage.js";
+
+const DRAG_THRESHOLD = 7;
+const HISTORY_CAP = 200;
+const GAP = 4;
+
+const ICONS = {
+  mute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>`,
+  unmute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5-4.5-1.4 1.4A6.5 6.5 0 0 1 18 12a6.5 6.5 0 0 1-3.9 5.9l1.4 1.4A8.5 8.5 0 0 0 20 12a8.5 8.5 0 0 0-4.5-7.5zM16 4.2 4.2 16l1.4 1.4L17.4 5.6 16 4.2z"/></svg>`,
+};
+
+export function mount() {
+  const ac = new AbortController();
+  const listen = (target, type, handler, options) => {
+    if (!target) return;
+    target.addEventListener(type, handler, { ...options, signal: ac.signal });
+  };
+
+  const kicker = document.getElementById("game-kicker");
+  if (kicker) kicker.textContent = "Golf";
+  const scoreWrap = document.getElementById("meter-score-wrap");
+  const scoreLabel = scoreWrap?.querySelector("dt");
+  if (scoreWrap) scoreWrap.hidden = false;
+  if (scoreLabel) scoreLabel.textContent = "Left";
+  document.body.dataset.game = "golf";
+
+  const toolbar = document.getElementById("toolbar");
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new">New deal</button>
+      <button type="button" class="btn" id="btn-replay" data-testid="btn-replay">Replay</button>
+      <span class="seed-chip" id="deal-number" data-testid="deal-number">Seed 0</span>
+      <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>
+      <button type="button" class="icon-btn" id="btn-mute" aria-label="Mute"></button>`;
+  }
+
+  const root = {
+    table: document.getElementById("table"),
+    overlay: document.getElementById("overlay"),
+    dragLayer: document.getElementById("drag-layer"),
+    time: document.getElementById("meter-time"),
+    moves: document.getElementById("meter-moves"),
+    left: document.getElementById("meter-score"),
+    status: document.getElementById("status-text"),
+    seed: document.getElementById("status-seed"),
+    undo: document.getElementById("btn-undo"),
+    dealNumber: document.getElementById("deal-number"),
+    mute: document.getElementById("btn-mute"),
+  };
+
+  const stored = load();
+  const saved = loadGolf();
+  const session = {
+    state: null,
+    history: [],
+    stats: saved.stats,
+    drag: null,
+    muted: stored.muted,
+    endShown: false,
+    notedEnd: false,
+    countedClear: false,
+    improvedBest: false,
+    bestSnapshot: saved.stats.bestScore,
+  };
+
+  const params = new URLSearchParams(location.search);
+  const rawSeed = params.get("seed");
+  const urlSeed = rawSeed == null || rawSeed === "" ? null : Number(rawSeed);
+  const honorSeed = params.get("game") === "golf" && urlSeed != null && Number.isFinite(urlSeed);
+  const resume = !honorSeed && saved.state && !saved.state.over;
+  if (resume) {
+    session.state = saved.state;
+    session.history = (saved.history ?? []).slice(-HISTORY_CAP);
+  }
+
+  let alive = true;
+
+  function persist() {
+    const klondike = load();
+    klondike.muted = session.muted;
+    save(klondike);
+    saveGolf({
+      state: session.state,
+      history: session.history.slice(-HISTORY_CAP),
+      stats: session.stats,
+    });
+  }
+
+  function setStatus(text) {
+    if (root.status) root.status.textContent = text;
+  }
+
+  function formatTime(ms) {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function statusFor(result) {
+    if (result.reason === "stock is empty") return "The stock is empty.";
+    if (result.reason === "round is over") return "The round is over.";
+    if (result.reason === "column is empty") return "That column is empty.";
+    return "That card is not one above or below.";
+  }
+
+  function wasteTop() {
+    const waste = session.state?.waste;
+    return waste?.length ? waste[waste.length - 1] : null;
+  }
+
+  function exposedCard(col) {
+    const pile = session.state?.columns?.[col] ?? [];
+    return pile.length ? pile[pile.length - 1] : null;
+  }
+
+  function parseLoc(el) {
+    if (!el?.dataset?.zone) return null;
+    const zone = el.dataset.zone;
+    if (zone === "stock" || zone === "waste") return { zone };
+    return {
+      zone,
+      index: Number(el.dataset.index),
+      count: Number(el.dataset.count || 1),
+    };
+  }
+
+  function well(content = "") {
+    const el = document.createElement("div");
+    el.className = "well";
+    el.innerHTML = content;
+    return el;
+  }
+
+  function renderSlot(zone, index, fill) {
+    const slot = document.createElement("div");
+    slot.className = `slot ${zone}`;
+    slot.dataset.drop = index == null ? zone : `${zone}:${index}`;
+    slot.dataset.zone = zone;
+    if (index != null) slot.dataset.index = String(index);
+    fill(slot);
+    return slot;
+  }
+
+  function clearLayoutVars() {
+    for (const key of ["--card-w", "--card-h", "--golf-peek", "--fc-peek", "--col-gap"]) {
+      document.body.style.removeProperty(key);
+    }
+  }
+
+  function fit() {
+    const board = root.table?.querySelector(".board.golf");
+    if (!board) return;
+    const width = board.clientWidth;
+    if (!width) return;
+    const cardW = Math.max(30, Math.min(112, Math.floor((width - GAP * 6) / 7)));
+    const cardH = Math.round(cardW * 1.42);
+    const longest = Math.max(1, ...session.state.columns.map((pile) => pile.length));
+    const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
+    const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
+    const avail = window.innerHeight - headerH - statusH - cardH - 56;
+    let peek = Math.round(cardW * 0.56);
+    if (longest > 1) {
+      const room = Math.floor((avail - cardH) / (longest - 1));
+      peek = Math.max(12, Math.min(peek, room));
+    }
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--golf-peek", `${peek}px`);
+    style.setProperty("--col-gap", `${GAP}px`);
+  }
+
+  function updateMute() {
+    if (!root.mute) return;
+    root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
+    root.mute.setAttribute("aria-label", session.muted ? "Unmute" : "Mute");
+  }
+
+  function render() {
+    const state = session.state;
+    const board = document.createElement("div");
+    board.className = "board golf";
+
+    const columns = document.createElement("div");
+    columns.className = "golf-columns";
+    columns.setAttribute("aria-label", "Columns");
+    const topCard = wasteTop();
+    state.columns.forEach((pile, index) => {
+      columns.appendChild(
+        renderSlot("column", index, (slot) => {
+          slot.appendChild(well(""));
+          const stack = document.createElement("div");
+          stack.className = "pile";
+          pile.forEach((card, row) => {
+            const exposed = row === pile.length - 1;
+            const playable = exposed && canPlay(card, topCard);
+            const el = makeCardElement(card, { zone: "column", index }, exposed ? 1 : pile.length - row, playable, false);
+            el.style.zIndex = String(row + 1);
+            stack.appendChild(el);
+          });
+          slot.appendChild(stack);
+        }),
+      );
+    });
+
+    const bottom = document.createElement("div");
+    bottom.className = "golf-bottom";
+    bottom.setAttribute("aria-label", "Stock and waste");
+    bottom.appendChild(
+      renderSlot("stock", null, (slot) => {
+        slot.appendChild(well(""));
+        if (state.stock.length) {
+          const back = makeCardElement(
+            { ...state.stock[state.stock.length - 1], faceUp: false },
+            { zone: "stock" },
+            1,
+            false,
+            false,
+          );
+          slot.appendChild(back);
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = String(state.stock.length);
+          slot.appendChild(badge);
+        }
+      }),
+    );
+    bottom.appendChild(
+      renderSlot("waste", null, (slot) => {
+        slot.appendChild(well(""));
+        if (state.waste.length) {
+          const card = state.waste[state.waste.length - 1];
+          slot.appendChild(makeCardElement(card, { zone: "waste" }, 1, false, false));
+        }
+      }),
+    );
+
+    board.append(columns, bottom);
+    root.table.replaceChildren(board);
+    root.moves.textContent = String(state.moves);
+    if (root.left) root.left.textContent = String(cardsLeft(state));
+    if (root.seed) root.seed.textContent = "";
+    if (root.undo) root.undo.disabled = session.history.length === 0;
+    if (root.dealNumber) root.dealNumber.textContent = `Seed ${state.seed}`;
+    updateMute();
+    fit();
+    requestAnimationFrame(() => {
+      if (alive) fit();
+    });
+  }
+
+  function refreshMeters() {
+    if (!alive || !session.state) return;
+    if (root.time) root.time.textContent = formatTime(elapsedMs(session.state));
+    if (root.moves) root.moves.textContent = String(session.state.moves);
+    if (root.left) root.left.textContent = String(cardsLeft(session.state));
+  }
+
+  function hideOverlay() {
+    if (!root.overlay) return;
+    root.overlay.hidden = true;
+    root.overlay.innerHTML = "";
+  }
+
+  function showEnd() {
+    const state = session.state;
+    session.endShown = true;
+    const cleared = isCleared(state);
+    const value = score(state);
+    const best = session.stats.bestScore;
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+      <h2>${cleared ? "Course cleared" : "Round over"}</h2>
+      <p>Score ${value} (lower is better)</p>
+      <ul class="stats-line">
+        <li><span>Cards left</span>${cardsLeft(state)}</li>
+        <li><span>Stock left</span>${state.stock.length}</li>
+        <li><span>Best score</span>${best == null ? "—" : best}</li>
+      </ul>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close">Close</button>
+        <button type="button" class="btn" data-act="replay">Replay this deal</button>
+        <button type="button" class="btn primary" data-act="new">New deal</button>
+      </div>
+    </div>`;
+  }
+
+  function showHelp() {
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
+      <h2>Golf</h2>
+      <p>Seven columns of five face-up cards. The next card starts the waste, and the other sixteen stay face down in the stock.</p>
+      <p>Play the exposed card of a column onto the waste when it is one rank higher or one rank lower. Suit does not matter. Only that exposed card can be played.</p>
+      <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
+      <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn primary" data-act="close">Close</button>
+      </div>
+    </div>`;
+  }
+
+  function noteRoundEnd() {
+    if (!session.state?.over || session.notedEnd) return;
+    session.notedEnd = true;
+    const value = score(session.state);
+    if (isCleared(session.state)) {
+      session.stats.cleared += 1;
+      session.countedClear = true;
+    }
+    if (session.stats.bestScore == null || value < session.stats.bestScore) {
+      session.bestSnapshot = session.stats.bestScore;
+      session.stats.bestScore = value;
+      session.improvedBest = true;
+    } else {
+      session.improvedBest = false;
+    }
+    showEnd();
+  }
+
+  function startDeal(seed) {
+    hideOverlay();
+    session.history = [];
+    session.drag = null;
+    session.endShown = false;
+    session.notedEnd = false;
+    session.countedClear = false;
+    session.improvedBest = false;
+    session.state = deal({ seed });
+    session.stats.played += 1;
+    persist();
+    render();
+    refreshMeters();
+    setStatus("Play a card one rank above or below the waste.");
+  }
+
+  function replay() {
+    startDeal(session.state.seed);
+  }
+
+  function doApply(action) {
+    const result = apply(session.state, action);
+    if (!result.ok) {
+      setStatus(statusFor(result));
+      return result;
+    }
+    session.history.push(cloneState(session.state));
+    if (session.history.length > HISTORY_CAP) session.history.shift();
+    session.state = result.state;
+    if (session.state.over) noteRoundEnd();
+    persist();
+    render();
+    refreshMeters();
+    if (action?.type === "draw") sounds.draw(session.muted);
+    else sounds.place(session.muted);
+    if (session.state.over) {
+      setStatus(isCleared(session.state) ? "Course cleared." : "No more moves.");
+    } else if (action?.type === "draw") {
+      setStatus("Drew from the stock.");
+    } else {
+      setStatus("Played onto the waste.");
+    }
+    return { ok: true, state: session.state };
+  }
+
+  function doUndo() {
+    if (!session.history.length) return;
+    const wasOver = session.state.over;
+    const wasCleared = wasOver && session.countedClear && isCleared(session.state);
+    session.state = session.history.pop();
+    if (wasCleared && !isCleared(session.state)) {
+      session.stats.cleared = Math.max(0, session.stats.cleared - 1);
+      session.countedClear = false;
+    }
+    if (wasOver && !session.state.over && session.improvedBest) {
+      session.stats.bestScore = session.bestSnapshot;
+      session.improvedBest = false;
+    }
+    session.endShown = false;
+    session.notedEnd = !!session.state.over;
+    hideOverlay();
+    persist();
+    render();
+    refreshMeters();
+    sounds.undo(session.muted);
+    setStatus("Undid the last move.");
+  }
+
+  function highlightWaste(card, on) {
+    document.querySelectorAll(".slot.drop-ok").forEach((el) => el.classList.remove("drop-ok"));
+    if (!on || !card) return;
+    if (canPlay(card, wasteTop())) document.querySelector('[data-drop="waste"]')?.classList.add("drop-ok");
+  }
+
+  function moveGhost(x, y) {
+    const ghost = session.drag?.ghost;
+    if (!ghost) return;
+    const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
+    ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+  }
+
+  function startDrag(from, x, y, originEl) {
+    const card = exposedCard(from.index);
+    if (!card || !originEl) return;
+    session.drag = { from, x, y, originEl };
+    const ghost = document.createElement("div");
+    ghost.className = "ghost";
+    ghost.appendChild(makeCardElement(card, from, 1, false, false));
+    root.dragLayer.appendChild(ghost);
+    session.drag.ghost = ghost;
+    originEl.classList.add("is-ghost-source");
+    moveGhost(x, y);
+    highlightWaste(card, true);
+  }
+
+  function endDrag(x, y) {
+    const drag = session.drag;
+    session.drag = null;
+    if (root.dragLayer) root.dragLayer.innerHTML = "";
+    document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
+    highlightWaste(null, false);
+    if (!drag || drag.from?.zone !== "column") return;
+    const drop = document.elementFromPoint(x, y)?.closest?.("[data-drop]");
+    if (drop?.dataset.zone === "waste") doApply({ type: "play", col: drag.from.index });
+  }
+
+  function onPointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    if (!root.overlay?.hidden) return;
+    if (session.state?.over) return;
+    resumeAudio();
+    const cardEl = event.target.closest?.(".card");
+    const slot = event.target.closest?.("[data-drop]");
+    if (!cardEl && slot?.dataset.zone === "stock") {
+      event.preventDefault();
+      session.drag = { from: { zone: "stock" }, x: event.clientX, y: event.clientY, clickOnly: true };
+      return;
+    }
+    if (!cardEl) return;
+    const loc = parseLoc(cardEl);
+    if (!loc || loc.zone === "waste") return;
+    event.preventDefault();
+    cardEl.setPointerCapture?.(event.pointerId);
+    if (loc.zone === "stock") {
+      session.drag = {
+        from: loc,
+        x: event.clientX,
+        y: event.clientY,
+        originEl: cardEl,
+        clickOnly: true,
+      };
+      return;
+    }
+    const exposed = Number(cardEl.dataset.count) === 1;
+    session.drag = {
+      from: loc,
+      x: event.clientX,
+      y: event.clientY,
+      originEl: cardEl,
+      pending: exposed,
+      clickOnly: !exposed,
+    };
+  }
+
+  function onPointerMove(event) {
+    const drag = session.drag;
+    if (!drag || drag.clickOnly) return;
+    if (!drag.pending && !drag.ghost) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (drag.pending && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (drag.pending) {
+      drag.pending = false;
+      startDrag(drag.from, event.clientX, event.clientY, drag.originEl);
+    } else {
+      moveGhost(event.clientX, event.clientY);
+    }
+  }
+
+  function onPointerUp(event) {
+    const drag = session.drag;
+    if (!drag) return;
+    if (drag.ghost) {
+      endDrag(event.clientX, event.clientY);
+      return;
+    }
+    session.drag = null;
+    if (drag.from?.zone === "stock") {
+      doApply({ type: "draw" });
+      return;
+    }
+    if (drag.from?.zone !== "column") return;
+    if (Number(drag.originEl?.dataset.count) !== 1) {
+      setStatus("Only the exposed card can be played.");
+      return;
+    }
+    doApply({ type: "play", col: drag.from.index });
+  }
+
+  listen(root.table, "pointerdown", onPointerDown);
+  listen(window, "pointermove", onPointerMove);
+  listen(window, "pointerup", onPointerUp);
+  listen(window, "pointercancel", () => {
+    if (session.drag?.ghost) {
+      if (root.dragLayer) root.dragLayer.innerHTML = "";
+      document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
+      highlightWaste(null, false);
+    }
+    session.drag = null;
+  });
+  listen(window, "resize", () => fit());
+  listen(root.undo, "click", doUndo);
+  listen(document.getElementById("btn-new"), "click", () => startDeal(undefined));
+  listen(document.getElementById("btn-replay"), "click", replay);
+  listen(document.getElementById("btn-help"), "click", showHelp);
+  listen(root.mute, "click", () => {
+    session.muted = !session.muted;
+    persist();
+    updateMute();
+  });
+  listen(root.overlay, "click", (event) => {
+    if (event.target === root.overlay) {
+      hideOverlay();
+      return;
+    }
+    const btn = event.target.closest("[data-act]");
+    if (!btn) return;
+    if (btn.dataset.act === "close") hideOverlay();
+    else if (btn.dataset.act === "new") startDeal(undefined);
+    else if (btn.dataset.act === "replay") replay();
+  });
+  listen(window, "keydown", (event) => {
+    const key = event.key.toLowerCase();
+    if (event.target.matches?.("input, textarea")) {
+      if (event.key === "Escape") hideOverlay();
+      return;
+    }
+    if (key === "escape") {
+      hideOverlay();
+      return;
+    }
+    if (!root.overlay?.hidden) return;
+    if (key === "u" || (key === "z" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      doUndo();
+    } else if (key === "n") startDeal(undefined);
+    else if (key === "r") replay();
+    else if (key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      doApply({ type: "draw" });
+    } else if (key === "?" || (event.shiftKey && event.key === "/")) showHelp();
+  });
+
+  const timer = window.setInterval(refreshMeters, 250);
+  if (resume) {
+    persist();
+    render();
+    refreshMeters();
+    setStatus("Play a card one rank above or below the waste.");
+  } else {
+    startDeal(honorSeed ? urlSeed : undefined);
+  }
+
+  return {
+    getState: () => session.state,
+    setState(next) {
+      session.state = next;
+      session.drag = null;
+      session.endShown = false;
+      session.notedEnd = !!next?.over;
+      session.countedClear = false;
+      session.improvedBest = false;
+      persist();
+      render();
+      refreshMeters();
+      if (next?.over) showEnd();
+      else hideOverlay();
+    },
+    newGame(options) {
+      const seed = options && typeof options === "object" ? options.seed : options;
+      startDeal(seed);
+    },
+    undo: doUndo,
+    move: (action) => doApply(action),
+    apply: (action) => doApply(action),
+    historyLength: () => session.history.length,
+    listMoves: () => listLegalMoves(session.state),
+    unmount() {
+      alive = false;
+      ac.abort();
+      window.clearInterval(timer);
+      session.drag = null;
+      clearLayoutVars();
+      if (scoreLabel) scoreLabel.textContent = "Score";
+      if (root.dragLayer) root.dragLayer.innerHTML = "";
+      if (root.table) root.table.innerHTML = "";
+      if (toolbar) toolbar.innerHTML = "";
+      hideOverlay();
+    },
+  };
+}

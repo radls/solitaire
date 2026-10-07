@@ -1,7 +1,8 @@
 import "./styles.css";
 import { mount as mountKlondike } from "./ui.js";
 import { mount as mountFreeCell } from "./ui-freecell.js";
-import { load, loadFreeCell, loadPrefs, savePrefs } from "./storage.js";
+import { mount as mountGolf } from "./ui-golf.js";
+import { load, loadFreeCell, loadGolf, loadPrefs, savePrefs } from "./storage.js";
 
 let active = null;
 let mode = "picker";
@@ -14,6 +15,11 @@ function hasKlondikeSave() {
 function hasFreeCellSave() {
   const saved = loadFreeCell();
   return !!(saved.state && !saved.state.won);
+}
+
+function hasGolfSave() {
+  const saved = loadGolf();
+  return !!(saved.state && !saved.state.over);
 }
 
 function syncHooks() {
@@ -29,6 +35,7 @@ function syncHooks() {
     draw: () => active?.draw?.(),
     hint: () => active?.hint?.(),
     listMoves: () => active?.listMoves?.() ?? [],
+    apply: (action) => active?.apply?.(action),
   };
 }
 
@@ -51,6 +58,7 @@ function showPicker() {
   document.getElementById("status-seed").textContent = "";
   const klondike = hasKlondikeSave();
   const freecell = hasFreeCellSave();
+  const golf = hasGolfSave();
   document.getElementById("table").innerHTML = `
     <div class="picker" data-testid="picker">
       <button type="button" class="pick-tile" data-testid="pick-klondike" data-pick="klondike">
@@ -64,6 +72,12 @@ function showPicker() {
         <span class="pick-name">FreeCell</span>
         <span class="pick-blurb">All cards face up. Four free cells.</span>
         ${freecell ? '<span class="resume">Resume</span>' : ""}
+      </button>
+      <button type="button" class="pick-tile" data-testid="pick-golf" data-pick="golf">
+        <span class="pick-kicker">Calm & quick</span>
+        <span class="pick-name">Golf</span>
+        <span class="pick-blurb">Clear the columns one rank up or down.</span>
+        ${golf ? '<span class="resume">Resume</span>' : ""}
       </button>
     </div>`;
   syncHooks();
@@ -85,8 +99,17 @@ function showFreeCell() {
   syncHooks();
 }
 
+function showGolf() {
+  unmountActive();
+  mode = "golf";
+  savePrefs({ lastGame: "golf" });
+  active = mountGolf();
+  syncHooks();
+}
+
 function pick(id) {
   if (id === "freecell") showFreeCell();
+  else if (id === "golf") showGolf();
   else if (id === "klondike") showKlondike();
   else showPicker();
 }
@@ -100,10 +123,10 @@ document.getElementById("table").addEventListener("click", (event) => {
 
 const params = new URLSearchParams(location.search);
 const requested = params.get("game");
-if (requested === "freecell" || requested === "klondike") pick(requested);
+if (requested === "freecell" || requested === "klondike" || requested === "golf") pick(requested);
 else if (params.has("seed") || params.has("draw")) pick("klondike");
 else {
   const last = loadPrefs().lastGame;
-  if (last === "freecell" || last === "klondike") pick(last);
+  if (last === "freecell" || last === "klondike" || last === "golf") pick(last);
   else showPicker();
 }

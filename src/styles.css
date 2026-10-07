@@ -617,6 +617,19 @@ button {
   text-transform: uppercase;
 }
 
+.pick-tile[data-pick="golf"] {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+
+.seed-chip {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.15rem;
+}
+
 .deal-form {
   display: flex;
   gap: 0.5rem;
@@ -696,6 +709,87 @@ body[data-game="freecell"] #drag-layer .ghost .card:first-child {
   margin-top: 0;
 }
 
+body[data-game="golf"] {
+  --card-w: 46px;
+  --card-h: calc(var(--card-w) * 1.42);
+  --col-gap: 4px;
+  --golf-peek: 18px;
+  overflow-x: hidden;
+}
+
+body[data-game="golf"] #app,
+body[data-game="golf"] .table,
+body[data-game="golf"] .board {
+  overflow-x: hidden;
+  max-width: 100%;
+  min-width: 0;
+}
+
+body[data-game="golf"] .table {
+  padding: 0.85rem 1rem 0.35rem;
+}
+
+.board.golf {
+  gap: 1.15rem;
+  width: 100%;
+  max-width: 56rem;
+}
+
+.golf-columns,
+.golf-bottom {
+  display: flex;
+  justify-content: center;
+  gap: var(--col-gap);
+  width: 100%;
+  max-width: 100%;
+}
+
+.golf-bottom {
+  gap: 1rem;
+}
+
+.board.golf .slot {
+  width: var(--card-w);
+  flex: 0 0 var(--card-w);
+  min-width: 0;
+}
+
+.board.golf .slot.stock .card,
+.board.golf .slot.waste .card {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.board.golf .slot.stock .card {
+  cursor: pointer;
+}
+
+.board.golf .slot.waste .card,
+.board.golf .pile .card {
+  cursor: default;
+}
+
+.board.golf .pile .card.playable {
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px rgba(212, 180, 106, 0.72),
+    0 2px 3px rgba(0, 0, 0, 0.28),
+    0 8px 16px rgba(0, 0, 0, 0.16);
+}
+
+.board.golf .pile .card {
+  margin-top: calc(-1 * (var(--card-h) - var(--golf-peek, 18px)));
+}
+
+.board.golf .pile .card:first-child {
+  margin-top: 0;
+}
+
+body[data-game="golf"] #drag-layer .ghost .card {
+  margin-top: 0;
+}
+
 @media (max-width: 820px) {
   .topbar {
     flex-wrap: wrap;
@@ -720,6 +814,14 @@ body[data-game="freecell"] #drag-layer .ghost .card:first-child {
     --card-w: clamp(2.85rem, 12vw, 4.5rem);
     --peek-up: calc(var(--card-w) * 0.38);
     --col-gap: 0.28rem;
+  }
+
+  body[data-game="golf"] .table {
+    padding: 0.4rem 0.35rem 0.2rem;
+  }
+
+  body[data-game="golf"] .toolbar .btn {
+    padding: 0.36rem 0.7rem;
   }
 
   .topbar {

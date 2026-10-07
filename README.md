@@ -1,6 +1,6 @@
 # Solitaire
 
-Klondike and FreeCell for the browser. First app in [Grok Build Apps](../).
+Klondike, FreeCell, and Golf for the browser. First app in [Grok Build Apps](../).
 
 **Play:** [https://radls.github.io/solitaire/](https://radls.github.io/solitaire/)
 
@@ -41,13 +41,13 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Vite dev server on port 5180 |
-| `npm test` | Unit tests for the Klondike engine |
+| `npm test` | Unit tests for the game engines |
 | `npm run build` | Production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
 
 In-progress games and stats are stored in `localStorage` under `grok-solitaire`.
 
-Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`. The last game you opened is remembered in `localStorage` under `grok-solitaire:prefs`.
+Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal). The last game you opened is remembered in `localStorage` under `grok-solitaire:prefs`.
 
 ## Rules (FreeCell)
 
@@ -60,3 +60,13 @@ Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). U
 - After each move, safe cards (aces, twos, or a card whose both opposite-color foundations are at least one rank lower) go to the foundations in the same undo step.
 
 In-progress FreeCell games are stored under `grok-solitaire:freecell`. Klondike stays on `grok-solitaire-v1`. Sound starts muted.
+
+## Rules (Golf)
+
+- Seven columns of five face-up cards. The next card starts the waste. Sixteen cards remain face down in the stock.
+- Play the exposed card of a column onto the waste when its rank is one higher or one lower. Suit does not matter. Only the exposed card can be played.
+- No wrap: nothing can be played on a King, and Aces take only a 2. A king can be played on a queen. A queen can be played on a jack, and not on a king.
+- Draw the stock one card at a time, once through. The stock does not recycle.
+- Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when the columns are clear. Lower is better.
+
+In-progress Golf games are stored under `grok-solitaire:golf`.

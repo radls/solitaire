@@ -1,0 +1,903 @@
+import { makeCardElement } from "./card-view.js";
+import {
+  apply,
+  cardsInCorners,
+  cloneState,
+  continueClock,
+  deal,
+  elapsedMs,
+  isWon,
+  listLegalMoves,
+} from "./game/kings.js";
+import { resumeAudio, sounds } from "./audio.js";
+import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
+
+const DRAG_THRESHOLD = 7;
+const DOUBLE_MS = 420;
+const HISTORY_CAP = 200;
+const SIDE_NAME = ["North", "East", "South", "West"];
+const CORNER_NAME = ["Northwest", "Northeast", "Southwest", "Southeast"];
+
+const ICONS = {
+  mute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>`,
+  unmute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5-4.5-1.4 1.4A6.5 6.5 0 0 1 18 12a6.5 6.5 0 0 1-3.9 5.9l1.4 1.4A8.5 8.5 0 0 0 20 12a8.5 8.5 0 0 0-4.5-7.5zM16 4.2 4.2 16l1.4 1.4L17.4 5.6 16 4.2z"/></svg>`,
+  recycle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a8 8 0 0 1 13.2-6M20 16a8 8 0 0 1-13.2 6"/><path d="M17 3h4v4M7 21H3v-4"/></svg>`,
+};
+
+export function mount() {
+  const ac = new AbortController();
+  const listen = (target, type, handler, options) => {
+    if (!target) return;
+    target.addEventListener(type, handler, { ...options, signal: ac.signal });
+  };
+
+  const kicker = document.getElementById("game-kicker");
+  if (kicker) kicker.textContent = "King's Corners";
+  const scoreWrap = document.getElementById("meter-score-wrap");
+  const scoreLabel = scoreWrap?.querySelector("dt");
+  if (scoreWrap) scoreWrap.hidden = false;
+  if (scoreLabel) scoreLabel.textContent = "Corners";
+  document.body.dataset.game = "kings";
+
+  const toolbar = document.getElementById("toolbar");
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal">New deal</button>
+      <button type="button" class="btn" id="btn-replay" data-testid="btn-replay">Replay</button>
+      <span class="seed-chip" id="deal-number" data-testid="deal-number">Seed 0</span>
+      <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>
+      <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>`;
+  }
+
+  const root = {
+    table: document.getElementById("table"),
+    overlay: document.getElementById("overlay"),
+    dragLayer: document.getElementById("drag-layer"),
+    time: document.getElementById("meter-time"),
+    moves: document.getElementById("meter-moves"),
+    home: document.getElementById("meter-score"),
+    status: document.getElementById("status-text"),
+    seed: document.getElementById("status-seed"),
+    undo: document.getElementById("btn-undo"),
+    dealNumber: document.getElementById("deal-number"),
+    mute: document.getElementById("btn-mute"),
+  };
+
+  const saved = loadKings();
+  const session = {
+    state: null,
+    history: [],
+    stats: saved.stats,
+    selected: null,
+    drag: null,
+    lastClick: { key: "", at: 0 },
+    muted: loadPrefs().sound !== true,
+    countedWin: false,
+    modal: null,
+  };
+
+  const params = new URLSearchParams(location.search);
+  const rawSeed = params.get("seed");
+  const urlSeed = rawSeed == null || rawSeed === "" ? null : Number(rawSeed);
+  const honorSeed = params.get("game") === "kings" && urlSeed != null && Number.isFinite(urlSeed);
+  const resume = !honorSeed && saved.state && !saved.state.won && !isWon(saved.state);
+  if (resume) {
+    session.state = saved.state;
+    session.history = (saved.history ?? []).slice(-HISTORY_CAP);
+    if (typeof saved.savedAt === "number") {
+      const frozen = elapsedMs(session.state, saved.savedAt);
+      session.state.startedAt = Date.now() - frozen;
+    }
+  }
+
+  let alive = true;
+  let observer = null;
+
+  function persist() {
+    saveKings({
+      state: session.state,
+      history: session.history.slice(-HISTORY_CAP),
+      stats: session.stats,
+      savedAt: Date.now(),
+    });
+  }
+
+  function setStatus(text) {
+    if (root.status) root.status.textContent = text;
+    if (alive) requestAnimationFrame(() => fit());
+  }
+
+  function formatTime(ms) {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function locKey(loc) {
+    if (!loc) return "";
+    if (loc.zone === "waste") return "waste";
+    return `${loc.zone}:${loc.index ?? ""}:${loc.count ?? 1}`;
+  }
+
+  function normalize(loc) {
+    if (!loc) return null;
+    if (loc.zone === "waste") return { zone: "waste" };
+    if (loc.zone === "side") return { zone: "side", index: loc.index, count: loc.count ?? 1 };
+    return { zone: loc.zone, index: loc.index };
+  }
+
+  function parseLoc(el) {
+    if (!el?.dataset?.zone) return null;
+    const zone = el.dataset.zone;
+    if (zone === "stock" || zone === "waste") return { zone };
+    return {
+      zone,
+      index: el.dataset.index == null || el.dataset.index === "" ? undefined : Number(el.dataset.index),
+      count: Number(el.dataset.count || 1),
+    };
+  }
+
+  function pileAt(index) {
+    return session.state?.sides?.[index] ?? [];
+  }
+
+  function isMovable(loc) {
+    if (!loc) return false;
+    if (loc.zone === "waste") return (session.state?.waste?.length ?? 0) > 0;
+    if (loc.zone !== "side") return false;
+    const pile = pileAt(loc.index);
+    const count = loc.count ?? 1;
+    return pile.length > 0 && (count === 1 || count === pile.length);
+  }
+
+  function isWholePileTap(loc) {
+    if (loc?.zone !== "side") return false;
+    const pile = pileAt(loc.index);
+    return pile.length > 1 && loc.count === pile.length;
+  }
+
+  function statusFor(result) {
+    if (result.reason === "partial runs cannot move") return "Only the top card or the whole pile can move.";
+    if (result.reason === "cards cannot leave a corner") return "Cards in a corner stay there.";
+    if (result.reason === "nothing to draw") return "Nothing left to turn.";
+    if (result.reason === "game already won") return "Four kings home.";
+    if (result.reason === "waste is empty") return "The waste is empty.";
+    if (result.reason === "side is empty") return "That side pile is empty.";
+    return "That card cannot move there.";
+  }
+
+  function canDrop(from, to) {
+    if (!to || (to.zone !== "side" && to.zone !== "corner")) return false;
+    const key = locKey(normalize(from));
+    return listLegalMoves(session.state).some(
+      (move) => move.kind === "move" && locKey(move.from) === key && move.to.zone === to.zone && move.to.index === to.index,
+    );
+  }
+
+  function rowSelected(index, row, pileLength) {
+    const sel = session.selected;
+    if (!sel || sel.zone !== "side" || sel.index !== index) return false;
+    const count = sel.count ?? 1;
+    if (count === pileLength && pileLength > 1) return true;
+    return count === 1 && row === pileLength - 1;
+  }
+
+  function clearLayoutVars() {
+    for (const key of [
+      "--card-w",
+      "--card-h",
+      "--kc-peek",
+      "--kc-inner-gap",
+      "--kc-row-gap",
+      "--fc-peek",
+      "--peek-up",
+      "--peek-down",
+      "--col-gap",
+      "--waste-extra",
+      "--waste-spread",
+    ]) {
+      document.body.style.removeProperty(key);
+    }
+  }
+
+  function fit() {
+    const board = root.table?.querySelector(".board.kings");
+    if (!board || !session.state) return;
+    const width = board.clientWidth;
+    if (!width) return;
+    const colGap = 6;
+    const innerGap = 4;
+    const rowGap = 6;
+    let cardW = Math.floor((width - colGap * 2 - innerGap) / 4);
+    cardW = Math.max(26, Math.min(104, cardW));
+
+    const lengths = session.state.sides.map((pile) => Math.max(1, pile.length));
+    const extra =
+      lengths[0] -
+      1 +
+      (Math.max(lengths[1], lengths[3]) - 1) +
+      (lengths[2] - 1);
+
+    const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
+    const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
+    const table = root.table;
+    const ts = table ? getComputedStyle(table) : null;
+    const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
+    let avail = window.innerHeight - headerH - statusH - padY - rowGap * 2 - 8;
+    if (avail < 90) avail = 90;
+
+    let cardH = Math.round(cardW * 1.42);
+    const minPeek = extra > 0 ? 1 : 0;
+    if (cardH * 3 + extra * minPeek > avail) {
+      cardH = Math.max(36, Math.floor((avail - extra * minPeek) / 3));
+      cardW = Math.max(26, Math.min(cardW, Math.floor(cardH / 1.42)));
+      cardH = Math.round(cardW * 1.42);
+      if (cardH * 3 + extra * minPeek > avail) {
+        cardH = Math.max(36, Math.floor((avail - extra * minPeek) / 3));
+      }
+    }
+    let peek = Math.round(cardW * 0.26);
+    if (extra > 0) {
+      const room = Math.floor((avail - cardH * 3) / extra);
+      peek = Math.max(1, Math.min(peek, room));
+    }
+
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--kc-peek", `${peek}px`);
+    style.setProperty("--peek-up", `${peek}px`);
+    style.setProperty("--col-gap", `${colGap}px`);
+    style.setProperty("--kc-inner-gap", `${innerGap}px`);
+    style.setProperty("--kc-row-gap", `${rowGap}px`);
+  }
+
+  function updateMute() {
+    if (!root.mute) return;
+    root.mute.innerHTML = session.muted ? ICONS.unmute : ICONS.mute;
+    root.mute.setAttribute("aria-label", session.muted ? "Turn sound on" : "Turn sound off");
+    root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
+  }
+
+  function nudgeBoard() {
+    const el = root.table;
+    if (!el) return;
+    el.classList.remove("nudge");
+    void el.offsetWidth;
+    el.classList.add("nudge");
+  }
+
+  function well(content = "", recycle = false) {
+    const el = document.createElement("div");
+    el.className = recycle ? "well recycle" : "well";
+    if (recycle) el.innerHTML = content;
+    else el.textContent = content;
+    return el;
+  }
+
+  function renderSlot(zone, index, className, label, fill) {
+    const slot = document.createElement("div");
+    slot.className = `slot ${className}`;
+    slot.dataset.drop = index == null ? zone : `${zone}:${index}`;
+    slot.dataset.zone = zone;
+    if (index != null) slot.dataset.index = String(index);
+    if (label) slot.setAttribute("aria-label", label);
+    fill(slot);
+    return slot;
+  }
+
+  function badge(n) {
+    const el = document.createElement("span");
+    el.className = "badge";
+    el.textContent = String(n);
+    return el;
+  }
+
+  function renderSide(index) {
+    const pile = session.state.sides[index];
+    return renderSlot("side", index, "kc-side", `${SIDE_NAME[index]} side`, (slot) => {
+      slot.appendChild(well(""));
+      const stack = document.createElement("div");
+      stack.className = "pile";
+      pile.forEach((card, row) => {
+        const isTop = row === pile.length - 1;
+        const count = isTop ? 1 : row === 0 ? pile.length : pile.length - row;
+        const playable = isTop || (row === 0 && pile.length > 1);
+        const el = makeCardElement(card, { zone: "side", index }, count, playable, rowSelected(index, row, pile.length));
+        el.style.zIndex = String(row + 1);
+        stack.appendChild(el);
+      });
+      slot.appendChild(stack);
+    });
+  }
+
+  function renderCorner(index) {
+    const pile = session.state.corners[index];
+    return renderSlot("corner", index, "kc-corner", `${CORNER_NAME[index]} corner`, (slot) => {
+      slot.appendChild(well(pile.length ? "" : "K"));
+      if (pile.length) {
+        const card = pile[pile.length - 1];
+        const el = makeCardElement(card, { zone: "corner", index }, 1, false, false);
+        slot.appendChild(el);
+        slot.appendChild(badge(pile.length));
+      }
+    });
+  }
+
+  function renderCenter() {
+    const state = session.state;
+    const wrap = document.createElement("div");
+    wrap.className = "kc-center";
+    wrap.setAttribute("aria-label", "Stock and waste");
+    wrap.appendChild(
+      renderSlot("stock", null, "kc-stock", "Stock", (slot) => {
+        const recyclable = state.stock.length === 0 && state.waste.length > 0;
+        slot.appendChild(well(recyclable ? ICONS.recycle : "", recyclable));
+        if (state.stock.length) {
+          slot.appendChild(
+            makeCardElement({ ...state.stock[state.stock.length - 1], faceUp: false }, { zone: "stock" }, 1, false, false),
+          );
+          slot.appendChild(badge(state.stock.length));
+        }
+      }),
+    );
+    wrap.appendChild(
+      renderSlot("waste", null, "kc-waste", "Waste", (slot) => {
+        slot.appendChild(well(""));
+        if (state.waste.length) {
+          const card = state.waste[state.waste.length - 1];
+          const el = makeCardElement(card, { zone: "waste" }, 1, true, session.selected?.zone === "waste");
+          slot.appendChild(el);
+        }
+      }),
+    );
+    return wrap;
+  }
+
+  function highlightDrops(from, on) {
+    document.querySelectorAll(".slot.drop-ok").forEach((el) => el.classList.remove("drop-ok"));
+    if (!on || !from) return;
+    const key = locKey(normalize(from));
+    for (const move of listLegalMoves(session.state)) {
+      if (move.kind !== "move" || locKey(move.from) !== key) continue;
+      document.querySelector(`[data-drop="${move.to.zone}:${move.to.index}"]`)?.classList.add("drop-ok");
+    }
+  }
+
+  function render() {
+    const state = session.state;
+    if (!state || !root.table) return;
+    const board = document.createElement("div");
+    board.className = "board kings";
+    const grid = document.createElement("div");
+    grid.className = "kc-grid";
+    const cells = [
+      renderCorner(0),
+      renderSide(0),
+      renderCorner(1),
+      renderSide(3),
+      renderCenter(),
+      renderSide(1),
+      renderCorner(2),
+      renderSide(2),
+      renderCorner(3),
+    ];
+    for (const cell of cells) grid.appendChild(cell);
+    board.appendChild(grid);
+    root.table.replaceChildren(board);
+    if (root.moves) root.moves.textContent = String(state.moves);
+    if (root.home) root.home.textContent = String(cardsInCorners(state));
+    if (root.seed) root.seed.textContent = "";
+    if (root.undo) root.undo.disabled = session.history.length === 0;
+    if (root.dealNumber) root.dealNumber.textContent = `Seed ${state.seed}`;
+    updateMute();
+    if (session.selected) highlightDrops(session.selected, true);
+    fit();
+    requestAnimationFrame(() => {
+      if (alive) fit();
+    });
+  }
+
+  function refreshMeters() {
+    if (!alive || !session.state) return;
+    if (root.time) root.time.textContent = formatTime(elapsedMs(session.state));
+    if (root.moves) root.moves.textContent = String(session.state.moves);
+    if (root.home) root.home.textContent = String(cardsInCorners(session.state));
+  }
+
+  function hideOverlay() {
+    session.modal = null;
+    if (!root.overlay) return;
+    root.overlay.hidden = true;
+    root.overlay.innerHTML = "";
+  }
+
+  function showWin() {
+    const state = session.state;
+    session.modal = "win";
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+      <h2>Four kings home</h2>
+      <ul class="stats-line">
+        <li><span>Time</span>${formatTime(elapsedMs(state))}</li>
+        <li><span>Moves</span>${state.moves}</li>
+      </ul>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close">Close</button>
+        <button type="button" class="btn" data-act="replay">Replay</button>
+        <button type="button" class="btn primary" data-act="new">New deal</button>
+      </div>
+    </div>`;
+  }
+
+  function showStuck() {
+    session.modal = "stuck";
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+      <h2>No more moves</h2>
+      <p>The stock was turned over twice without another move.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="undo">Undo</button>
+        <button type="button" class="btn" data-act="replay">Replay</button>
+        <button type="button" class="btn primary" data-act="new">New deal</button>
+      </div>
+    </div>`;
+  }
+
+  function showHelp() {
+    session.modal = "help";
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
+      <h2>King's Corners</h2>
+      <p>One deck. Four side piles sit north, east, south, and west around the stock and waste. Four corner piles sit on the diagonals.</p>
+      <p>Each side starts with one face-up card. A king dealt there goes to the next empty corner, and that side is dealt again. The rest of the deck is the face-down stock.</p>
+      <p>Tap the stock to turn one card onto the waste. When the stock is empty, tap it to turn the waste back over. You may do that as often as you like.</p>
+      <p>An empty corner takes only a king. Corners build down in alternating colors from king to ace. Cards placed in a corner stay there.</p>
+      <p>Side piles build down in alternating colors. An empty side takes any card, or a whole side pile.</p>
+      <p>Move the top waste card, the top card of a side, or a whole side pile. A whole pile moves when its bottom card fits. A king-led pile may fill an empty corner. Partial runs stay put.</p>
+      <p>The deal is won when all 52 cards are in the corners. If you turn the stock over twice without another move, there is nothing left to try.</p>
+      <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn primary" data-act="close">Close</button>
+      </div>
+    </div>`;
+  }
+
+  function noteWin() {
+    if (!session.state?.won) return;
+    if (!session.countedWin) {
+      session.stats.won += 1;
+      session.countedWin = true;
+    }
+    sounds.win(session.muted);
+    showWin();
+  }
+
+  function startDeal(seed) {
+    hideOverlay();
+    session.history = [];
+    session.selected = null;
+    session.drag = null;
+    session.countedWin = false;
+    session.state = deal({ seed });
+    session.stats.played += 1;
+    persist();
+    render();
+    refreshMeters();
+    setStatus("Build down by color. Kings belong in the corners.");
+  }
+
+  function replay() {
+    startDeal(session.state.seed);
+  }
+
+  function doApply(action) {
+    if (!session.state) return { ok: false, reason: "missing state", state: null };
+    const result = apply(session.state, action);
+    if (!result.ok) {
+      sounds.illegal(session.muted);
+      setStatus(statusFor(result));
+      nudgeBoard();
+      if (session.selected) highlightDrops(session.selected, true);
+      return { ok: false, reason: result.reason, state: session.state };
+    }
+    session.history.push(cloneState(session.state));
+    if (session.history.length > HISTORY_CAP) session.history.shift();
+    session.state = result.state;
+    session.selected = null;
+    persist();
+    render();
+    refreshMeters();
+    if (action?.type === "draw") {
+      if (result.recycled) sounds.recycle(session.muted);
+      else sounds.draw(session.muted);
+    } else sounds.place(session.muted);
+    if (session.state.won || isWon(session.state)) {
+      if (!session.state.won) {
+        session.state.won = true;
+        session.state.wonAt = session.state.wonAt ?? Date.now();
+      }
+      noteWin();
+      setStatus("Four kings home.");
+    } else if (session.state.stuck) {
+      showStuck();
+      setStatus("No more moves.");
+    } else {
+      hideOverlay();
+      if (action?.type === "draw") setStatus(result.recycled ? "Turned the waste over." : "Drew a card.");
+      else if (action?.to?.zone === "corner") setStatus("Moved to a corner.");
+      else setStatus("Moved to a side.");
+    }
+    return { ok: true, state: session.state };
+  }
+
+  function doMove(from, to) {
+    const src = normalize(from);
+    return doApply({ type: "move", from: src, to });
+  }
+
+  function doUndo() {
+    if (!session.history.length) return;
+    const wasWin = session.countedWin && session.state.won;
+    session.state = continueClock(session.state, session.history.pop());
+    session.selected = null;
+    session.drag = null;
+    if (wasWin && !session.state.won) {
+      session.stats.won = Math.max(0, session.stats.won - 1);
+      session.countedWin = false;
+    }
+    hideOverlay();
+    persist();
+    render();
+    refreshMeters();
+    sounds.undo(session.muted);
+    if (session.state.won || isWon(session.state)) showWin();
+    else if (session.state.stuck) {
+      showStuck();
+      setStatus("No more moves.");
+    } else setStatus("Undid the last move.");
+  }
+
+  function doDouble(from) {
+    const src = normalize(from);
+    if (!isMovable(src)) {
+      sounds.illegal(session.muted);
+      setStatus("That card cannot move to a corner.");
+      nudgeBoard();
+      return;
+    }
+    const key = locKey(src);
+    const moves = listLegalMoves(session.state).filter(
+      (move) => move.kind === "move" && move.to.zone === "corner" && locKey(move.from) === key,
+    );
+    if (!moves.length) {
+      sounds.illegal(session.muted);
+      setStatus("That card cannot move to a corner.");
+      nudgeBoard();
+      return;
+    }
+    doApply({ type: "move", from: moves[0].from, to: moves[0].to });
+  }
+
+  function onActivate(loc, isDouble) {
+    if (isDouble && isMovable(loc)) {
+      doDouble(loc);
+      return;
+    }
+    if (isWholePileTap(loc)) {
+      const next = { zone: "side", index: loc.index, count: loc.count };
+      if (locKey(session.selected) === locKey(next)) {
+        session.selected = null;
+        render();
+        return;
+      }
+      session.selected = next;
+      render();
+      setStatus("Choose a destination, or drag the card.");
+      return;
+    }
+    const dest = { zone: loc.zone, index: loc.index };
+    const src = normalize(loc);
+    if (session.selected && locKey(session.selected) !== locKey(src) && canDrop(session.selected, dest)) {
+      doMove(session.selected, dest);
+      return;
+    }
+    if (isMovable(loc)) {
+      if (locKey(session.selected) === locKey(src)) {
+        session.selected = null;
+        render();
+        return;
+      }
+      session.selected = src;
+      render();
+      setStatus("Choose a destination, or drag the card.");
+      return;
+    }
+    if (session.selected && (dest.zone === "side" || dest.zone === "corner")) {
+      doMove(session.selected, dest);
+      return;
+    }
+    setStatus("Only the top card or the whole pile can move.");
+    nudgeBoard();
+  }
+
+  function cardsFor(from) {
+    if (from.zone === "waste") {
+      const card = session.state.waste.at(-1);
+      return card ? [card] : [];
+    }
+    if (from.zone !== "side") return [];
+    const pile = pileAt(from.index);
+    const count = from.count ?? 1;
+    if (count === pile.length) return pile.slice();
+    if (count === 1 && pile.length) return [pile.at(-1)];
+    return [];
+  }
+
+  function moveGhost(x, y) {
+    const ghost = session.drag?.ghost;
+    if (!ghost) return;
+    const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
+    ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+  }
+
+  function startDrag(from, x, y, originEl) {
+    const cards = cardsFor(from);
+    if (!cards.length || !originEl) return;
+    session.drag = { from, x, y, originEl };
+    document.documentElement.classList.add("is-dragging");
+    const ghost = document.createElement("div");
+    ghost.className = "ghost";
+    cards.forEach((card, i) => {
+      ghost.appendChild(makeCardElement(card, from, cards.length - i, false, false));
+    });
+    root.dragLayer.appendChild(ghost);
+    session.drag.ghost = ghost;
+    if ((from.count ?? 1) > 1) {
+      originEl.closest(".slot")?.querySelectorAll(".card").forEach((el) => el.classList.add("is-ghost-source"));
+    } else originEl.classList.add("is-ghost-source");
+    moveGhost(x, y);
+    highlightDrops(from, true);
+  }
+
+  function clearDragChrome() {
+    document.documentElement.classList.remove("is-dragging");
+    if (root.dragLayer) root.dragLayer.innerHTML = "";
+    document.querySelectorAll(".is-ghost-source").forEach((el) => el.classList.remove("is-ghost-source"));
+    document.querySelectorAll(".slot.drop-ok").forEach((el) => el.classList.remove("drop-ok"));
+  }
+
+  function dropTarget(node) {
+    const slot = node?.closest?.("[data-drop]");
+    if (!slot) return null;
+    const zone = slot.dataset.zone;
+    if (zone !== "side" && zone !== "corner") return null;
+    return { zone, index: Number(slot.dataset.index) };
+  }
+
+  function endDrag(x, y) {
+    const drag = session.drag;
+    session.drag = null;
+    clearDragChrome();
+    const to = dropTarget(document.elementFromPoint(x, y));
+    if (!to) {
+      sounds.illegal(session.muted);
+      setStatus("That card cannot move there.");
+      nudgeBoard();
+      if (session.selected) highlightDrops(session.selected, true);
+      return false;
+    }
+    return doMove(drag.from, to);
+  }
+
+  function onPointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    if (!root.overlay?.hidden) return;
+    if (session.state?.won) return;
+    resumeAudio();
+    const cardEl = event.target.closest?.(".card");
+    const slot = event.target.closest?.("[data-drop]");
+    if (!cardEl && !slot) {
+      if (session.selected) {
+        session.selected = null;
+        render();
+      }
+      return;
+    }
+    if (slot?.dataset.zone === "stock" && (!cardEl || cardEl.dataset.zone === "stock")) {
+      event.preventDefault();
+      session.drag = { stock: true, x: event.clientX, y: event.clientY };
+      return;
+    }
+    if (!cardEl) {
+      event.preventDefault();
+      session.drag = {
+        destOnly: true,
+        from: {
+          zone: slot.dataset.zone,
+          index: slot.dataset.index == null || slot.dataset.index === "" ? undefined : Number(slot.dataset.index),
+        },
+        x: event.clientX,
+        y: event.clientY,
+      };
+      return;
+    }
+    const loc = parseLoc(cardEl);
+    if (!loc || loc.zone === "corner") {
+      event.preventDefault();
+      session.drag = {
+        destOnly: true,
+        from: loc ?? { zone: slot?.dataset.zone, index: Number(slot?.dataset.index) },
+        x: event.clientX,
+        y: event.clientY,
+      };
+      return;
+    }
+    event.preventDefault();
+    cardEl.setPointerCapture?.(event.pointerId);
+    session.drag = {
+      from: loc,
+      x: event.clientX,
+      y: event.clientY,
+      originEl: cardEl,
+      pending: isMovable(loc),
+    };
+  }
+
+  function onPointerMove(event) {
+    const drag = session.drag;
+    if (!drag?.pending && !drag?.ghost) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (drag.pending && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (drag.pending) {
+      drag.pending = false;
+      startDrag(drag.from, event.clientX, event.clientY, drag.originEl);
+    } else moveGhost(event.clientX, event.clientY);
+  }
+
+  function onPointerUp(event) {
+    const drag = session.drag;
+    if (!drag) return;
+    if (drag.ghost) {
+      endDrag(event.clientX, event.clientY);
+      session.lastClick = { key: "", at: 0 };
+      return;
+    }
+    session.drag = null;
+    if (drag.stock) {
+      doApply({ type: "draw" });
+      session.lastClick = { key: "", at: 0 };
+      return;
+    }
+    if (drag.destOnly) {
+      const dest = { zone: drag.from?.zone, index: drag.from?.index };
+      if (session.selected && (dest.zone === "side" || dest.zone === "corner")) doMove(session.selected, dest);
+      return;
+    }
+    const key = locKey(normalize(drag.from));
+    const now = performance.now();
+    const isDouble = key && key === session.lastClick.key && now - session.lastClick.at < DOUBLE_MS;
+    session.lastClick = { key, at: now };
+    onActivate(drag.from, isDouble);
+  }
+
+  listen(root.table, "pointerdown", onPointerDown);
+  listen(window, "pointermove", onPointerMove);
+  listen(window, "pointerup", onPointerUp);
+  listen(window, "pointercancel", () => {
+    if (session.drag?.ghost) clearDragChrome();
+    session.drag = null;
+    if (session.selected) highlightDrops(session.selected, true);
+  });
+  listen(window, "resize", () => fit());
+  if (window.ResizeObserver) {
+    observer = new ResizeObserver(() => fit());
+    const topbar = document.querySelector(".topbar");
+    const status = document.querySelector(".status");
+    if (topbar) observer.observe(topbar);
+    if (status) observer.observe(status);
+  }
+  listen(root.undo, "click", doUndo);
+  listen(document.getElementById("btn-new"), "click", () => startDeal(undefined));
+  listen(document.getElementById("btn-replay"), "click", replay);
+  listen(document.getElementById("btn-help"), "click", showHelp);
+  listen(root.mute, "click", () => {
+    session.muted = !session.muted;
+    savePrefs({ sound: !session.muted });
+    updateMute();
+  });
+  listen(root.overlay, "click", (event) => {
+    const btn = event.target.closest("[data-act]");
+    if (!btn) {
+      if (event.target === root.overlay && session.modal === "help") hideOverlay();
+      return;
+    }
+    if (btn.dataset.act === "close") hideOverlay();
+    else if (btn.dataset.act === "new") startDeal(undefined);
+    else if (btn.dataset.act === "replay") replay();
+    else if (btn.dataset.act === "undo") doUndo();
+  });
+  listen(window, "keydown", (event) => {
+    const key = event.key.toLowerCase();
+    if (event.target.matches?.("input, textarea")) {
+      if (event.key === "Escape") hideOverlay();
+      return;
+    }
+    if (key === "escape") {
+      if (session.modal) hideOverlay();
+      else if (!session.modal && session.selected) {
+        session.selected = null;
+        render();
+      }
+      return;
+    }
+    if (!root.overlay?.hidden) return;
+    if (key === "u" || (key === "z" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      doUndo();
+    } else if (key === "n") startDeal(undefined);
+    else if (key === "r") replay();
+    else if (key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      doApply({ type: "draw" });
+    } else if (key === "?" || (event.shiftKey && event.key === "/")) showHelp();
+  });
+
+  const timer = window.setInterval(refreshMeters, 250);
+  if (resume) {
+    persist();
+    render();
+    refreshMeters();
+    if (session.state.stuck) {
+      showStuck();
+      setStatus("No more moves.");
+    } else setStatus("Build down by color. Kings belong in the corners.");
+  } else startDeal(honorSeed ? urlSeed : undefined);
+
+  return {
+    getState: () => session.state,
+    setState(next) {
+      session.drag = null;
+      session.selected = null;
+      session.state = next;
+      if (next && isWon(next)) {
+        next.won = true;
+        if (next.wonAt == null) next.wonAt = Date.now();
+      }
+      session.countedWin = false;
+      persist();
+      render();
+      refreshMeters();
+      if (session.state?.won || isWon(session.state)) showWin();
+      else if (session.state?.stuck) showStuck();
+      else hideOverlay();
+    },
+    newGame(options) {
+      const seed = options && typeof options === "object" ? options.seed : options;
+      startDeal(seed);
+    },
+    undo: doUndo,
+    move: (from, to) => doMove(from, to),
+    apply: (action) => doApply(action),
+    historyLength: () => session.history.length,
+    listMoves: () => listLegalMoves(session.state),
+    isAnimating: () => false,
+    unmount() {
+      alive = false;
+      document.documentElement.classList.remove("is-dragging");
+      observer?.disconnect();
+      ac.abort();
+      window.clearInterval(timer);
+      session.drag = null;
+      clearLayoutVars();
+      if (scoreLabel) scoreLabel.textContent = "Score";
+      if (root.dragLayer) root.dragLayer.innerHTML = "";
+      if (root.table) root.table.innerHTML = "";
+      if (toolbar) toolbar.innerHTML = "";
+      hideOverlay();
+    },
+  };
+}

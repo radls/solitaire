@@ -1,6 +1,7 @@
 const KEY = "grok-solitaire-v1";
 const FREECELL_KEY = "grok-solitaire:freecell";
 const GOLF_KEY = "grok-solitaire:golf";
+const KINGS_KEY = "grok-solitaire:kings";
 const PREFS_KEY = "grok-solitaire:prefs";
 
 const defaultData = () => ({
@@ -120,7 +121,47 @@ export function saveGolf(data) {
   }
 }
 
-const GAMES = new Set(["klondike", "freecell", "golf"]);
+const defaultKings = () => ({
+  state: null,
+  history: [],
+  stats: { played: 0, won: 0 },
+});
+
+export function loadKings() {
+  try {
+    const raw = localStorage.getItem(KINGS_KEY);
+    if (!raw) return defaultKings();
+    const parsed = JSON.parse(raw);
+    const history = Array.isArray(parsed.history) ? parsed.history.slice(-200) : [];
+    return {
+      state: parsed.state ?? null,
+      history,
+      stats: { ...defaultKings().stats, ...(parsed.stats ?? {}) },
+      savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
+    };
+  } catch {
+    return defaultKings();
+  }
+}
+
+export function saveKings(data) {
+  try {
+    const history = Array.isArray(data.history) ? data.history.slice(-200) : [];
+    localStorage.setItem(
+      KINGS_KEY,
+      JSON.stringify({
+        state: data.state ?? null,
+        history,
+        stats: data.stats ?? defaultKings().stats,
+        savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
+      }),
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+const GAMES = new Set(["klondike", "freecell", "golf", "kings"]);
 
 function defaultPrefs() {
   return { lastGame: null, theme: "night", sound: false };

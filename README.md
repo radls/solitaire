@@ -2,6 +2,8 @@
 
 Klondike, FreeCell, and Golf for the browser. First app in [Grok Build Apps](../).
 
+King's Corners is included too.
+
 **Play:** [https://radls.github.io/solitaire/](https://radls.github.io/solitaire/)
 
 ## Local
@@ -41,6 +43,8 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 
 FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a drag onto the waste plays that card. The header stays within two rows on a phone, with 36px tap targets.
 
+King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a corner when that move is legal. Header buttons stay at least 44px tall and wrap on a narrow screen.
+
 ## Scripts
 
 | Command | Purpose |
@@ -57,13 +61,14 @@ In-progress games and stats are stored in `localStorage`:
 | `grok-solitaire-v1` | Klondike deal, undo history, and stats |
 | `grok-solitaire:freecell` | FreeCell deal, undo history, and stats |
 | `grok-solitaire:golf` | Golf deal, undo history, and stats |
+| `grok-solitaire:kings` | King's Corners deal, undo history (capped at 200), and stats (`played`, `won`) |
 | `grok-solitaire:prefs` | `lastGame`, `theme` (`night` or `classic`), and `sound` (default `false`) |
 
 Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload returns to `lastGame`.
 
-Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal).
+Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal). Open King's Corners with `?game=kings` or `?game=kings&seed=2`.
 
-Night is the default theme (dark table, dim gold, muted suits). Classic keeps the green felt. The choice is applied before first paint. Sound stays off until the speaker button is turned on, and that choice is shared by all three games.
+Night is the default theme (dark table, dim gold, muted suits). Classic keeps the green felt. The choice is applied before first paint. Sound stays off until the speaker button is turned on, and that choice is shared by every game.
 
 ## Rules (FreeCell)
 
@@ -84,5 +89,18 @@ Sound starts off.
 - No wrap: nothing can be played on a King, and Aces take only a 2. A king can be played on a queen. A queen can be played on a jack, and not on a king.
 - Draw the stock one card at a time, once through. The stock does not recycle.
 - Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when the columns are clear. Lower is better.
+
+## Rules (King's Corners)
+
+- One 52-card deck. The header shows **Seed N**. New deal shuffles a new seed. Replay keeps the same seed. Open a known deal with `?game=kings&seed=2`.
+- The layout is a cross. Side piles sit north, east, south, and west around a central stock and waste. Corner piles sit on the four diagonals.
+- Deal one face-up card to each side, in order north, east, south, west. A king dealt to a side goes to the next empty corner instead (northwest, then northeast, then southwest, then southeast), and that side is dealt again. The remaining cards are the face-down stock.
+- Tap the stock to turn one card face up onto the waste. When the stock is empty, tap it to turn the waste back over into the stock. The previous bottom card is drawn next. Redeals are unlimited and add no penalty. Each draw and each turn-over counts as a move.
+- An empty corner accepts only a king. Corners build down in alternating colors, king through ace. A finished corner holds 13 cards. Cards in a corner stay there. Undo is the only way to take one back.
+- Side piles build down in alternating colors. An empty side accepts any single card or any whole side pile.
+- You may move the top waste card, the top card of a side pile, or a whole side pile. A whole pile moves onto another side or a corner when its bottom card fits that build. A king-led pile may move onto an empty corner. Partial runs do not move.
+- The deal is won when all 52 cards sit in the four corners.
+- Turning the stock over means recycling the waste into the stock. Do that twice in a row without a card move and the deal is stuck. A calm panel offers Undo, New deal, and Replay. Any card move clears the pass count.
+- Tap a side's top card to select that card. Tap the bottom card of a longer side to select the whole pile. Then tap a destination, or drag. Dragging from the bottom card drags the whole pile. Double-tap sends the selection to a corner when the move is legal. A king goes to the first empty corner.
 
 

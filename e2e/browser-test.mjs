@@ -61,7 +61,7 @@ async function common(page, P) {
   ok("shell", P, "night theme is default", theme === "night", theme);
   const vp = await H(page, () => document.querySelector('meta[name=viewport]').content);
   ok("shell", P, "viewport blocks zoom", /user-scalable=no/.test(vp) && /maximum-scale=1/.test(vp), vp);
-  ok("shell", P, "picker shows 3 games", (await page.locator('[data-testid^="pick-"]').count()) === 3);
+  ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid^="pick-"]').count()) === 4);
   const surprise = await H(page, () => /surprise/i.test(document.body.innerText));
   ok("shell", P, "no 'surprise' copy", !surprise);
 }
@@ -427,6 +427,106 @@ async function golf(page, ctx, P, touch) {
   await closeModal(page);
 }
 
+async function kings(page, ctx, P, touch) {
+  const G = "kings";
+  await pick(page, G);
+  ok(G, P, "active from picker", await H(page, () => window.__solitaire.game()) === G);
+  await H(page, () => window.__solitaire.newGame({ seed: 777 }));
+  await page.waitForTimeout(300);
+  let st = JSON.parse(await S(page));
+  const total = st.sides.flat().length + st.corners.flat().length + st.stock.length + st.waste.length;
+  const ids = new Set([...st.sides.flat(), ...st.corners.flat(), ...st.stock, ...st.waste].map(c => c.id));
+  ok(G, P, "deal: 4 sides, kings in corners, 52 unique", st.sides.length === 4 && st.sides.every(p => p.length === 1 && p[0].rank !== 13) && st.corners.every(c => c.every(x => x.rank === 13)) && total === 52 && ids.size === 52, `seed ${st.seed}`);
+  ok(G, P, "seed shown", /777/.test(await page.locator('[data-testid="deal-number"]').textContent()));
+  await layoutChecks(page, G, P, "deal");
+  // illegal tap: side a top -> side b where not legal
+  const legal = await H(page, () => window.__solitaire.listMoves());
+  let ill = null;
+  for (let a = 0; a < 4 && !ill; a++) for (let b = 0; b < 4 && !ill; b++) {
+    if (a === b || !st.sides[a].length || !st.sides[b].length) continue;
+    if (!legal.some(m => m.from?.zone === "side" && m.from.index === a && m.to?.zone === "side" && m.to.index === b)) ill = [a, b];
+  }
+  if (ill) {
+    const before = strip(await S(page));
+    await tapEl(page, page.locator(`.card[data-zone="side"][data-index="${ill[0]}"]`).last(), touch);
+    await tapEl(page, page.locator(`[data-drop="side:${ill[1]}"]`), touch);
+    ok(G, P, "illegal tap move rejected", strip(await S(page)) === before, `side${ill[0]}->side${ill[1]}`);
+    await page.keyboard.press("Escape");
+  } else ok(G, P, "illegal tap move rejected", true, "no illegal pair; skipped");
+  await page.waitForTimeout(600);
+  // find a legal non-draw move (draw up to 60 times)
+  let mv = null;
+  for (let i = 0; i < 60; i++) {
+    const ms = await H(page, () => window.__solitaire.listMoves());
+    mv = ms.find(m => m.kind !== "draw" && m.from?.zone === "waste") || ms.find(m => m.kind !== "draw" && m.from?.zone === "side" && (m.from.count ?? 1) === 1);
+    if (mv) break;
+    await tapEl(page, page.locator('[data-drop="stock"]'), touch);
+  }
+  if (mv) {
+    await page.waitForTimeout(600);
+    const before = await S(page); const h0 = await H(page, () => window.__solitaire.historyLength());
+    const fromSel = mv.from.zone === "waste" ? '.card[data-zone="waste"]' : `.card[data-zone="side"][data-index="${mv.from.index}"]`;
+    await tapEl(page, page.locator(fromSel).last(), touch);
+    const s1 = await statusText(page);
+    await tapEl(page, page.locator(`[data-drop="${mv.to.zone}:${mv.to.index}"]`), touch);
+    ok(G, P, "legal tap-select-tap move", (await H(page, () => window.__solitaire.historyLength())) === h0 + 1, JSON.stringify(mv));
+    const s2 = await statusText(page);
+    ok(G, P, "status text updates after tap move", s2 !== s1, `"${s1}" -> "${s2}"`);
+    await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+    ok(G, P, "undo restores state", strip(await S(page)) === strip(before));
+    await page.waitForTimeout(500);
+    const h1 = await H(page, () => window.__solitaire.historyLength());
+    await drag(page, ctx, page.locator(fromSel).last(), page.locator(`[data-drop="${mv.to.zone}:${mv.to.index}"]`), touch);
+    ok(G, P, "drag move", (await H(page, () => window.__solitaire.historyLength())) === h1 + 1);
+  } else ok(G, P, "legal tap-select-tap move", false, "no legal move found");
+  // whole-pile move via tapping the bottom card
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = []; for (const su of ["spades", "hearts", "diamonds", "clubs"]) for (let r = 1; r <= 13; r++) all.push({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    const used = ["hearts-9", "spades-8", "clubs-10", "diamonds-4", "spades-6", "spades-13", "hearts-13", "clubs-13", "diamonds-13"];
+    s.sides = [[by["hearts-9"], by["spades-8"]], [by["clubs-10"]], [by["diamonds-4"]], [by["spades-6"]]];
+    s.corners = [[by["spades-13"]], [by["hearts-13"]], [by["clubs-13"]], [by["diamonds-13"]]];
+    s.waste = []; s.stock = all.filter(c => !used.includes(c.id)).map(c => ({ ...c, faceUp: false }));
+    s.won = false; s.stuck = false; s.idlePasses = 0;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(600);
+  { // tap the visible strip of the bottom card (the rest of it is covered by the card above)
+    const bb = await page.locator('.card[data-zone="side"][data-index="0"]').first().boundingBox();
+    if (touch) await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + 6); else await page.mouse.click(bb.x + bb.width / 2, bb.y + 6);
+    await page.waitForTimeout(200);
+  }
+  await tapEl(page, page.locator('[data-drop="side:1"]'), touch);
+  st = JSON.parse(await S(page));
+  ok(G, P, "whole pile moves onto a side pile", st.sides[0].length === 0 && st.sides[1].map(c => c.id).join(",") === "clubs-10,hearts-9,spades-8", JSON.stringify(st.sides.map(p => p.map(c => c.id))));
+  await page.screenshot({ path: `${SHOTS}/${P}-kings.png` });
+  await layoutChecks(page, G, P, "after pile move");
+  // persistence
+  const snap = strip(await S(page));
+  await page.reload(); await page.waitForTimeout(600);
+  ok(G, P, "reload returns to last game", await H(page, () => window.__solitaire.game()) === G);
+  await pick(page, G);
+  ok(G, P, "state persists across reload", strip(await S(page)) === snap);
+  // win: all corners complete except the ace of spades on a side pile
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const mk = (su, r) => ({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    const corner = (a, b) => Array.from({ length: 13 }, (_, i) => mk(i % 2 === 0 ? a : b, 13 - i));
+    s.corners = [corner("spades", "hearts"), corner("hearts", "spades"), corner("clubs", "diamonds"), corner("diamonds", "clubs")];
+    const ace = s.corners[0].pop();
+    s.sides = [[ace], [], [], []]; s.stock = []; s.waste = []; s.won = false; s.stuck = false; s.idlePasses = 0;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(600);
+  await tapEl(page, page.locator('.card[data-zone="side"][data-index="0"]').last(), touch);
+  await tapEl(page, page.locator('[data-drop="corner:0"]'), touch);
+  await page.waitForTimeout(500);
+  ok(G, P, "win detected + calm win modal", await winVisible(page));
+  await page.screenshot({ path: `${SHOTS}/${P}-kings-win.png` });
+  await closeModal(page);
+}
+
 for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
@@ -438,7 +538,7 @@ for (const vp of [
   await common(page, vp.P);
   await layoutChecks(page, "shell", vp.P, "picker");
   await page.screenshot({ path: `${SHOTS}/${vp.P}-picker.png` });
-  for (const [name, fn] of [["klondike", klondike], ["freecell", freecell], ["golf", golf]]) {
+  for (const [name, fn] of [["klondike", klondike], ["freecell", freecell], ["golf", golf], ["kings", kings]]) {
     try { await fn(page, ctx, vp.P, vp.touch); } catch (e) { ok(name, vp.P, "exception", false, e.message.split("\n")[0]); }
     const sw = await H(page, () => document.documentElement.scrollWidth <= window.innerWidth + 1);
     ok(name, vp.P, "no horizontal scroll", sw);
@@ -459,5 +559,5 @@ for (const vp of [
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

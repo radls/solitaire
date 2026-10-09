@@ -175,7 +175,11 @@ export function mount() {
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
     const topH = board.querySelector(".fc-top")?.offsetHeight || cardH;
-    const availH = window.innerHeight - headerH - statusH - topH - 28;
+    const table = root.table;
+    const ts = table ? getComputedStyle(table) : null;
+    const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
+    const gap = parseFloat(getComputedStyle(board).rowGap) || 0;
+    const availH = window.innerHeight - headerH - statusH - topH - padY - gap - 4;
     let peek = Math.round(cardW * 0.34);
     if (longest > 1) {
       const room = Math.floor((availH - cardH) / (longest - 1));
@@ -320,7 +324,21 @@ export function mount() {
     setStatus(`Deal #${dealNumber}.`);
   }
 
-  function commit(result) {
+  function statusForSuccess(result, from, to) {
+    const count = from?.count ?? 1;
+    const auto = result.autoMoved ?? 0;
+    let msg;
+    if (to?.zone === "freecell") msg = "Moved to a free cell.";
+    else if (to?.zone === "foundation") msg = "Moved to the foundation.";
+    else if (count > 1) msg = `Moved ${count} cards.`;
+    else if (to?.zone === "cascade" && Number.isInteger(to.index)) msg = `Moved to column ${to.index + 1}.`;
+    else msg = "Moved the card.";
+    if (auto === 1) msg += " Auto-played a card.";
+    else if (auto > 1) msg += ` Auto-played ${auto} cards.`;
+    return msg;
+  }
+
+  function commit(result, from, to) {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
@@ -347,12 +365,15 @@ export function mount() {
       sounds.win(session.muted);
       showWin();
       setStatus("All cards are home.");
+    } else {
+      setStatus(statusForSuccess(result, from, to));
     }
     return true;
   }
 
   function tryMove(from, to) {
-    return commit(userMove(session.state, { ...from, count: from.count ?? 1 }, to));
+    const src = { ...from, count: from.count ?? 1 };
+    return commit(userMove(session.state, src, to), src, to);
   }
 
   function doDouble(from) {
@@ -360,7 +381,7 @@ export function mount() {
     const single = { zone: from.zone, index: from.index, count: 1 };
     const toFoundation = userMove(session.state, single, { zone: "foundation" });
     if (toFoundation.ok) {
-      commit(toFoundation);
+      commit(toFoundation, single, { zone: "foundation" });
       return;
     }
     if (from.zone === "freecell") {
@@ -377,7 +398,7 @@ export function mount() {
       return;
     }
     const toCell = userMove(session.state, single, { zone: "freecell", index });
-    if (!commit(toCell)) setStatus("That card cannot move there.");
+    if (!commit(toCell, single, { zone: "freecell", index })) setStatus("That card cannot move there.");
   }
 
   function doUndo() {
@@ -480,7 +501,7 @@ export function mount() {
     if (cardEl?.classList.contains("playable")) {
       session.selected = loc;
       render();
-      setStatus("Tap a destination, or drag the card.");
+      setStatus("Choose a destination, or drag the card.");
       return;
     }
     if (session.selected) tryMove(session.selected, dest);
@@ -640,7 +661,7 @@ export function mount() {
         setStatus("That card cannot move there.");
         return result;
       }
-      commit(result);
+      commit(result, from, to);
       return { ok: true, state: session.state };
     },
     historyLength: () => session.history.length,

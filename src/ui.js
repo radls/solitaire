@@ -294,6 +294,14 @@ export function mount() {
     return height;
   }
 
+  function verticalChrome(board) {
+    const table = root.table;
+    const ts = table ? getComputedStyle(table) : null;
+    const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
+    const gap = board ? parseFloat(getComputedStyle(board).rowGap) || 0 : 0;
+    return padY + gap;
+  }
+
   function fit() {
     const board = root.table?.querySelector(".board");
     if (!board || !session.state) return;
@@ -308,7 +316,7 @@ export function mount() {
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
     const topH = board.querySelector(".row.top")?.offsetHeight || cardH;
-    const avail = window.innerHeight - headerH - statusH - topH - 36;
+    const avail = window.innerHeight - headerH - statusH - topH - verticalChrome(board) - 4;
     const fits = (up, down) =>
       session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
     if (avail > cardH && !fits(peekUp, peekDown)) {
@@ -477,7 +485,16 @@ export function mount() {
     }
   }
 
-  function commit(result, sound) {
+  function statusForSuccess(result, to) {
+    if (result.recycled) return "Recycled the waste.";
+    if (result.drawn != null) return "Drew from the stock.";
+    if (result.flipped) return "Card turned over.";
+    if (to?.zone === "foundation" || result.foundationIndex != null) return "Moved to the foundation.";
+    if (to?.zone === "tableau" && Number.isInteger(to.index)) return `Moved to column ${to.index + 1}.`;
+    return "Moved the card.";
+  }
+
+  function commit(result, sound, to) {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
@@ -501,12 +518,14 @@ export function mount() {
       sounds.win(session.muted);
       showWin();
       setStatus("All four foundations complete.");
+    } else {
+      setStatus(statusForSuccess(result, to));
     }
     return true;
   }
 
   function tryMove(from, to) {
-    return commit(moveCards(session.state, from, to), "place");
+    return commit(moveCards(session.state, from, to), "place", to);
   }
 
   function doDraw() {
@@ -651,7 +670,7 @@ export function mount() {
     if (cardEl?.classList.contains("playable")) {
       session.selected = loc;
       render();
-      setStatus("Click a destination, or drag the card.");
+      setStatus("Choose a destination, or drag the card.");
     }
   }
 
@@ -807,7 +826,7 @@ export function mount() {
         nudgeBoard();
         return result;
       }
-      commit(result, "place");
+      commit(result, "place", to);
       return { ok: true, state: session.state };
     },
     historyLength: () => session.history.length,

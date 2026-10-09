@@ -204,7 +204,7 @@ html[data-theme="classic"] #app {
 
 .home-btn,
 .theme-btn {
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .home-btn {
@@ -267,7 +267,7 @@ html[data-theme="classic"] #app {
   border: 1px solid var(--btn-border);
   border-radius: 999px;
   padding: 0.42rem 0.9rem;
-  min-height: 36px;
+  min-height: 44px;
   color: var(--text);
 }
 
@@ -301,7 +301,8 @@ html[data-theme="classic"] #app {
 .segmented button {
   border: 0;
   background: transparent;
-  min-width: 36px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0.32rem 0.7rem;
 }
 
@@ -312,9 +313,10 @@ html[data-theme="classic"] #app {
 }
 
 .icon-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -325,7 +327,8 @@ html[data-theme="classic"] #app {
   min-width: 0;
   max-width: 100%;
   padding: 1.1rem 1.25rem 0.5rem;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   touch-action: manipulation;
 }
 
@@ -336,7 +339,8 @@ html[data-theme="classic"] #app {
   max-width: 72rem;
   min-width: 0;
   margin: 0 auto;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .row {
@@ -792,13 +796,14 @@ body[data-game="freecell"] {
   --card-h: calc(var(--card-w) * 1.42);
   --col-gap: 4px;
   --fc-peek: 14px;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body[data-game="freecell"] #app,
 body[data-game="freecell"] .table,
 body[data-game="freecell"] .board {
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   max-width: 100%;
 }
 
@@ -854,13 +859,14 @@ body[data-game="golf"] {
   --card-h: calc(var(--card-w) * 1.42);
   --col-gap: 4px;
   --golf-peek: 18px;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body[data-game="golf"] #app,
 body[data-game="golf"] .table,
 body[data-game="golf"] .board {
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   max-width: 100%;
   min-width: 0;
 }
@@ -964,14 +970,18 @@ body[data-game="golf"] #drag-layer .ghost .card {
     flex: 1 1 100%;
     margin-left: 0;
     width: 100%;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.25rem;
   }
 
   .toolbar .btn,
   .segmented button {
-    padding: 0 0.45rem;
+    padding: 0 0.4rem;
     font-size: 0.78rem;
+  }
+
+  .home-btn {
+    padding: 0 0.55rem;
   }
 
   .long {
@@ -1018,11 +1028,21 @@ body[data-game="golf"] #drag-layer .ghost .card {
   }
 
   .topbar {
+    gap: 0.3rem 0.4rem;
     padding:
-      calc(0.35rem + env(safe-area-inset-top))
-      calc(0.4rem + env(safe-area-inset-right))
-      0.35rem
-      calc(0.4rem + env(safe-area-inset-left));
+      calc(0.3rem + env(safe-area-inset-top))
+      calc(0.3rem + env(safe-area-inset-right))
+      0.3rem
+      calc(0.3rem + env(safe-area-inset-left));
+  }
+
+  .brand-row {
+    gap: 0.35rem;
+  }
+
+  .home-btn {
+    padding: 0 0.45rem;
+    font-size: 0.78rem;
   }
 
   .board {

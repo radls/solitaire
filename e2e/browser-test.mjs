@@ -33,6 +33,29 @@ async function pick(page, id) {
 async function closeModal(page) { const m = page.locator('#overlay:not([hidden]) .modal'); if (await m.isVisible().catch(() => false)) { await page.keyboard.press("Escape"); await page.waitForTimeout(150); } }
 const winVisible = (page) => page.locator('[data-testid="win-modal"]').isVisible().catch(() => false);
 
+
+async function layoutChecks(page, G, P, label) {
+  const r = await page.evaluate(() => {
+    const bad = [];
+    const area = document.getElementById("table");
+    const els = [document.documentElement, document.body, area, ...(area ? area.querySelectorAll("*") : [])];
+    for (const el of els) {
+      if (!el) continue;
+      const cs = getComputedStyle(el);
+      const scroller = el === document.documentElement || /(auto|scroll)/.test(cs.overflowY);
+      if (scroller && el.scrollHeight > el.clientHeight + 1) bad.push(`${el.tagName}.${(el.className || "").toString().trim().replace(/\s+/g, ".")} ${el.scrollHeight}>${el.clientHeight}`);
+    }
+    const btns = [...document.querySelectorAll("header button, .topbar button, .toolbar button")].filter((b) => b.offsetParent && b.getClientRects().length);
+    const small = btns.filter((b) => b.getBoundingClientRect().height < 43.5).map((b) => `${b.id || b.textContent.trim() || b.getAttribute("aria-label")}:${Math.round(b.getBoundingClientRect().height)}`);
+    const offscreen = btns.filter((b) => { const q = b.getBoundingClientRect(); return q.right > window.innerWidth + 1 || q.left < -1; }).map((b) => b.id || b.textContent.trim());
+    return { bad, small, offscreen, count: btns.length, hscroll: document.documentElement.scrollWidth > window.innerWidth + 1 };
+  });
+  ok(G, P, `no vertical scrollbar in card area (${label})`, r.bad.length === 0, r.bad.join(", "));
+  ok(G, P, `toolbar buttons >= 44px (${label})`, r.small.length === 0 && r.count > 0, r.small.join(", ") || `${r.count} buttons`);
+  ok(G, P, `no horizontal scroll / offscreen buttons (${label})`, !r.hscroll && r.offscreen.length === 0, r.offscreen.join(", "));
+}
+const statusText = (page) => page.locator("#status-text").textContent();
+
 async function common(page, P) {
   const theme = await H(page, () => document.documentElement.dataset.theme);
   ok("shell", P, "night theme is default", theme === "night", theme);
@@ -47,6 +70,7 @@ async function klondike(page, ctx, P, touch) {
   const G = "klondike";
   await pick(page, G);
   ok(G, P, "active", await H(page, () => window.__solitaire.game()) === G);
+  await layoutChecks(page, G, P, "deal");
   let st = JSON.parse(await S(page));
   ok(G, P, "deal 52 cards / 7 cols", st.tableau.length === 7 && st.tableau.flat().length + st.stock.length + st.waste.length + st.foundations.flat().length === 52);
   // ensure a non-draw legal move exists (draw up to 30)
@@ -78,9 +102,12 @@ async function klondike(page, ctx, P, touch) {
     const before = await S(page);
     const fromSel = mv.from.zone === "waste" ? `.card[data-zone="waste"].playable, .card[data-zone="waste"]` : `.card[data-zone="${mv.from.zone}"][data-index="${mv.from.index}"][data-count="${mv.from.count ?? 1}"]`;
     await tapEl(page, page.locator(fromSel).last(), touch);
+    const st1 = await statusText(page);
     await tapEl(page, page.locator(`[data-drop="${mv.to.zone}:${mv.to.index}"]`), touch);
     const h1 = await H(page, () => window.__solitaire.historyLength());
     ok(G, P, "legal tap-select-tap move", h1 === h0 + 1, JSON.stringify(mv));
+    const st2 = await statusText(page);
+    ok(G, P, "status text updates after tap move", st2 !== st1 && !/destination/i.test(st2), `"${st1}" -> "${st2}"`);
     await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
     ok(G, P, "undo restores state", strip(await S(page)) === strip(before));
   } else ok(G, P, "legal tap-select-tap move", false, "no legal move found");
@@ -106,6 +133,24 @@ async function klondike(page, ctx, P, touch) {
     const e1 = await H(page, () => Date.now() - window.__solitaire.getState().startedAt);
     ok(G, P, "timer continuous on undo after reload", Math.abs(e1 - e0) < 1500, `${e0}ms -> ${e1}ms`);
   } else ok(G, P, "timer continuous on undo after reload", true, "no history; skipped");
+  // long column layout check
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = [...s.tableau.flat(), ...s.stock, ...s.waste, ...s.foundations.flat()].map(c => ({ ...c }));
+    const suitsAlt = ["spades", "hearts", "clubs", "diamonds"];
+    const run = []; for (let r = 13; r >= 1; r--) run.push(`${suitsAlt[(13 - r) % 2 === 0 ? 0 : 1]}-${r}`);
+    const runSet = new Set(run);
+    const rest = all.filter(c => !runSet.has(c.id));
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    s.tableau = Array.from({ length: 7 }, () => []);
+    s.tableau[6] = [...rest.slice(0, 6).map(c => ({ ...c, faceUp: false })), ...run.map(id => ({ ...by[id], faceUp: true }))];
+    rest.slice(6, 12).forEach((c, i) => s.tableau[i].push({ ...c, faceUp: true }));
+    s.stock = rest.slice(12).map(c => ({ ...c, faceUp: false })); s.waste = []; s.foundations = [[], [], [], []]; s.won = false;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(300);
+  await layoutChecks(page, G, P, "19-card column");
+  await page.screenshot({ path: `${SHOTS}/${P}-klondike-long.png` });
   // win
   await H(page, () => {
     const s = structuredClone(window.__solitaire.getState());
@@ -129,6 +174,7 @@ async function freecell(page, ctx, P, touch) {
   const G = "freecell";
   await pick(page, G);
   ok(G, P, "active", await H(page, () => window.__solitaire.game()) === G);
+  await layoutChecks(page, G, P, "deal");
   await tapEl(page, page.locator('[data-testid="deal-number"]'), false);
   const inp = page.locator('[data-testid="deal-input"]');
   const fs = await inp.evaluate(el => parseFloat(getComputedStyle(el).fontSize)).catch(() => 0);
@@ -147,7 +193,10 @@ async function freecell(page, ctx, P, touch) {
   // legal tap: 6S -> freecell 0
   before = await S(page);
   await tapEl(page, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), touch);
+  const fs1 = await statusText(page);
   await tapEl(page, page.locator('[data-drop="freecell:0"]'), touch);
+  const fs2 = await statusText(page);
+  ok(G, P, "status text updates after tap move", fs2 !== fs1 && !/destination/i.test(fs2), `"${fs1}" -> "${fs2}"`);
   st = JSON.parse(await S(page));
   ok(G, P, "legal tap move to free cell", st.cascades[0].length === 6 && st.freecells[0]?.id === "spades-6");
   // drag: 6D (c0) -> freecell 1
@@ -177,6 +226,8 @@ async function freecell(page, ctx, P, touch) {
     return { twoCardWithNoFree: res1 };
   });
   ok(G, P, "supermove limit enforced (2 cards, 0 free, 0 empty)", sm.twoCardWithNoFree === false, JSON.stringify(sm));
+  await page.waitForTimeout(200);
+  await layoutChecks(page, G, P, "long cascades");
   await page.screenshot({ path: `${SHOTS}/${P}-freecell.png` });
   // persistence
   const snap = strip(await S(page));
@@ -214,6 +265,7 @@ async function golf(page, ctx, P, touch) {
   ok(G, P, "deal 7x5 + waste 1 + stock 16", st.columns.length === 7 && st.columns.every(c => c.length === 5) && st.waste.length === 1 && st.stock.length === 16, `seed ${st.seed}`);
   const seedTxt = await page.locator('[data-testid="deal-number"]').textContent();
   ok(G, P, "seed shown", /\d/.test(seedTxt), seedTxt);
+  await layoutChecks(page, G, P, "deal");
   // ensure a playable column exists (draw if needed)
   let moves = await H(page, () => window.__solitaire.listMoves());
   for (let i = 0; i < 16 && !moves.some(m => m.type === "play"); i++) { await tapEl(page, page.locator('[data-drop="stock"]'), touch); moves = await H(page, () => window.__solitaire.listMoves()); }
@@ -319,6 +371,7 @@ for (const vp of [
   const errs = []; page.on("pageerror", e => errs.push(e.message)); page.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
   await page.goto(BASE); await page.waitForTimeout(600);
   await common(page, vp.P);
+  await layoutChecks(page, "shell", vp.P, "picker");
   await page.screenshot({ path: `${SHOTS}/${vp.P}-picker.png` });
   for (const [name, fn] of [["klondike", klondike], ["freecell", freecell], ["golf", golf]]) {
     try { await fn(page, ctx, vp.P, vp.touch); } catch (e) { ok(name, vp.P, "exception", false, e.message.split("\n")[0]); }

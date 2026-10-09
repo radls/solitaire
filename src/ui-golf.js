@@ -174,7 +174,12 @@ export function mount() {
     const longest = Math.max(1, ...session.state.columns.map((pile) => pile.length));
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
-    const avail = window.innerHeight - headerH - statusH - cardH - 56;
+    const table = root.table;
+    const ts = table ? getComputedStyle(table) : null;
+    const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
+    const gap = parseFloat(getComputedStyle(board).rowGap) || 0;
+    const bottomH = board.querySelector(".golf-bottom")?.offsetHeight || cardH;
+    const avail = window.innerHeight - headerH - statusH - bottomH - padY - gap - 4;
     let peek = Math.round(cardW * 0.56);
     if (longest > 1) {
       const room = Math.floor((avail - cardH) / (longest - 1));

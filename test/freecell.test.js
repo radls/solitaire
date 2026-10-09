@@ -5,6 +5,8 @@ import {
   autoPlaySafe,
   continueClock,
   deal,
+  foundationStep,
+  isTriviallySolvable,
   isWon,
   listLegalMoves,
   maxSupermove,
@@ -294,6 +296,106 @@ describe("autoPlaySafe", () => {
     expect(played.state.won).toBe(true);
     expect(isWon(played.state)).toBe(true);
     expect(played.state.freecells.every((card) => card == null)).toBe(true);
+  });
+});
+
+function ranksHome(state) {
+  return state.foundations.reduce((n, pile) => n + pile.length, 0);
+}
+
+describe("foundationStep", () => {
+  it("moves one card at a time, lowest rank first, from a cascade or a free cell", () => {
+    const state = blank();
+    state.foundations[0] = [C("hearts", 1)];
+    state.cascades[0] = [C("hearts", 2)];
+    state.cascades[1] = [C("spades", 1)];
+    state.freecells[0] = C("diamonds", 1);
+    const before = structuredClone(state);
+
+    const first = foundationStep(state, { safeOnly: false });
+    expect(first.ok).toBe(true);
+    expect(first.state.moves).toBe(state.moves + 1);
+    expect(ranksHome(first.state)).toBe(ranksHome(state) + 1);
+    expect(first.state.cascades[1]).toHaveLength(0);
+    expect(first.state.cascades[0].map((card) => card.rank)).toEqual([2]);
+    expect(first.state.freecells[0].id).toBe("diamonds-1");
+    expect(state).toEqual(before);
+
+    const second = foundationStep(first.state, { safeOnly: false });
+    expect(second.ok).toBe(true);
+    expect(ranksHome(second.state)).toBe(ranksHome(first.state) + 1);
+    expect(second.state.freecells[0]).toBeNull();
+    expect(second.state.cascades[0]).toHaveLength(1);
+
+    const third = foundationStep(second.state, { safeOnly: true });
+    expect(third.ok).toBe(true);
+    expect(third.state.foundations[0].map((card) => card.rank)).toEqual([1, 2]);
+    expect(ranksHome(third.state)).toBe(ranksHome(second.state) + 1);
+
+    const done = foundationStep(third.state, { safeOnly: false });
+    expect(done.ok).toBe(false);
+    expect(done.state).toBe(third.state);
+  });
+
+  it("safeOnly skips a legal card the safe rule rejects", () => {
+    const state = blank();
+    state.foundations[0] = [C("clubs", 1), C("clubs", 2)];
+    state.foundations[1] = [C("hearts", 1)];
+    state.foundations[2] = [C("diamonds", 1)];
+    state.cascades[0] = [C("clubs", 3)];
+    const before = structuredClone(state);
+
+    const safe = foundationStep(state, { safeOnly: true });
+    expect(safe.ok).toBe(false);
+    expect(state).toEqual(before);
+
+    const any = foundationStep(state, { safeOnly: false });
+    expect(any.ok).toBe(true);
+    expect(any.state.foundations[0].map((card) => card.rank)).toEqual([1, 2, 3]);
+    expect(any.state.cascades[0]).toHaveLength(0);
+    expect(state.cascades[0]).toHaveLength(1);
+  });
+});
+
+describe("isTriviallySolvable", () => {
+  it("is true for a sorted near-win and false when a low card is buried", () => {
+    const suits = ["clubs", "diamonds", "hearts", "spades"];
+    const sorted = blank();
+    sorted.foundations = suits.map((suit) => Array.from({ length: 10 }, (_, rank) => C(suit, rank + 1)));
+    suits.forEach((suit, index) => {
+      sorted.cascades[index] = [C(suit, 13), C(suit, 12), C(suit, 11)];
+    });
+    const sortedBefore = structuredClone(sorted);
+    expect(isTriviallySolvable(sorted)).toBe(true);
+    expect(sorted).toEqual(sortedBefore);
+
+    let current = sorted;
+    let steps = 0;
+    while (steps < 20) {
+      const step = foundationStep(current, { safeOnly: false });
+      if (!step.ok) break;
+      expect(ranksHome(step.state)).toBe(ranksHome(current) + 1);
+      current = step.state;
+      steps += 1;
+    }
+    expect(steps).toBe(12);
+    expect(isWon(current)).toBe(true);
+
+    const buried = blank();
+    buried.foundations = ["clubs", "diamonds", "spades"].map((suit) =>
+      Array.from({ length: 13 }, (_, rank) => C(suit, rank + 1)),
+    );
+    buried.foundations.push([]);
+    buried.cascades[0] = [C("hearts", 1), C("hearts", 2)];
+    const higher = [13, 12, 11, 10, 9, 8, 7];
+    higher.forEach((rank, index) => {
+      buried.cascades[index + 1] = [C("hearts", rank)];
+    });
+    buried.freecells = [C("hearts", 3), C("hearts", 4), C("hearts", 5), C("hearts", 6)];
+    const buriedBefore = structuredClone(buried);
+    expect(isTriviallySolvable(buried)).toBe(false);
+    expect(foundationStep(buried, { safeOnly: false }).ok).toBe(false);
+    expect(buried).toEqual(buriedBefore);
   });
 });
 

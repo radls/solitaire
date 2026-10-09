@@ -838,6 +838,21 @@ body[data-game="freecell"] .table {
   left: 0;
 }
 
+@keyframes fc-land {
+  from {
+    opacity: 0.4;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.board.freecell .slot.foundation .card.fc-land {
+  animation: fc-land 120ms ease-out;
+}
+
 .board.freecell .pile .card {
   margin-top: calc(-1 * (var(--card-h) - var(--fc-peek, 12px)));
 }

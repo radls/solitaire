@@ -98,6 +98,7 @@ async function klondike(page, ctx, P, touch) {
   } else ok(G, P, "illegal tap move rejected", false, "no illegal pair found");
   // legal tap move
   if (mv) {
+    await page.waitForTimeout(600); // avoid the app's double-tap window from the previous tap
     const h0 = await H(page, () => window.__solitaire.historyLength());
     const before = await S(page);
     const fromSel = mv.from.zone === "waste" ? `.card[data-zone="waste"].playable, .card[data-zone="waste"]` : `.card[data-zone="${mv.from.zone}"][data-index="${mv.from.index}"][data-count="${mv.from.count ?? 1}"]`;
@@ -184,6 +185,7 @@ async function freecell(page, ctx, P, touch) {
   let st = JSON.parse(await S(page));
   ok(G, P, "enter deal #1", st.dealNumber === 1 && JSON.stringify(st.cascades.map(c => c.length)) === "[7,7,7,7,6,6,6,6]");
   ok(G, P, "deal #1 col1 = JD KD 2S 4C 3S 6D 6S", st.cascades[0].map(c => c.id).join(",") === "diamonds-11,diamonds-13,spades-2,clubs-4,spades-3,diamonds-6,spades-6");
+  await page.waitForTimeout(600);
   // illegal: 6S (c0) onto 9C (c1)
   let before = strip(await S(page));
   await tapEl(page, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), touch);
@@ -234,6 +236,69 @@ async function freecell(page, ctx, P, touch) {
   await page.reload(); await page.waitForTimeout(600);
   await pick(page, G);
   ok(G, P, "state persists across reload", strip(await S(page)) === snap);
+  // finish animation: last user move triggers stepwise foundation moves, win modal only after the last card lands
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = []; for (const su of ["clubs", "diamonds", "hearts", "spades"]) for (let r = 1; r <= 13; r++) all.push({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    const suits = ["clubs", "diamonds", "hearts", "spades"];
+    const upto = { clubs: 10, diamonds: 10, hearts: 10, spades: 10 };
+    s.freecells = [null, null, null, null];
+    s.foundations = suits.map(su => Array.from({ length: upto[su] }, (_, i) => by[`${su}-${i + 1}`]));
+    s.cascades = Array.from({ length: 8 }, () => []);
+    s.cascades[0] = [by["clubs-13"], by["hearts-12"], by["spades-11"]];
+    s.cascades[1] = [by["diamonds-13"], by["spades-12"], by["hearts-11"]];
+    s.cascades[2] = [by["hearts-13"], by["clubs-12"], by["diamonds-11"]];
+    s.cascades[3] = [by["spades-13"], by["diamonds-12"], by["clubs-11"]];
+    s.cascades[4] = [by["clubs-12"] ? by["hearts-12"] : null].filter(Boolean).slice(0, 0);
+    s.cascades[5] = [by["spades-12"]].slice(0, 0);
+    // put the four 11s? already placed; the four Jacks (11) are tops; move a 10-level blocker: put JS on top of the free cell route
+    s.won = false; s.wonAt = null;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(250);
+  const finBtn = page.locator('[data-testid="btn-finish"]');
+  const finVisible = await finBtn.isVisible().catch(() => false);
+  ok(G, P, "Finish button shown for a solved board", finVisible);
+  // user move: JS (cascade 0 top) to a free cell, which should kick off the stepwise finish
+  await tapEl(page, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), touch);
+  await tapEl(page, page.locator('[data-drop="freecell:0"]'), touch);
+  const samples = []; let modalEarly = false; let sawAnim = false;
+  for (let i = 0; i < 60; i++) {
+    const r = await H(page, () => ({ f: window.__solitaire.getState().foundations.flat().length, a: !!window.__solitaire.isAnimating?.(), m: !!document.querySelector('[data-testid="win-modal"]')?.offsetParent }));
+    samples.push(r.f); if (r.a) sawAnim = true;
+    if (r.m && r.f < 52) modalEarly = true;
+    if (r.f === 52 && r.m) break;
+    await page.waitForTimeout(60);
+  }
+  const distinct = [...new Set(samples)];
+  ok(G, P, "finish animates cards one by one", sawAnim && distinct.length >= 3, `foundation counts seen: ${distinct.join(",")}`);
+  ok(G, P, "win modal waits for the last card", !modalEarly && (await winVisible(page)), `final ${samples.at(-1)}`);
+  await page.screenshot({ path: `${SHOTS}/${P}-freecell-finish-win.png` });
+  await closeModal(page);
+  // Finish button path
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = []; for (const su of ["clubs", "diamonds", "hearts", "spades"]) for (let r = 1; r <= 13; r++) all.push({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    const suits = ["clubs", "diamonds", "hearts", "spades"];
+    s.freecells = [null, null, null, null];
+    s.foundations = suits.map(su => Array.from({ length: 9 }, (_, i) => by[`${su}-${i + 1}`]));
+    s.cascades = Array.from({ length: 8 }, () => []);
+    suits.forEach((su, i) => { s.cascades[i] = [by[`${su}-13`], by[`${su}-12`], by[`${su}-11`], by[`${su}-10`]]; });
+    s.won = false; s.wonAt = null;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(250);
+  const fb = page.locator('[data-testid="btn-finish"]');
+  ok(G, P, "Finish button visible (same-suit stacks)", await fb.isVisible().catch(() => false));
+  const fbH = await fb.evaluate(el => el.getBoundingClientRect().height).catch(() => 0);
+  ok(G, P, "Finish button >= 44px", fbH >= 43.5, `${fbH}px`);
+  await tapEl(page, fb, touch);
+  let done = false; const s2 = [];
+  for (let i = 0; i < 80 && !done; i++) { const f = await H(page, () => window.__solitaire.getState().foundations.flat().length); s2.push(f); done = f === 52 && (await winVisible(page)); if (!done) await page.waitForTimeout(60); }
+  ok(G, P, "Finish button completes without stalling", done, `counts ${[...new Set(s2)].join(",")}`);
+  await closeModal(page);
   // win
   await H(page, () => {
     const s = structuredClone(window.__solitaire.getState());

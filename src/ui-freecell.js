@@ -5,8 +5,11 @@ import {
   continueClock,
   deal,
   elapsedMs,
+  foundationStep,
+  isTriviallySolvable,
+  isWon,
   listLegalMoves,
-  userMove,
+  moveCards,
 } from "./game/freecell.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
@@ -43,6 +46,7 @@ export function mount() {
     toolbar.innerHTML = `
       <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
       <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal">New</button>
+      <button type="button" class="btn" id="btn-finish" data-testid="btn-finish" hidden title="Send remaining cards to the foundations">Finish</button>
       <button type="button" class="btn" id="btn-deal-number" data-testid="deal-number">Deal #1</button>
       <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>`;
   }
@@ -56,6 +60,7 @@ export function mount() {
     status: document.getElementById("status-text"),
     seed: document.getElementById("status-seed"),
     undo: document.getElementById("btn-undo"),
+    finish: document.getElementById("btn-finish"),
     dealBtn: document.getElementById("btn-deal-number"),
     mute: document.getElementById("btn-mute"),
   };
@@ -72,6 +77,9 @@ export function mount() {
     countedPlay: false,
     countedWin: false,
     winShown: false,
+    autoTimer: 0,
+    animating: false,
+    landedId: null,
   };
 
   if (saved.state && !saved.state.won) {
@@ -135,10 +143,35 @@ export function mount() {
     return sel.zone === loc.zone && sel.index === loc.index && (sel.count ?? 1) === count;
   }
 
+  function prefersReducedMotion() {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  }
+
+  function stepDelay() {
+    return prefersReducedMotion() ? 0 : 90;
+  }
+
   function makeCard(card, loc, count, playable) {
     const el = makeCardElement(card, loc, count, playable, isSelected(loc, count));
+    if (
+      session.landedId &&
+      card.id === session.landedId &&
+      loc.zone === "foundation" &&
+      !prefersReducedMotion()
+    ) {
+      el.classList.add("fc-land");
+    }
     if (el.classList.contains("selected")) el.style.zIndex = "40";
     return el;
+  }
+
+  function foundationLandedId(before, after) {
+    for (let i = 0; i < after.foundations.length; i++) {
+      const next = after.foundations[i];
+      const prev = before.foundations[i] ?? [];
+      if (next.length > prev.length) return next[next.length - 1].id;
+    }
+    return null;
   }
 
   function well(content = "") {
@@ -259,9 +292,14 @@ export function mount() {
 
     board.append(top, cascades);
     root.table.replaceChildren(board);
+    session.landedId = null;
     root.moves.textContent = String(state.moves);
     root.seed.textContent = "";
     root.undo.disabled = session.history.length === 0;
+    if (root.finish) {
+      const home = state.won || isWon(state);
+      root.finish.hidden = home || !isTriviallySolvable(state);
+    }
     root.dealBtn.textContent = `Deal #${state.dealNumber}`;
     updateMute();
     fit();
@@ -311,10 +349,18 @@ export function mount() {
     input?.select();
   }
 
+  function stopAuto() {
+    if (session.autoTimer) window.clearTimeout(session.autoTimer);
+    session.autoTimer = 0;
+    session.animating = false;
+  }
+
   function startDeal(dealNumber) {
+    stopAuto();
     hideOverlay();
     session.history = [];
     session.selected = null;
+    session.landedId = null;
     session.winShown = false;
     session.countedWin = false;
     session.countedPlay = false;
@@ -338,7 +384,64 @@ export function mount() {
     return msg;
   }
 
+  function recordWin() {
+    if (session.winShown) return;
+    if (!session.countedWin) {
+      session.stats.won += 1;
+      session.countedWin = true;
+    }
+    persist();
+    sounds.win(session.muted);
+    showWin();
+    setStatus("All cards are home.");
+  }
+
+  function runAutoStep() {
+    session.autoTimer = 0;
+    if (!alive) {
+      session.animating = false;
+      return;
+    }
+    const finishMode = isTriviallySolvable(session.state);
+    const before = session.state;
+    const result = foundationStep(before, { safeOnly: !finishMode });
+    if (!result.ok) {
+      session.animating = false;
+      if (session.state.won || isWon(session.state)) recordWin();
+      else {
+        persist();
+        render();
+      }
+      return;
+    }
+    session.landedId = foundationLandedId(before, result.state);
+    session.state = result.state;
+    session.selected = null;
+    persist();
+    render();
+    if (session.state.won || isWon(session.state)) {
+      session.animating = false;
+      recordWin();
+      return;
+    }
+    if (isTriviallySolvable(session.state)) setStatus("Finishing…");
+    session.animating = true;
+    session.autoTimer = window.setTimeout(runAutoStep, stepDelay());
+  }
+
+  function queueAuto() {
+    if (!alive || session.animating) return;
+    if (session.state.won || isWon(session.state)) return;
+    const finishMode = isTriviallySolvable(session.state);
+    const probe = foundationStep(session.state, { safeOnly: !finishMode });
+    if (!probe.ok) return;
+    session.animating = true;
+    if (finishMode) setStatus("Finishing…");
+    session.autoTimer = window.setTimeout(runAutoStep, stepDelay());
+  }
+
   function commit(result, from, to) {
+    if (session.animating) return false;
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
@@ -349,37 +452,35 @@ export function mount() {
       session.stats.played += 1;
       session.countedPlay = true;
     }
-    session.history.push(cloneState(session.state));
+    const before = session.state;
+    session.history.push(cloneState(before));
     if (session.history.length > HISTORY_CAP) session.history.shift();
+    session.landedId = foundationLandedId(before, result.state);
     session.state = result.state;
     session.selected = null;
-    const justWon = session.state.won && !session.countedWin;
-    if (justWon) {
-      session.stats.won += 1;
-      session.countedWin = true;
-    }
     persist();
     render();
     sounds.place(session.muted);
-    if (justWon) {
-      sounds.win(session.muted);
-      showWin();
-      setStatus("All cards are home.");
-    } else {
-      setStatus(statusForSuccess(result, from, to));
+    if (session.state.won || isWon(session.state)) {
+      recordWin();
+      return true;
     }
+    setStatus(statusForSuccess(result, from, to));
+    queueAuto();
     return true;
   }
 
   function tryMove(from, to) {
+    if (session.animating) return false;
     const src = { ...from, count: from.count ?? 1 };
-    return commit(userMove(session.state, src, to), src, to);
+    return commit(moveCards(session.state, src, to), src, to);
   }
 
   function doDouble(from) {
+    if (session.animating) return;
     if ((from.count ?? 1) !== 1 || from.zone === "foundation") return;
     const single = { zone: from.zone, index: from.index, count: 1 };
-    const toFoundation = userMove(session.state, single, { zone: "foundation" });
+    const toFoundation = moveCards(session.state, single, { zone: "foundation" });
     if (toFoundation.ok) {
       commit(toFoundation, single, { zone: "foundation" });
       return;
@@ -397,11 +498,28 @@ export function mount() {
       nudgeBoard();
       return;
     }
-    const toCell = userMove(session.state, single, { zone: "freecell", index });
+    const toCell = moveCards(session.state, single, { zone: "freecell", index });
     if (!commit(toCell, single, { zone: "freecell", index })) setStatus("That card cannot move there.");
   }
 
+  function doFinish() {
+    if (!alive || session.animating || !root.overlay.hidden) return;
+    if (session.state.won || isWon(session.state)) return;
+    if (!isTriviallySolvable(session.state)) return;
+    const snapshot = cloneState(session.state);
+    session.history.push(snapshot);
+    if (session.history.length > HISTORY_CAP) session.history.shift();
+    session.selected = null;
+    if (root.undo) root.undo.disabled = false;
+    queueAuto();
+    if (!session.animating && session.history[session.history.length - 1] === snapshot) {
+      session.history.pop();
+    }
+  }
+
   function doUndo() {
+    stopAuto();
+    session.landedId = null;
     if (!session.history.length) return;
     const wasWin = session.countedWin && session.state.won;
     session.state = continueClock(session.state, session.history.pop());
@@ -517,6 +635,7 @@ export function mount() {
   }
 
   function onPointerDown(event) {
+    if (session.animating) return;
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;
     resumeAudio();
@@ -588,6 +707,7 @@ export function mount() {
   });
   listen(window, "resize", () => fit());
   listen(root.undo, "click", doUndo);
+  listen(root.finish, "click", doFinish);
   listen(document.getElementById("btn-new"), "click", () => startDeal(randomDeal()));
   listen(root.dealBtn, "click", showDealModal);
   listen(root.mute, "click", () => {
@@ -643,6 +763,8 @@ export function mount() {
   return {
     getState: () => session.state,
     setState(next) {
+      stopAuto();
+      session.landedId = null;
       session.state = next;
       session.selected = null;
       session.winShown = false;
@@ -655,19 +777,23 @@ export function mount() {
     newGame: (dealNumber) => startDeal(Number.isInteger(dealNumber) ? dealNumber : randomDeal()),
     undo: doUndo,
     move(from, to) {
-      const result = userMove(session.state, from, to);
+      if (session.animating) return { ok: false, reason: "finishing", state: session.state };
+      const result = moveCards(session.state, from, to);
       if (!result.ok) {
         sounds.illegal(session.muted);
         setStatus("That card cannot move there.");
+        nudgeBoard();
         return result;
       }
       commit(result, from, to);
       return { ok: true, state: session.state };
     },
+    isAnimating: () => session.animating === true,
     historyLength: () => session.history.length,
     listMoves: () => listLegalMoves(session.state),
     unmount() {
       alive = false;
+      stopAuto();
       document.documentElement.classList.remove("is-dragging");
       ac.abort();
       window.clearInterval(timer);

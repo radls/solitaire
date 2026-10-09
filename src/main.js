@@ -79,6 +79,7 @@ function syncHooks() {
     hint: () => active?.hint?.(),
     listMoves: () => active?.listMoves?.() ?? [],
     apply: (action) => active?.apply?.(action),
+    isAnimating: () => active?.isAnimating?.() ?? false,
   };
 }
 

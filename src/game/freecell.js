@@ -300,22 +300,49 @@ export function listLegalMoves(state) {
   return moves;
 }
 
-function nextSafe(state) {
+function foundationCandidates(state, safeOnly) {
   const candidates = [];
+  const consider = (card, from) => {
+    if (!card) return;
+    if (safeOnly && !isSafeFoundationCard(state, card)) return;
+    const index = foundationIndexFor(state, card, null);
+    if (index < 0) return;
+    candidates.push({ card, from, to: { zone: "foundation", index } });
+  };
   for (let i = 0; i < CASCADE_COUNT; i++) {
-    const card = top(state.cascades[i]);
-    if (card) candidates.push({ card, from: { zone: "cascade", index: i, count: 1 } });
+    consider(top(state.cascades[i]), { zone: "cascade", index: i, count: 1 });
   }
   for (let i = 0; i < FREE_CELL_COUNT; i++) {
-    const card = state.freecells[i];
-    if (card) candidates.push({ card, from: { zone: "freecell", index: i, count: 1 } });
+    consider(state.freecells[i], { zone: "freecell", index: i, count: 1 });
   }
-  for (const candidate of candidates) {
-    if (!isSafeFoundationCard(state, candidate.card)) continue;
-    const index = foundationIndexFor(state, candidate.card, null);
-    if (index >= 0) return { from: candidate.from, to: { zone: "foundation", index } };
+  return candidates;
+}
+
+/** Move exactly one exposed cascade or free-cell card onto its foundation. */
+export function foundationStep(state, options = {}) {
+  if (!state) return { ok: false, reason: "missing state", state };
+  const safeOnly = options.safeOnly === true;
+  const candidates = foundationCandidates(state, safeOnly);
+  if (!safeOnly) candidates.sort((a, b) => a.card.rank - b.card.rank);
+  const pick = candidates[0];
+  if (!pick) return { ok: false, reason: "nothing to move", state };
+  const moved = moveCards(state, pick.from, pick.to);
+  if (!moved.ok) return { ok: false, reason: moved.reason, state };
+  return { ok: true, state: moved.state };
+}
+
+/** True when foundation moves alone, lowest rank first, put every card home. */
+export function isTriviallySolvable(state) {
+  if (!state) return false;
+  if (isWon(state)) return true;
+  let current = cloneState(state);
+  for (let guard = 0; guard < 52; guard++) {
+    if (isWon(current)) return true;
+    const step = foundationStep(current, { safeOnly: false });
+    if (!step.ok) return false;
+    current = step.state;
   }
-  return null;
+  return isWon(current);
 }
 
 export function autoPlaySafe(state) {
@@ -324,11 +351,9 @@ export function autoPlaySafe(state) {
   let current = state;
   let moved = 0;
   for (let guard = 0; guard < 52; guard++) {
-    const action = nextSafe(current);
-    if (!action) break;
-    const result = moveCards(current, action.from, action.to);
-    if (!result.ok) break;
-    current = result.state;
+    const step = foundationStep(current, { safeOnly: true });
+    if (!step.ok) break;
+    current = step.state;
     moved += 1;
     if (current.won) break;
   }

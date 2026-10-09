@@ -367,9 +367,10 @@ export function mount() {
     return session.state.moves > 0 && !session.state.won && !isWon(session.state);
   }
 
-  function confirmNewDeal() {
+  // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
+  function confirmNewDeal(dealNumber) {
     if (!gameInProgress()) {
-      startDeal(randomDeal());
+      startDeal(dealNumber ?? randomDeal());
       return;
     }
     session.modal = "confirm";
@@ -379,7 +380,7 @@ export function mount() {
       <p>The current deal will be abandoned.</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
-        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok">New deal</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dealNumber ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
       </div>
     </div>`;
   }
@@ -773,7 +774,7 @@ export function mount() {
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     if (btn.dataset.act === "close") hideOverlay();
-    else if (btn.dataset.act === "new") startDeal(randomDeal());
+    else if (btn.dataset.act === "new") startDeal(Number(btn.dataset.deal) || randomDeal());
   });
   listen(root.overlay, "submit", (event) => {
     if (!event.target.closest("[data-deal-form]")) return;
@@ -785,7 +786,7 @@ export function mount() {
       setStatus("Enter a deal from 1 to 32000.");
       return;
     }
-    startDeal(n);
+    confirmNewDeal(n);
   });
   listen(window, "keydown", (event) => {
     if (event.target.matches("input, textarea")) {

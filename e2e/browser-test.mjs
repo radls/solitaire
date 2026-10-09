@@ -263,6 +263,39 @@ async function freecell(page, ctx, P, touch) {
   await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
   await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
   ok(G, P, "undo x2 restores deal", strip(await S(page)) === strip(before));
+  // QA path: 2 moves, Help -> Deal (same #) must confirm; Keep playing keeps progress; go-ahead resets
+  await page.waitForTimeout(600);
+  for (const fcIdx of [0, 1]) {
+    await tapEl(page, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), touch);
+    await tapEl(page, page.locator(`[data-drop="freecell:${fcIdx}"]`), touch);
+    await page.waitForTimeout(600);
+  }
+  const twoMoves = JSON.parse(await S(page));
+  ok(G, P, "made 2 moves before Help -> Deal", twoMoves.moves >= 2, `moves=${twoMoves.moves}`);
+  const snap2 = strip(JSON.stringify(twoMoves));
+  await openHelp(page);
+  await page.locator('[data-deal-form] button[type="submit"], #overlay form button').first().click();
+  await page.waitForTimeout(250);
+  ok(G, P, "Help -> Deal (same #) mid-game asks to confirm", await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false));
+  await page.locator('[data-testid="confirm-cancel"]').click().catch(() => {}); await page.waitForTimeout(200);
+  ok(G, P, "Keep playing after Help -> Deal keeps progress", strip(await S(page)) === snap2 && !(await page.locator('#overlay:not([hidden]) .modal').isVisible().catch(() => false)));
+  await openHelp(page);
+  await page.locator('[data-testid="deal-input"]').fill("2");
+  await page.locator('[data-testid="deal-input"]').press("Enter");
+  await page.waitForTimeout(250);
+  const conf2 = await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false);
+  ok(G, P, "Help -> Deal (new #) mid-game asks to confirm", conf2);
+  await page.locator('[data-testid="confirm-ok"]').click().catch(() => {}); await page.waitForTimeout(300);
+  const after2 = JSON.parse(await S(page));
+  ok(G, P, "confirming Deal starts that deal fresh", after2.dealNumber === 2 && after2.moves === 0 && (await H(page, () => window.__solitaire.historyLength())) === 0, `deal=${after2.dealNumber} moves=${after2.moves}`);
+  // with 0 moves, Deal acts immediately
+  await openHelp(page);
+  await page.locator('[data-testid="deal-input"]').fill("1");
+  await page.locator('[data-testid="deal-input"]').press("Enter");
+  await page.waitForTimeout(300);
+  const after1 = JSON.parse(await S(page));
+  ok(G, P, "Deal with 0 moves acts immediately", after1.dealNumber === 1 && !(await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false)));
+  await closeModal(page);
   // supermove limit through engine hook: 4 full freecells, no empty cascades -> 2-card run illegal
   const sm = await H(page, () => {
     const s = structuredClone(window.__solitaire.getState());

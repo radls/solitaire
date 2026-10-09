@@ -34,16 +34,16 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 | To foundation | Double-tap a playable card (pointer timing, so it does not zoom the page) |
 | Clear a selection | Tap empty table |
 | Draw | Tap the stock, or <kbd>Space</kbd> |
-| New game | Button, or <kbd>N</kbd> |
+| New game | Button, or <kbd>N</kbd>. Mid-game, confirms before abandoning the deal |
 | Undo | Button, or <kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>Z</kbd> |
-| Hint | Button, or <kbd>H</kbd> |
+| Hint | Button, or <kbd>H</kbd>, in every game |
 | Draw 1 / 3 | Toggle in the header (starts a new game) |
 | Theme | Moon / sun button in the header. Night is the default; Classic is the green felt |
 | Sound | Speaker button. Off until you turn it on |
 
-FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a drag onto the waste plays that card. The header stays within two rows on a phone, with 36px tap targets.
+FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a drag onto the waste plays that card. The header stays within two rows of buttons on a phone, with 44px tap targets. Deal number, seed, and Replay live in Help.
 
-King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a corner when that move is legal. Header buttons stay at least 44px tall and wrap on a narrow screen.
+King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a corner when that move is legal. Header buttons stay at least 44px tall. Seed and Replay are in Help.
 
 ## Scripts
 
@@ -92,7 +92,7 @@ Sound starts off.
 
 ## Rules (King's Corners)
 
-- One 52-card deck. The header shows **Seed N**. New deal shuffles a new seed. Replay keeps the same seed. Open a known deal with `?game=kings&seed=2`.
+- One 52-card deck. Help shows **Seed N**. New deal shuffles a new seed. Replay (in Help) keeps the same seed. Open a known deal with `?game=kings&seed=2`.
 - The layout is a cross. Side piles sit north, east, south, and west around a central stock and waste. Corner piles sit on the four diagonals.
 - Deal one face-up card to each side, in order north, east, south, west. A king dealt to a side goes to the next empty corner instead (northwest, then northeast, then southwest, then southeast), and that side is dealt again. The remaining cards are the face-down stock.
 - Tap the stock to turn one card face up onto the waste. When the stock is empty, tap it to turn the waste back over into the stock. The previous bottom card is drawn next. Redeals are unlimited and add no penalty. Each draw and each turn-over counts as a move.

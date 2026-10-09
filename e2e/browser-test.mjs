@@ -48,13 +48,63 @@ async function layoutChecks(page, G, P, label) {
     const btns = [...document.querySelectorAll("header button, .topbar button, .toolbar button")].filter((b) => b.offsetParent && b.getClientRects().length);
     const small = btns.filter((b) => b.getBoundingClientRect().height < 43.5).map((b) => `${b.id || b.textContent.trim() || b.getAttribute("aria-label")}:${Math.round(b.getBoundingClientRect().height)}`);
     const offscreen = btns.filter((b) => { const q = b.getBoundingClientRect(); return q.right > window.innerWidth + 1 || q.left < -1; }).map((b) => b.id || b.textContent.trim());
-    return { bad, small, offscreen, count: btns.length, hscroll: document.documentElement.scrollWidth > window.innerWidth + 1 };
+    const tops = [];
+    for (const b of btns) { const t = b.getBoundingClientRect().top; if (!tops.some(x => Math.abs(x - t) < 12)) tops.push(t); }
+    const order = btns.map(b => b.id);
+    const iu = order.indexOf("btn-undo"), inw = order.indexOf("btn-new");
+    const adjacent = iu < 0 || inw < 0 ? null : Math.abs(iu - inw) === 1 && Math.abs(btns[iu].getBoundingClientRect().top - btns[inw].getBoundingClientRect().top) < 12;
+    const seedInHeader = [...document.querySelectorAll('header [data-testid="deal-number"], .topbar [data-testid="deal-number"], .toolbar [data-testid="deal-number"]')].filter(e => e.offsetParent).length;
+    return { bad, small, offscreen, count: btns.length, rows: tops.length, adjacent, seedInHeader, hscroll: document.documentElement.scrollWidth > window.innerWidth + 1 };
   });
+  ok(G, P, `header buttons in <= 2 rows (${label})`, r.rows <= 2, `${r.rows} rows`);
+  if (r.adjacent !== null) ok(G, P, `New sits next to Undo (${label})`, r.adjacent);
+  if (["freecell", "golf", "kings"].includes(G)) ok(G, P, `Seed/deal chip not in main toolbar (${label})`, r.seedInHeader === 0, `${r.seedInHeader}`);
   ok(G, P, `no vertical scrollbar in card area (${label})`, r.bad.length === 0, r.bad.join(", "));
   ok(G, P, `toolbar buttons >= 44px (${label})`, r.small.length === 0 && r.count > 0, r.small.join(", ") || `${r.count} buttons`);
   ok(G, P, `no horizontal scroll / offscreen buttons (${label})`, !r.hscroll && r.offscreen.length === 0, r.offscreen.join(", "));
 }
 const statusText = (page) => page.locator("#status-text").textContent();
+
+async function openHelp(page) {
+  await page.locator('[data-testid="btn-help"]').first().click(); await page.waitForTimeout(250);
+}
+async function helpDealText(page) {
+  await openHelp(page);
+  const t = await page.locator('#overlay [data-testid="deal-number"]').first().textContent().catch(() => "");
+  return t;
+}
+async function winCountOk(page, G, P) {
+  const t = await page.locator('[data-testid="win-modal"] [data-testid="win-count"]').first().textContent().catch(() => "");
+  ok(G, P, "win screen shows win count", /[1-9]/.test(t), t.trim());
+}
+async function hintCheck(page, G, P) {
+  await page.waitForTimeout(500);
+  const before = await statusText(page);
+  await page.locator('[data-testid="btn-hint"]').first().click(); await page.waitForTimeout(250);
+  const h = await H(page, () => document.querySelectorAll(".hint-from, .hint-to").length);
+  const after = await statusText(page);
+  ok(G, P, "Hint highlights a move or the stock", h > 0 && after !== before, `${h} highlighted; "${after}"`);
+}
+async function confirmCheck(page, G, P, touch) {
+  // requires moves > 0 and game in progress
+  const st0 = strip(await S(page));
+  await page.locator('[data-testid="btn-new"]').first().click(); await page.waitForTimeout(250);
+  const vis = await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false);
+  ok(G, P, "New mid-game asks to confirm", vis);
+  if (vis) { await page.locator('[data-testid="confirm-cancel"]').click(); await page.waitForTimeout(200); }
+  ok(G, P, "Keep playing keeps progress", strip(await S(page)) === st0);
+  // replay (golf/kings)
+  if (G === "golf" || G === "kings") {
+    let rb = page.locator('[data-testid="btn-replay"]').first();
+    if (!(await rb.isVisible().catch(() => false))) { await openHelp(page); rb = page.locator('#overlay [data-testid="btn-replay"]').first(); }
+    await rb.click().catch(() => {}); await page.waitForTimeout(250);
+    const v2 = await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false);
+    ok(G, P, "Replay mid-game asks to confirm", v2);
+    if (v2) { await page.locator('[data-testid="confirm-cancel"]').click(); await page.waitForTimeout(200); }
+    await closeModal(page);
+    ok(G, P, "cancelled Replay keeps progress", strip(await S(page)) === st0);
+  }
+}
 
 async function common(page, P) {
   const theme = await H(page, () => document.documentElement.dataset.theme);
@@ -167,6 +217,7 @@ async function klondike(page, ctx, P, touch) {
   await tapEl(page, page.locator('[data-drop="foundation:0"]'), touch);
   await page.waitForTimeout(400);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
+  await winCountOk(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-klondike-win.png` });
   await closeModal(page);
 }
@@ -176,8 +227,10 @@ async function freecell(page, ctx, P, touch) {
   await pick(page, G);
   ok(G, P, "active", await H(page, () => window.__solitaire.game()) === G);
   await layoutChecks(page, G, P, "deal");
-  await tapEl(page, page.locator('[data-testid="deal-number"]'), false);
+  await openHelp(page);
+  ok(G, P, "Help shows deal number", /\d/.test(await page.locator('#overlay [data-testid="deal-number"]').first().textContent().catch(() => "")));
   const inp = page.locator('[data-testid="deal-input"]');
+  if (!(await inp.isVisible().catch(() => false))) { await page.locator('#overlay button', { hasText: /deal/i }).first().click().catch(() => {}); await page.waitForTimeout(250); }
   const fs = await inp.evaluate(el => parseFloat(getComputedStyle(el).fontSize)).catch(() => 0);
   ok(G, P, "deal input font ≥16px (no iOS zoom)", fs >= 16, `${fs}px`);
   await inp.fill("1"); await inp.press("Enter"); await page.waitForTimeout(300);
@@ -201,6 +254,8 @@ async function freecell(page, ctx, P, touch) {
   ok(G, P, "status text updates after tap move", fs2 !== fs1 && !/destination/i.test(fs2), `"${fs1}" -> "${fs2}"`);
   st = JSON.parse(await S(page));
   ok(G, P, "legal tap move to free cell", st.cascades[0].length === 6 && st.freecells[0]?.id === "spades-6");
+  await hintCheck(page, G, P);
+  await confirmCheck(page, G, P, touch);
   // drag: 6D (c0) -> freecell 1
   await drag(page, ctx, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), page.locator('[data-drop="freecell:1"]'), touch);
   st = JSON.parse(await S(page));
@@ -316,6 +371,7 @@ async function freecell(page, ctx, P, touch) {
   await tapEl(page, page.locator('[data-drop="foundation:3"]'), touch);
   await page.waitForTimeout(400);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
+  await winCountOk(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-freecell-win.png` });
   await closeModal(page);
 }
@@ -328,9 +384,11 @@ async function golf(page, ctx, P, touch) {
   await page.waitForTimeout(300);
   let st = JSON.parse(await S(page));
   ok(G, P, "deal 7x5 + waste 1 + stock 16", st.columns.length === 7 && st.columns.every(c => c.length === 5) && st.waste.length === 1 && st.stock.length === 16, `seed ${st.seed}`);
-  const seedTxt = await page.locator('[data-testid="deal-number"]').textContent();
-  ok(G, P, "seed shown", /\d/.test(seedTxt), seedTxt);
+  const seedTxt = await helpDealText(page);
+  ok(G, P, "seed shown in Help", /4242/.test(seedTxt), seedTxt);
+  await closeModal(page);
   await layoutChecks(page, G, P, "deal");
+  await hintCheck(page, G, P);
   // ensure a playable column exists (draw if needed)
   let moves = await H(page, () => window.__solitaire.listMoves());
   for (let i = 0; i < 16 && !moves.some(m => m.type === "play"); i++) { await tapEl(page, page.locator('[data-drop="stock"]'), touch); moves = await H(page, () => window.__solitaire.listMoves()); }
@@ -353,6 +411,7 @@ async function golf(page, ctx, P, touch) {
     await drag(page, ctx, page.locator(`.card[data-zone="column"][data-index="${c}"]`).last(), page.locator('[data-drop="waste"]'), touch);
     st = JSON.parse(await S(page));
     ok(G, P, "drag play to waste", st.columns[c].length === JSON.parse(before).columns[c].length - 1);
+    await confirmCheck(page, G, P, touch);
   } else ok(G, P, "legal tap play to waste", false, "no playable column after drawing");
   // stock draw is legal
   const sb = JSON.parse(await S(page)).stock.length;
@@ -403,6 +462,7 @@ async function golf(page, ctx, P, touch) {
   await page.waitForTimeout(400);
   const txt = await page.locator('[data-testid="win-modal"]').innerText().catch(() => "");
   ok(G, P, "course cleared detected + score -2", (await winVisible(page)) && /-2/.test(txt), txt.replace(/\s+/g, " ").slice(0, 120));
+  await winCountOk(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-golf-cleared.png` });
   await closeModal(page);
   // stuck round end via last stock draw
@@ -437,7 +497,9 @@ async function kings(page, ctx, P, touch) {
   const total = st.sides.flat().length + st.corners.flat().length + st.stock.length + st.waste.length;
   const ids = new Set([...st.sides.flat(), ...st.corners.flat(), ...st.stock, ...st.waste].map(c => c.id));
   ok(G, P, "deal: 4 sides, kings in corners, 52 unique", st.sides.length === 4 && st.sides.every(p => p.length === 1 && p[0].rank !== 13) && st.corners.every(c => c.every(x => x.rank === 13)) && total === 52 && ids.size === 52, `seed ${st.seed}`);
-  ok(G, P, "seed shown", /777/.test(await page.locator('[data-testid="deal-number"]').textContent()));
+  ok(G, P, "seed shown in Help", /777/.test(await helpDealText(page)));
+  await closeModal(page);
+  await hintCheck(page, G, P);
   await layoutChecks(page, G, P, "deal");
   // illegal tap: side a top -> side b where not legal
   const legal = await H(page, () => window.__solitaire.listMoves());
@@ -478,6 +540,7 @@ async function kings(page, ctx, P, touch) {
     const h1 = await H(page, () => window.__solitaire.historyLength());
     await drag(page, ctx, page.locator(fromSel).last(), page.locator(`[data-drop="${mv.to.zone}:${mv.to.index}"]`), touch);
     ok(G, P, "drag move", (await H(page, () => window.__solitaire.historyLength())) === h1 + 1);
+    await confirmCheck(page, G, P, touch);
   } else ok(G, P, "legal tap-select-tap move", false, "no legal move found");
   // whole-pile move via tapping the bottom card
   await H(page, () => {
@@ -523,6 +586,7 @@ async function kings(page, ctx, P, touch) {
   await tapEl(page, page.locator('[data-drop="corner:0"]'), touch);
   await page.waitForTimeout(500);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
+  await winCountOk(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-kings-win.png` });
   await closeModal(page);
 }

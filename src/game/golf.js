@@ -146,6 +146,28 @@ export function listLegalMoves(state) {
   return moves;
 }
 
+/**
+ * `{ type: "play", col }` for a playable exposed card (prefer a column whose
+ * newly exposed card would then be playable), else `{ type: "draw" }`, else null.
+ */
+export function hint(state) {
+  if (!state || state.over || isCleared(state)) return null;
+  const wasteTop = top(state.waste);
+  let first = null;
+  for (let col = 0; col < (state.columns?.length ?? 0); col++) {
+    const pile = state.columns[col];
+    if (!pile.length) continue;
+    const exposed = pile[pile.length - 1];
+    if (!canPlay(exposed, wasteTop)) continue;
+    if (first == null) first = col;
+    const next = pile.length >= 2 ? pile[pile.length - 2] : null;
+    if (next && canPlay(next, exposed)) return { type: "play", col };
+  }
+  if (first != null) return { type: "play", col: first };
+  if (state.stock?.length) return { type: "draw" };
+  return null;
+}
+
 export function apply(state, action) {
   if (!state) return fail(state, "missing state");
   if (!action || typeof action !== "object") return fail(state, "unknown action");

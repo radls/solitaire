@@ -46,9 +46,9 @@ export function mount() {
         <button type="button" id="btn-draw-1" data-draw="1" aria-label="Draw 1"><span class="long">Draw 1</span><span class="short">1</span></button>
         <button type="button" id="btn-draw-3" data-draw="3" aria-label="Draw 3"><span class="long">Draw 3</span><span class="short">3</span></button>
       </div>
-      <button type="button" class="btn" id="btn-new" data-testid="btn-new" title="New game (N)">New</button>
       <button type="button" class="btn" id="btn-undo" data-testid="btn-undo" title="Undo (U)">Undo</button>
-      <button type="button" class="btn" id="btn-hint" title="Hint (H)">Hint</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" title="New game (N)">New</button>
+      <button type="button" class="btn" id="btn-hint" data-testid="btn-hint" title="Hint (H)">Hint</button>
       <button type="button" class="btn" id="btn-finish" hidden title="Send remaining cards to foundations (A)">Finish</button>
       <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>
       <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>`;
@@ -308,7 +308,7 @@ export function mount() {
     const width = board.clientWidth;
     if (!width) return;
     const gap = width < 800 ? 4 : Math.min(16, Math.round(width * 0.012));
-    const cardW = Math.min(108, Math.floor((width - gap * 6) / 7));
+    const cardW = Math.min(120, Math.floor((width - gap * 6) / 7));
     if (cardW < 28) return;
     const cardH = Math.round(cardW * 1.42);
     let peekUp = Math.round(cardW * 0.3);
@@ -417,7 +417,7 @@ export function mount() {
         <p class="big">You won</p>
         <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt)} points</p>
         <ul class="stats-line">
-          <li><span>Wins</span>${stats.won} / ${stats.played}</li>
+          <li data-testid="win-count"><span>Wins</span>${stats.won} / ${stats.played}</li>
           <li><span>Streak</span>${stats.streak}</li>
           <li><span>Best time</span>${stats.bestTimeMs == null ? "—" : formatTime(stats.bestTimeMs)}</li>
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
@@ -551,6 +551,7 @@ export function mount() {
     if (!move) setStatus("No useful moves — try undo or a new game.");
     else if (move.kind === "draw") setStatus("Draw from the stock.");
     else setStatus("A legal move is highlighted.");
+    return move;
   }
 
   function doAuto(from) {

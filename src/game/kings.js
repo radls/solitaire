@@ -235,6 +235,36 @@ export function listLegalMoves(state) {
   return moves;
 }
 
+/**
+ * Prefer a move to a corner, then a side-to-side move that empties a side or
+ * builds, then waste→side, else `{ kind: "draw" }` if the stock or waste has
+ * cards, else null.
+ */
+export function hint(state) {
+  if (!state || state.won || isWon(state)) return null;
+  const moves = listLegalMoves(state);
+  const first = (pred) => {
+    for (const move of moves) {
+      if (pred(move)) return move.kind === "draw" ? { kind: "draw" } : move;
+    }
+    return null;
+  };
+  return (
+    first((move) => move.kind === "move" && move.to.zone === "corner") ||
+    first((move) => {
+      if (move.kind !== "move" || move.from.zone !== "side" || move.to.zone !== "side") return false;
+      const pile = state.sides[move.from.index];
+      const dest = state.sides[move.to.index];
+      const empties = !!pile && (move.from.count ?? 1) === pile.length;
+      const builds = !!dest && dest.length > 0;
+      return empties || builds;
+    }) ||
+    first((move) => move.kind === "move" && move.from.zone === "waste" && move.to.zone === "side") ||
+    first((move) => move.kind === "draw") ||
+    null
+  );
+}
+
 export function apply(state, action) {
   if (!state) return fail(state, "missing state");
   if (!action || typeof action !== "object") return fail(state, "unknown action");

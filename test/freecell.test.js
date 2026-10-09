@@ -6,6 +6,7 @@ import {
   continueClock,
   deal,
   foundationStep,
+  hint,
   isTriviallySolvable,
   isWon,
   listLegalMoves,
@@ -411,6 +412,95 @@ describe("undo clock", () => {
     expect(restored.startedAt).toBe(8_000);
     expect(restored.moves).toBe(2);
     expect(snapshot.startedAt).toBe(500);
+  });
+});
+
+describe("hint", () => {
+  it("prefers a foundation move", () => {
+    const state = blank();
+    state.cascades[0] = [C("spades", 1)];
+    state.cascades[1] = [C("hearts", 7)];
+    state.cascades[2] = [C("spades", 8)];
+    const suggested = hint(state);
+    expect(suggested).toEqual({
+      from: { zone: "cascade", index: 0, count: 1 },
+      to: { zone: "foundation", index: 0 },
+    });
+  });
+
+  it("prefers building onto a non-empty cascade over a free cell", () => {
+    const state = blank();
+    state.cascades[0] = [C("hearts", 7)];
+    state.cascades[1] = [C("spades", 8)];
+    const suggested = hint(state);
+    expect(suggested.from).toEqual({ zone: "cascade", index: 0, count: 1 });
+    expect(suggested.to).toEqual({ zone: "cascade", index: 1 });
+  });
+
+  it("skips moving a whole run that already sits on a valid parent", () => {
+    const state = blank();
+    state.cascades[0] = [C("spades", 8), C("hearts", 7), C("spades", 6)];
+    state.cascades[1] = [C("clubs", 8)];
+    for (let i = 2; i < 8; i++) state.cascades[i] = [C("spades", 13)];
+    state.freecells = [null, null, null, null];
+    const suggested = hint(state);
+    expect(suggested).not.toBeNull();
+    expect(suggested).toEqual({
+      from: { zone: "cascade", index: 0, count: 1 },
+      to: { zone: "freecell", index: 0 },
+    });
+  });
+
+  it("hints emptying a cascade or freeing a free-cell card onto a cascade", () => {
+    const free = blank();
+    free.freecells[0] = C("hearts", 7);
+    free.cascades[0] = [C("spades", 8)];
+    for (let i = 1; i < 8; i++) free.cascades[i] = [C("clubs", 13)];
+    const fromCell = hint(free);
+    expect(fromCell).toEqual({
+      from: { zone: "freecell", index: 0, count: 1 },
+      to: { zone: "cascade", index: 0 },
+    });
+
+    const clear = blank();
+    clear.cascades[0] = [C("hearts", 5)];
+    clear.cascades[1] = [];
+    clear.freecells = [C("clubs", 3), C("clubs", 4), C("clubs", 5), C("clubs", 6)];
+    const emptied = hint(clear);
+    expect(emptied).toEqual({
+      from: { zone: "cascade", index: 0, count: 1 },
+      to: { zone: "cascade", index: 1 },
+    });
+  });
+
+  it("falls back to a cascade-to-free-cell move, then an empty cascade", () => {
+    const toCell = blank();
+    toCell.cascades[0] = [C("clubs", 10), C("hearts", 5)];
+    toCell.freecells = [null, C("hearts", 3), C("diamonds", 9), C("hearts", 2)];
+    for (let i = 1; i < 8; i++) toCell.cascades[i] = [C("spades", 13)];
+    const suggested = hint(toCell);
+    expect(suggested).toEqual({
+      from: { zone: "cascade", index: 0, count: 1 },
+      to: { zone: "freecell", index: 0 },
+    });
+
+    const toEmpty = blank();
+    toEmpty.cascades[0] = [C("clubs", 10), C("hearts", 5)];
+    toEmpty.cascades[1] = [];
+    toEmpty.freecells = [C("hearts", 3), C("diamonds", 9), C("hearts", 2), C("diamonds", 2)];
+    for (let i = 2; i < 8; i++) toEmpty.cascades[i] = [C("spades", 13), C("hearts", 13)];
+    expect(hint(toEmpty)).toEqual({
+      from: { zone: "cascade", index: 0, count: 1 },
+      to: { zone: "cascade", index: 1 },
+    });
+  });
+
+  it("returns null when nothing can move", () => {
+    const state = blank();
+    state.cascades = Array.from({ length: 8 }, () => []);
+    state.freecells = [null, null, null, null];
+    expect(hint(state)).toBeNull();
+    expect(hint({ ...state, won: true, cascades: [[C("spades", 1)]] })).toBeNull();
   });
 });
 

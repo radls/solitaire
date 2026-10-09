@@ -9,6 +9,7 @@ import {
   continueClock,
   deal,
   drawStock,
+  hint,
   isWon,
   listLegalMoves,
   moveCards,
@@ -449,6 +450,88 @@ describe("draw, stuck, and win", () => {
   });
 });
 
+describe("hint", () => {
+  it("prefers a move to a corner, including a king onto an empty corner", () => {
+    const king = blank({
+      sides: [[C("clubs", 13)], [C("hearts", 6)], [C("spades", 5)], [C("diamonds", 4)]],
+      corners: [[], [], [], []],
+      waste: [C("hearts", 12)],
+      stock: [C("clubs", 2, false)],
+    });
+    expect(hint(king)).toMatchObject({
+      kind: "move",
+      from: { zone: "side", index: 0, count: 1 },
+      to: { zone: "corner", index: 0 },
+    });
+
+    const build = blank({
+      sides: [[C("hearts", 12)], [C("spades", 6)], [], []],
+      corners: [[C("spades", 13)], [], [], []],
+      waste: [C("clubs", 5)],
+      stock: [C("diamonds", 2, false)],
+    });
+    expect(hint(build)).toMatchObject({
+      kind: "move",
+      from: { zone: "side", index: 0, count: 1 },
+      to: { zone: "corner", index: 0 },
+    });
+  });
+
+  it("then prefers a side move that empties or builds, then waste onto a side", () => {
+    const emptySide = blank({
+      sides: [[C("hearts", 9), C("spades", 8)], [C("clubs", 10)], [], [C("diamonds", 4)]],
+      corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
+      waste: [C("hearts", 5)],
+      stock: [C("clubs", 2, false)],
+    });
+    const suggested = hint(emptySide);
+    expect(suggested.kind).toBe("move");
+    expect(suggested.from.zone).toBe("side");
+    expect(suggested.to.zone).toBe("side");
+
+    const wasteToSide = blank({
+      sides: [[C("spades", 8)], [C("hearts", 8)], [C("clubs", 8)], [C("diamonds", 8)]],
+      corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
+      waste: [C("hearts", 7)],
+      stock: [C("clubs", 2, false)],
+    });
+    expect(hint(wasteToSide)).toMatchObject({
+      kind: "move",
+      from: { zone: "waste" },
+      to: { zone: "side" },
+    });
+  });
+
+  it("hints a draw or recycle when no card move is useful", () => {
+    const draw = blank({
+      sides: [[C("spades", 5)], [C("hearts", 5)], [C("clubs", 5)], [C("diamonds", 5)]],
+      corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
+      waste: [],
+      stock: [C("clubs", 2, false)],
+    });
+    expect(hint(draw)).toEqual({ kind: "draw" });
+
+    const recycle = blank({
+      sides: [[C("spades", 5)], [C("hearts", 5)], [C("clubs", 5)], [C("diamonds", 5)]],
+      corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
+      waste: [C("hearts", 9)],
+      stock: [],
+    });
+    expect(hint(recycle)).toEqual({ kind: "draw" });
+  });
+
+  it("returns null when the deal is won or nothing is left to try", () => {
+    const empty = blank({
+      sides: [[], [], [], []],
+      corners: [[], [], [], []],
+      waste: [],
+      stock: [],
+    });
+    expect(hint(empty)).toBeNull();
+    expect(hint(blank({ won: true, waste: [C("hearts", 5)] }))).toBeNull();
+  });
+});
+
 describe("clock and purity", () => {
   it("keeps the live clock when a snapshot is restored", () => {
     const live = blank({ startedAt: 5_000, moves: 4 });
@@ -484,6 +567,7 @@ describe("clock and purity", () => {
     expect(apply(state, { type: "nope" }).state).toBe(state);
     expect(apply(state, { type: "nope" }).reason).toBe("unknown action");
     listLegalMoves(state);
+    hint(state);
     expect(state).toEqual(snapshot);
   });
 

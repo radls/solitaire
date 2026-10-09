@@ -300,6 +300,64 @@ export function listLegalMoves(state) {
   return moves;
 }
 
+/** True when a run already sits on a valid parent and would only hop to another. */
+function isBackAndForthRun(state, move) {
+  if (move.from?.zone !== "cascade" || move.to?.zone !== "cascade") return false;
+  const pile = state.cascades[move.from.index];
+  if (!pile) return false;
+  const count = move.from.count ?? 1;
+  const start = pile.length - count;
+  if (start <= 0) return false;
+  const dest = state.cascades[move.to.index];
+  if (!dest?.length) return false;
+  const parent = pile[start - 1];
+  const moving = pile[start];
+  if (!parent || !moving) return false;
+  return oppositeColor(moving.suit, parent.suit) && moving.rank === parent.rank - 1;
+}
+
+/**
+ * One legal move `{ from, to }`, or null.
+ * Prefers (a) foundation, (b) cascade→cascade onto a non-empty pile,
+ * (c) emptying a cascade or freeing a free-cell card onto a cascade,
+ * (d) cascade→free cell, (e) a move onto an empty cascade.
+ */
+export function hint(state) {
+  if (!state || state.won) return null;
+  const moves = listLegalMoves(state).filter((move) => !isBackAndForthRun(state, move));
+  const first = (pred) => {
+    for (const move of moves) {
+      if (pred(move)) return { from: move.from, to: move.to };
+    }
+    return null;
+  };
+  return (
+    first((move) => move.to.zone === "foundation") ||
+    first(
+      (move) =>
+        move.from.zone === "cascade" &&
+        move.to.zone === "cascade" &&
+        state.cascades[move.to.index].length > 0,
+    ) ||
+    first((move) => {
+      if (
+        move.from.zone === "freecell" &&
+        move.to.zone === "cascade" &&
+        state.cascades[move.to.index].length > 0
+      ) {
+        return true;
+      }
+      if (move.from.zone === "cascade" && move.to.zone === "cascade") {
+        return (move.from.count ?? 1) === state.cascades[move.from.index].length;
+      }
+      return false;
+    }) ||
+    first((move) => move.from.zone === "cascade" && move.to.zone === "freecell") ||
+    first((move) => move.to.zone === "cascade" && state.cascades[move.to.index].length === 0) ||
+    null
+  );
+}
+
 function foundationCandidates(state, safeOnly) {
   const candidates = [];
   const consider = (card, from) => {

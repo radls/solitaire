@@ -8,6 +8,7 @@ import {
   continueClock,
   deal,
   drawStock,
+  hint,
   isCleared,
   isRoundOver,
   listLegalMoves,
@@ -275,6 +276,51 @@ describe("undo clock", () => {
   });
 });
 
+describe("hint", () => {
+  it("prefers a play that exposes another playable card", () => {
+    const state = blank({
+      waste: [C("diamonds", 7)],
+      columns: [
+        [C("spades", 8), C("hearts", 6)],
+        [C("clubs", 6)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+      stock: [C("spades", 2, false)],
+    });
+    expect(hint(state)).toEqual({ type: "play", col: 0 });
+  });
+
+  it("falls back to the first playable column, then a draw", () => {
+    const play = blank({
+      waste: [C("diamonds", 7)],
+      columns: [[C("clubs", 9)], [C("hearts", 6)], [], [], [], [], []],
+      stock: [C("spades", 2, false)],
+    });
+    expect(hint(play)).toEqual({ type: "play", col: 1 });
+
+    const draw = blank({
+      waste: [C("hearts", 13)],
+      columns: [[C("spades", 1)], [], [], [], [], [], []],
+      stock: [C("clubs", 4, false)],
+    });
+    expect(hint(draw)).toEqual({ type: "draw" });
+  });
+
+  it("returns null when the stock is empty and nothing plays", () => {
+    const state = blank({
+      waste: [C("hearts", 13)],
+      columns: [[C("spades", 1)], [], [], [], [], [], []],
+      stock: [],
+    });
+    expect(hint(state)).toBeNull();
+    expect(hint(blank({ over: true, columns: [[C("hearts", 6)]] }))).toBeNull();
+  });
+});
+
 describe("purity", () => {
   it("does not mutate the state passed in", () => {
     const state = blank();
@@ -297,6 +343,7 @@ describe("purity", () => {
     expect(drawn.state).not.toBe(state);
     expect(apply(state, { type: "nope" }).state).toBe(state);
     listLegalMoves(state);
+    hint(state);
     expect(state).toEqual(snapshot);
   });
 

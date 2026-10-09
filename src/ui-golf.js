@@ -7,6 +7,7 @@ import {
   continueClock,
   deal,
   elapsedMs,
+  hint as findHint,
   isCleared,
   listLegalMoves,
   score,
@@ -41,11 +42,10 @@ export function mount() {
   const toolbar = document.getElementById("toolbar");
   if (toolbar) {
     toolbar.innerHTML = `
-      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo">Undo</button>
-      <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal">New</button>
-      <button type="button" class="btn" id="btn-replay" data-testid="btn-replay">Replay</button>
-      <span class="seed-chip" id="deal-number" data-testid="deal-number">Seed 0</span>
-      <button type="button" class="icon-btn" id="btn-help" aria-label="Help">?</button>
+      <button type="button" class="btn" id="btn-undo" data-testid="btn-undo" title="Undo (U)">Undo</button>
+      <button type="button" class="btn" id="btn-new" data-testid="btn-new" aria-label="New deal" title="New deal (N)">New</button>
+      <button type="button" class="btn" id="btn-hint" data-testid="btn-hint" title="Hint (H)">Hint</button>
+      <button type="button" class="icon-btn" id="btn-help" data-testid="btn-help" aria-label="Help">?</button>
       <button type="button" class="icon-btn" id="btn-mute" data-testid="btn-sound" aria-label="Turn sound on"></button>`;
   }
 
@@ -59,7 +59,6 @@ export function mount() {
     status: document.getElementById("status-text"),
     seed: document.getElementById("status-seed"),
     undo: document.getElementById("btn-undo"),
-    dealNumber: document.getElementById("deal-number"),
     mute: document.getElementById("btn-mute"),
   };
 
@@ -69,7 +68,9 @@ export function mount() {
     history: [],
     stats: saved.stats,
     drag: null,
+    hintMove: null,
     muted: loadPrefs().sound !== true,
+    modal: null,
     endShown: false,
     notedEnd: false,
     countedClear: false,
@@ -169,7 +170,7 @@ export function mount() {
     if (!board) return;
     const width = board.clientWidth;
     if (!width) return;
-    const cardW = Math.max(30, Math.min(112, Math.floor((width - GAP * 6) / 7)));
+    const cardW = Math.max(30, Math.min(120, Math.floor((width - GAP * 6) / 7)));
     const cardH = Math.round(cardW * 1.42);
     const longest = Math.max(1, ...session.state.columns.map((pile) => pile.length));
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
@@ -272,7 +273,7 @@ export function mount() {
     if (root.left) root.left.textContent = String(cardsLeft(state));
     if (root.seed) root.seed.textContent = "";
     if (root.undo) root.undo.disabled = session.history.length === 0;
-    if (root.dealNumber) root.dealNumber.textContent = `Seed ${state.seed}`;
+    applyHintHighlight();
     updateMute();
     fit();
     requestAnimationFrame(() => {
@@ -288,14 +289,31 @@ export function mount() {
   }
 
   function hideOverlay() {
+    session.modal = null;
     if (!root.overlay) return;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
   }
 
+  function applyHintHighlight() {
+    const move = session.hintMove;
+    if (!move) return;
+    if (move.type === "draw") {
+      document.querySelector('[data-drop="stock"]')?.classList.add("hint-to");
+      return;
+    }
+    if (move.type === "play") {
+      document
+        .querySelector(`.card[data-zone="column"][data-index="${move.col}"][data-count="1"]`)
+        ?.classList.add("hint-from");
+      document.querySelector('[data-drop="waste"]')?.classList.add("hint-to");
+    }
+  }
+
   function showEnd() {
     const state = session.state;
     session.endShown = true;
+    session.modal = "win";
     const cleared = isCleared(state);
     const value = score(state);
     const best = session.stats.bestScore;
@@ -308,6 +326,7 @@ export function mount() {
         <li><span>Stock left</span>${state.stock.length}</li>
         <li><span>Best score</span>${best == null ? "—" : best}</li>
       </ul>
+      <p data-testid="win-count">Courses cleared ${session.stats.cleared}</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay this deal</button>
@@ -317,15 +336,58 @@ export function mount() {
   }
 
   function showHelp() {
+    session.modal = "help";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>Golf</h2>
+      <div class="modal-actions help-deal">
+        <p data-testid="deal-number">Seed ${session.state.seed}</p>
+        <button type="button" class="btn" data-act="replay" data-testid="btn-replay">Replay this deal</button>
+      </div>
       <p>Seven columns of five face-up cards. The next card starts the waste, and the other sixteen stay face down in the stock.</p>
       <p>Play the exposed card of a column onto the waste when it is one rank higher or one rank lower. Suit does not matter. Only that exposed card can be played.</p>
       <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
       <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
+      </div>
+    </div>`;
+  }
+
+  function gameInProgress() {
+    return session.state.moves > 0 && !session.state.over;
+  }
+
+  function confirmNewDeal() {
+    if (!gameInProgress()) {
+      startDeal(undefined);
+      return;
+    }
+    session.modal = "confirm";
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
+      <h2>Start a new deal?</h2>
+      <p>The current deal will be abandoned.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok">New deal</button>
+      </div>
+    </div>`;
+  }
+
+  function confirmReplay() {
+    if (!gameInProgress()) {
+      replay();
+      return;
+    }
+    session.modal = "confirm";
+    root.overlay.hidden = false;
+    root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
+      <h2>Replay this deal?</h2>
+      <p>The current deal will be abandoned.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
+        <button type="button" class="btn primary" data-act="replay" data-testid="confirm-ok">Replay</button>
       </div>
     </div>`;
   }
@@ -352,6 +414,7 @@ export function mount() {
     hideOverlay();
     session.history = [];
     session.drag = null;
+    session.hintMove = null;
     session.endShown = false;
     session.notedEnd = false;
     session.countedClear = false;
@@ -378,6 +441,7 @@ export function mount() {
     session.history.push(cloneState(session.state));
     if (session.history.length > HISTORY_CAP) session.history.shift();
     session.state = result.state;
+    session.hintMove = null;
     if (session.state.over) noteRoundEnd();
     persist();
     render();
@@ -399,6 +463,7 @@ export function mount() {
     const wasOver = session.state.over;
     const wasCleared = wasOver && session.countedClear && isCleared(session.state);
     session.state = continueClock(session.state, session.history.pop());
+    session.hintMove = null;
     if (wasCleared && !isCleared(session.state)) {
       session.stats.cleared = Math.max(0, session.stats.cleared - 1);
       session.countedClear = false;
@@ -543,9 +608,19 @@ export function mount() {
     session.drag = null;
   });
   listen(window, "resize", () => fit());
+  function doHint() {
+    const move = findHint(session.state);
+    session.hintMove = move;
+    render();
+    if (!move) setStatus("No moves — try Undo or a new deal.");
+    else if (move.type === "draw") setStatus("Draw from the stock.");
+    else setStatus("A legal move is highlighted.");
+    return move;
+  }
+
   listen(root.undo, "click", doUndo);
-  listen(document.getElementById("btn-new"), "click", () => startDeal(undefined));
-  listen(document.getElementById("btn-replay"), "click", replay);
+  listen(document.getElementById("btn-new"), "click", () => confirmNewDeal());
+  listen(document.getElementById("btn-hint"), "click", doHint);
   listen(document.getElementById("btn-help"), "click", showHelp);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
@@ -561,7 +636,10 @@ export function mount() {
     if (!btn) return;
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") startDeal(undefined);
-    else if (btn.dataset.act === "replay") replay();
+    else if (btn.dataset.act === "replay") {
+      if (session.modal === "help") confirmReplay();
+      else replay();
+    }
   });
   listen(window, "keydown", (event) => {
     const key = event.key.toLowerCase();
@@ -577,8 +655,9 @@ export function mount() {
     if (key === "u" || (key === "z" && (event.ctrlKey || event.metaKey))) {
       event.preventDefault();
       doUndo();
-    } else if (key === "n") startDeal(undefined);
-    else if (key === "r") replay();
+    } else if (key === "n") confirmNewDeal();
+    else if (key === "r") confirmReplay();
+    else if (key === "h") doHint();
     else if (key === " " || event.key === "Spacebar") {
       event.preventDefault();
       doApply({ type: "draw" });
@@ -600,6 +679,7 @@ export function mount() {
     setState(next) {
       session.state = next;
       session.drag = null;
+      session.hintMove = null;
       session.endShown = false;
       session.notedEnd = !!next?.over;
       session.countedClear = false;
@@ -615,6 +695,7 @@ export function mount() {
       startDeal(seed);
     },
     undo: doUndo,
+    hint: doHint,
     move: (action) => doApply(action),
     apply: (action) => doApply(action),
     historyLength: () => session.history.length,

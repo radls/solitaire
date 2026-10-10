@@ -1452,6 +1452,57 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   margin-top: 0.7rem;
 }
 
+.credit.contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.35em;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+
+.picker > .credit.contact,
+.modal > .credit.contact {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0;
+  justify-self: stretch;
+}
+
+.credit.contact a,
+.credit.contact a:visited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.4rem 0.15rem;
+  color: var(--gold);
+  font: inherit;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.credit.contact a:hover,
+.credit.contact a:focus,
+.credit.contact a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.credit.contact a:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 .tip-entry:hover,
 .tip-entry:focus-visible {
   color: var(--gold);

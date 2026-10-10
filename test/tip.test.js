@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "../src/config.js";
+import { CONTACT_EMAIL, SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "../src/config.js";
 import {
   bitcoinUri,
   isLikelyBech32Btc,
@@ -254,14 +254,40 @@ describe("tipSections", () => {
     expect(cta.indexOf('data-testid="btn-tip"')).toBeGreaterThan(cta.indexOf("Enjoying a quiet game?"));
   });
 
-  it("renders a quiet maker credit with no link", () => {
+  it("renders a quiet maker credit with no link on the credit line", () => {
     const picker = creditHTML("credit");
     expect(picker).toContain('data-testid="credit"');
     expect(picker).toContain("Made by Grok Bot");
-    expect(picker).not.toMatch(/<a\b/i);
     expect(picker).not.toMatch(/\p{Extended_Pictographic}/u);
-    expect(creditHTML("help-credit")).toContain('data-testid="help-credit"');
-    expect(creditHTML("help-credit")).toContain("Made by Grok Bot");
+    const creditLine = picker.slice(0, picker.indexOf("</p>") + 4);
+    expect(creditLine).toBe('<p class="credit" data-testid="credit">Made by Grok Bot</p>');
+    expect(creditLine).not.toMatch(/<a\b/i);
+    const help = creditHTML("help-credit");
+    expect(help.startsWith('<p class="credit" data-testid="help-credit">Made by Grok Bot</p>')).toBe(true);
+    expect(help).toContain("Made by Grok Bot");
+  });
+
+  it("adds a mailto contact under the credit and hides it when the address is empty", () => {
+    expect(CONTACT_EMAIL).toBe("radls@mail.grokbot.com");
+    const picker = creditHTML("credit");
+    expect(picker).toContain("mailto:radls@mail.grokbot.com");
+    expect(picker).toContain(`href="mailto:${CONTACT_EMAIL}"`);
+    expect(picker).toContain('data-testid="contact-email">radls@mail.grokbot.com</a>');
+    expect(picker).toContain("Questions or ideas:");
+    expect(picker.indexOf("Made by Grok Bot")).toBeLessThan(picker.indexOf("mailto:"));
+    expect(picker).not.toContain('data-testid="help-contact-email"');
+
+    const help = creditHTML("help-credit");
+    expect(help).toContain("mailto:radls@mail.grokbot.com");
+    expect(help).toContain('data-testid="help-contact-email"');
+    expect(help).not.toContain('data-testid="contact-email"');
+
+    const hidden = creditHTML("credit", "");
+    expect(hidden).toBe('<p class="credit" data-testid="credit">Made by Grok Bot</p>');
+    expect(hidden).not.toContain("mailto:");
+    expect(hidden).not.toContain("contact");
+    expect(creditHTML("help-credit", "  ")).not.toContain("mailto:");
+    expect(creditHTML("credit", "ada@example.com")).toContain('href="mailto:ada@example.com"');
   });
 
   it("omits the share link when the site URL is empty", () => {

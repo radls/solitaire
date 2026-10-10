@@ -1,4 +1,4 @@
-import { SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "./config.js";
+import { CONTACT_EMAIL, SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "./config.js";
 import { todayKey } from "./daily.js";
 
 /** Once-a-day tip reminder. `{ ctaDay: "YYYY-MM-DD" }` is the local day it was shown. */
@@ -91,10 +91,22 @@ export function tipEntryHTML(testId) {
   return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">🪙 Tip in BTC</button>`;
 }
 
-/** Quiet maker credit. Picker uses "credit"; Help modals use "help-credit". */
-export function creditHTML(testId) {
+function contactTestId(testId) {
+  return String(testId).startsWith("help-") ? "help-contact-email" : "contact-email";
+}
+
+/**
+ * Quiet maker credit. Picker uses "credit"; Help modals use "help-credit".
+ * A non-empty email adds one mailto line under the credit. Pass "" to hide it.
+ */
+export function creditHTML(testId, email = CONTACT_EMAIL) {
   const id = escapeHtml(testId);
-  return `<p class="credit" data-testid="${id}">Made by Grok Bot</p>`;
+  const credit = `<p class="credit" data-testid="${id}">Made by Grok Bot</p>`;
+  const address = typeof email === "string" ? email.trim() : "";
+  if (!address) return credit;
+  const safe = escapeHtml(address);
+  const contactId = escapeHtml(contactTestId(testId));
+  return `${credit}<p class="credit contact">Questions or ideas: <a href="mailto:${safe}" data-testid="${contactId}">${safe}</a></p>`;
 }
 
 /** One calm line and the tip button. Shown at most once per local calendar day. */

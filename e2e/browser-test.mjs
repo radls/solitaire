@@ -961,6 +961,8 @@ async function batch2(vp) {
   ok(B, P, "picker has a soft Tip in BTC entry (>= 44px)", !!ptBox && ptBox.height >= 43.5 && (await pt.innerText().catch(() => "")).trim() === "🪙 Tip in BTC", ptBox ? `${Math.round(ptBox.height)}px` : "missing");
   const credit = await H(page, () => { const c = document.querySelector('[data-testid="credit"]'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.textContent.trim(), link: !!c.querySelector("a"), inView: r.bottom <= innerHeight, scroll: document.documentElement.scrollHeight > innerHeight + 1 }; });
   ok(B, P, "picker shows a quiet 'Made by Grok Bot' credit", credit && credit.text === "Made by Grok Bot" && !credit.link && credit.inView && !credit.scroll, JSON.stringify(credit));
+  const ce = await H(page, () => { const a = document.querySelector('[data-testid="contact-email"]'); if (!a) return null; const r = a.getBoundingClientRect(); return { href: a.getAttribute("href"), text: a.textContent.trim(), h: Math.round(r.height), inView: r.bottom <= innerHeight && r.right <= innerWidth + 1, scroll: document.documentElement.scrollHeight > innerHeight + 1 || document.documentElement.scrollWidth > innerWidth + 1 }; });
+  ok(B, P, "picker contact email is a mailto link near the credit", ce && ce.href === "mailto:radls@mail.grokbot.com" && ce.text === "radls@mail.grokbot.com" && ce.h >= 43.5 && ce.inView && !ce.scroll, JSON.stringify(ce));
   ok(B, P, "no coffee wording anywhere on the picker", !(await H(page, () => /coffee|☕/i.test(document.body.innerText))));
   await pt.click().catch(() => {}); await page.waitForTimeout(400);
   let addr = ((await page.locator('[data-testid="tip-btc-address"]:visible').first().textContent().catch(() => "")) || "").trim();
@@ -978,6 +980,7 @@ async function batch2(vp) {
     if (has) { await ht.scrollIntoViewIfNeeded().catch(() => {}); await ht.click().catch(() => {}); await page.waitForTimeout(300); }
     addr = ((await page.locator('#overlay [data-testid="tip-btc-address"]').first().textContent().catch(() => "")) || "").trim();
     ok(B, P, `${g} Help shows 'Made by Grok Bot'`, ((await page.locator('#overlay [data-testid="help-credit"]').textContent().catch(() => "")) || "").trim() === "Made by Grok Bot");
+    ok(B, P, `${g} Help has the contact mailto`, (await page.locator('#overlay [data-testid="help-contact-email"]').getAttribute("href").catch(() => null)) === "mailto:radls@mail.grokbot.com");
     ok(B, P, `${g} Help has a Tip entry that opens the panel`, has && addr === BTC_ADDR, addr || (await H(page, () => (document.querySelector("#overlay")?.hidden ? "overlay hidden " : "") + (document.querySelector("#overlay")?.innerText || "").slice(0, 100))));
     await closeModal(page); await closeModal(page);
   }
@@ -1001,6 +1004,7 @@ async function batch2(vp) {
   ok(B, P, "Not now dismisses the install hint", !(await vis(page, '[data-testid="install-hint"]')));
   await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
   await golfQuickWin(page, touch);
+  ok(B, P, "win screen has no contact email", !(await H(page, () => /radls@mail\.grokbot\.com/.test(document.querySelector('[data-testid="win-modal"]')?.innerText || ""))));
   ok(B, P, "second win today: no tip CTA, Tip button still there", !(await vis(page, '[data-testid="tip-cta"]')) && await vis(page, '[data-testid="win-modal"] [data-testid="btn-tip"]'));
   await closeModal(page); await page.waitForTimeout(500);
   ok(B, P, "install hint stays dismissed", !(await vis(page, '[data-testid="install-hint"]')));

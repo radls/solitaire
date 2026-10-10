@@ -117,7 +117,7 @@ async function tipCheck(page, G, P) {
   ok(G, P, "win screen has a Tip button >= 44px", vis && h >= 43.5, `${h}px`);
   if (!vis) return;
   const label = ((await btn.textContent()) || "").trim();
-  ok(G, P, "Tip button says 'Buy me a coffee in BTC'", /buy me a coffee in btc/i.test(label), label);
+  ok(G, P, "Tip button says '🪙 Buy me some tokens in BTC'", label === "🪙 Buy me some tokens in BTC", label);
   const prominent = await page.evaluate(() => {
     const m = document.querySelector('[data-testid="win-modal"]'); const t = m.querySelector('[data-testid="btn-tip"]');
     const others = [...m.querySelectorAll("button")].filter(b => b !== t && /new deal|replay|play again|close/i.test(b.textContent));
@@ -127,7 +127,7 @@ async function tipCheck(page, G, P) {
   await btn.click(); await page.waitForTimeout(300);
   const panel = page.locator('[data-testid="tip-panel"]');
   ok(G, P, "Tip opens the tip panel", await panel.isVisible().catch(() => false));
-  ok(G, P, "panel heading 'Buy me a coffee in BTC'", /buy me a coffee in btc/i.test(await panel.innerText().catch(() => "")));
+  ok(G, P, "panel heading 'Buy me some tokens in BTC'", /Buy me some tokens in BTC/.test(await panel.innerText().catch(() => "")) && !/coffee/i.test(await panel.innerText().catch(() => "")));
   const addr = ((await page.locator('[data-testid="tip-btc-address"]').textContent().catch(() => "")) || "").trim();
   ok(G, P, "Bitcoin address shown exactly", addr === BTC, addr);
   const qr = await page.locator('[data-testid="tip-btc-qr"] svg').count();
@@ -958,7 +958,10 @@ async function batch2(vp) {
   await home(page);
   const pt = page.locator('[data-testid="picker-tip"]');
   const ptBox = await pt.boundingBox().catch(() => null);
-  ok(B, P, "picker has a soft Tip in BTC entry (>= 44px)", !!ptBox && ptBox.height >= 43.5 && /tip in btc/i.test(await pt.innerText().catch(() => "")), ptBox ? `${Math.round(ptBox.height)}px` : "missing");
+  ok(B, P, "picker has a soft Tip in BTC entry (>= 44px)", !!ptBox && ptBox.height >= 43.5 && (await pt.innerText().catch(() => "")).trim() === "🪙 Tip in BTC", ptBox ? `${Math.round(ptBox.height)}px` : "missing");
+  const credit = await H(page, () => { const c = document.querySelector('[data-testid="credit"]'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.textContent.trim(), link: !!c.querySelector("a"), inView: r.bottom <= innerHeight, scroll: document.documentElement.scrollHeight > innerHeight + 1 }; });
+  ok(B, P, "picker shows a quiet 'Made by Grok Bot' credit", credit && credit.text === "Made by Grok Bot" && !credit.link && credit.inView && !credit.scroll, JSON.stringify(credit));
+  ok(B, P, "no coffee wording anywhere on the picker", !(await H(page, () => /coffee|☕/i.test(document.body.innerText))));
   await pt.click().catch(() => {}); await page.waitForTimeout(400);
   let addr = ((await page.locator('[data-testid="tip-btc-address"]:visible').first().textContent().catch(() => "")) || "").trim();
   ok(B, P, "picker Tip opens the tip panel with the exact address", addr === BTC_ADDR, addr);
@@ -974,6 +977,7 @@ async function batch2(vp) {
     const has = await ht.count() > 0;
     if (has) { await ht.scrollIntoViewIfNeeded().catch(() => {}); await ht.click().catch(() => {}); await page.waitForTimeout(300); }
     addr = ((await page.locator('#overlay [data-testid="tip-btc-address"]').first().textContent().catch(() => "")) || "").trim();
+    ok(B, P, `${g} Help shows 'Made by Grok Bot'`, ((await page.locator('#overlay [data-testid="help-credit"]').textContent().catch(() => "")) || "").trim() === "Made by Grok Bot");
     ok(B, P, `${g} Help has a Tip entry that opens the panel`, has && addr === BTC_ADDR, addr || (await H(page, () => (document.querySelector("#overlay")?.hidden ? "overlay hidden " : "") + (document.querySelector("#overlay")?.innerText || "").slice(0, 100))));
     await closeModal(page); await closeModal(page);
   }
@@ -986,7 +990,7 @@ async function batch2(vp) {
   const ctaBox = await cta.boundingBox().catch(() => null);
   ok(B, P, "first win today shows the tip CTA", !!ctaBox, await H(page, () => document.querySelector("#overlay")?.innerText?.slice(0, 120)));
   ok(B, P, "tip CTA is above the fold", !!ctaBox && ctaBox.y + ctaBox.height <= (await H(page, () => innerHeight)), JSON.stringify(ctaBox));
-  ok(B, P, "tip CTA has the Buy me a coffee in BTC button", await vis(page, '[data-testid="tip-cta"] [data-testid="btn-tip"], [data-testid="win-modal"] [data-testid="btn-tip"]'));
+  ok(B, P, "tip CTA has the Buy me some tokens in BTC button", await vis(page, '[data-testid="tip-cta"] [data-testid="btn-tip"], [data-testid="win-modal"] [data-testid="btn-tip"]'));
   if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-tip-cta.png` });
   await closeModal(page); await page.waitForTimeout(500);
   ok(B, P, "install hint appears after the first win", await vis(page, '[data-testid="install-hint"]'));

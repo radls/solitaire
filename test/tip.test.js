@@ -9,6 +9,7 @@ import {
   streakLine,
   stuckTipHTML,
   TIP_STORE_KEY,
+  creditHTML,
   tipCtaHTML,
   tipEntryHTML,
   tipSections,
@@ -82,22 +83,22 @@ describe("streakLine", () => {
   });
 
   it("writes one quiet line at three wins and above", () => {
-    const line = "3 wins in a row. If these games help you unwind, a coffee is always welcome.";
+    const line = "3 wins in a row. If these games help you unwind, a few tokens are always welcome.";
     expect(streakLine(3)).toBe(line);
     expect(streakLine(3.8)).toBe(line);
     expect(streakLine(12)).toBe(
-      "12 wins in a row. If these games help you unwind, a coffee is always welcome.",
+      "12 wins in a row. If these games help you unwind, a few tokens are always welcome.",
     );
     expect(streakLine(4)).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 });
 
 describe("winTipHTML", () => {
-  it("keeps the coffee button on its own row and the streak line above it", () => {
+  it("keeps the tip button on its own row and the streak line above it", () => {
     const quiet = winTipHTML(2);
     expect(quiet).not.toContain("tip-streak");
     expect(quiet).toContain('data-testid="btn-tip"');
-    expect(quiet).toContain("☕ Buy me a coffee in BTC");
+    expect(quiet).toContain("🪙 Buy me some tokens in BTC");
     expect(quiet).toContain('class="tip-offer"');
 
     const loud = winTipHTML(3);
@@ -105,7 +106,7 @@ describe("winTipHTML", () => {
     const buttonAt = loud.indexOf('data-testid="btn-tip"');
     expect(streakAt).toBeGreaterThanOrEqual(0);
     expect(buttonAt).toBeGreaterThan(streakAt);
-    expect(loud).toContain("3 wins in a row. If these games help you unwind, a coffee is always welcome.");
+    expect(loud).toContain("3 wins in a row. If these games help you unwind, a few tokens are always welcome.");
     expect(loud).not.toMatch(/<a\b/i);
   });
 });
@@ -224,7 +225,7 @@ describe("tipSections", () => {
     expect(first).toContain('data-testid="tip-cta"');
     expect(first).toContain("Enjoying a quiet game? A small BTC tip keeps it going.");
     expect(first).toContain('data-testid="btn-tip"');
-    expect(first).toContain("☕ Buy me a coffee in BTC");
+    expect(first).toContain("🪙 Buy me some tokens in BTC");
     expect(first).not.toContain("tip-streak");
     expect(first).not.toMatch(/!/);
     expect(first).not.toMatch(/<a\b|https?:|x\.com|stripe/i);
@@ -245,12 +246,22 @@ describe("tipSections", () => {
     const entry = tipEntryHTML("help-tip");
     expect(entry).toContain('data-testid="help-tip"');
     expect(entry).toContain('data-act="tip"');
-    expect(entry).toContain("☕ Tip in BTC");
+    expect(entry).toContain("🪙 Tip in BTC");
     expect(entry).not.toContain(TIP_BTC_ADDRESS);
     expect(entry).not.toMatch(/!/);
     const cta = tipCtaHTML();
     expect(cta).toContain('data-testid="tip-cta"');
     expect(cta.indexOf('data-testid="btn-tip"')).toBeGreaterThan(cta.indexOf("Enjoying a quiet game?"));
+  });
+
+  it("renders a quiet maker credit with no link", () => {
+    const picker = creditHTML("credit");
+    expect(picker).toContain('data-testid="credit"');
+    expect(picker).toContain("Made by Grok Bot");
+    expect(picker).not.toMatch(/<a\b/i);
+    expect(picker).not.toMatch(/\p{Extended_Pictographic}/u);
+    expect(creditHTML("help-credit")).toContain('data-testid="help-credit"');
+    expect(creditHTML("help-credit")).toContain("Made by Grok Bot");
   });
 
   it("omits the share link when the site URL is empty", () => {

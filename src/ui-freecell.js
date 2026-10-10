@@ -17,7 +17,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { shakeMoved } from "./motion.js";
-import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
+import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
   dailyDoneText,
   dailyFreeCellDeal,
@@ -459,6 +459,7 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
+      ${creditHTML("help-credit")}
     </div>`;
     syncPlayClock();
   }

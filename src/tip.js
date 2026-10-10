@@ -36,7 +36,7 @@ export function streakLine(streak) {
   if (!Number.isFinite(n)) return "";
   const count = Math.floor(n);
   if (count < 3) return "";
-  return `${count} wins in a row. If these games help you unwind, a coffee is always welcome.`;
+  return `${count} wins in a row. If these games help you unwind, a few tokens are always welcome.`;
 }
 
 /**
@@ -75,7 +75,7 @@ function escapeHtml(value) {
 }
 
 export function tipButtonHTML() {
-  return `<button type="button" class="btn tip-btn" data-act="tip" data-testid="btn-tip">☕ Buy me a coffee in BTC</button>`;
+  return `<button type="button" class="btn tip-btn" data-act="tip" data-testid="btn-tip">🪙 Buy me some tokens in BTC</button>`;
 }
 
 /** Streak line (only at 3+) and the tip button, on their own rows under the win stats. */
@@ -88,10 +88,16 @@ export function winTipHTML(streak) {
 /** Soft entry that opens the tip panel. Picker and Help use this; it is not the once-a-day CTA. */
 export function tipEntryHTML(testId) {
   const id = escapeHtml(testId);
-  return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">☕ Tip in BTC</button>`;
+  return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">🪙 Tip in BTC</button>`;
 }
 
-/** One calm line and the coffee button. Shown at most once per local calendar day. */
+/** Quiet maker credit. Picker uses "credit"; Help modals use "help-credit". */
+export function creditHTML(testId) {
+  const id = escapeHtml(testId);
+  return `<p class="credit" data-testid="${id}">Made by Grok Bot</p>`;
+}
+
+/** One calm line and the tip button. Shown at most once per local calendar day. */
 export function tipCtaHTML() {
   return `<div class="tip-cta" data-testid="tip-cta"><p>${escapeHtml(TIP_CTA_LINE)}</p><div class="tip-offer">${tipButtonHTML()}</div></div>`;
 }
@@ -155,7 +161,7 @@ function claimTipCta(today, storage) {
 
 /**
  * Win screens. The first end-of-game of the local day gets the CTA.
- * Later wins that day keep the small coffee button.
+ * Later wins that day keep the small tip button.
  */
 export function winScreenTipHTML(streak, today, storage) {
   const cta = claimTipCta(today, storage);
@@ -169,7 +175,7 @@ export function stuckTipHTML(today, storage) {
 }
 
 function tipPanelMarkup(sections) {
-  const parts = [`<div class="tip-panel" data-testid="tip-panel">`, `<h3>Buy me a coffee in BTC</h3>`];
+  const parts = [`<div class="tip-panel" data-testid="tip-panel">`, `<h3>Buy me some tokens in BTC</h3>`];
   if (sections.btc) {
     const address = escapeHtml(sections.address);
     const uri = escapeHtml(sections.uri);

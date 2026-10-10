@@ -17,7 +17,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { shakeMoved } from "./motion.js";
-import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
+import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
   bindThumb,
@@ -431,6 +431,7 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
+      ${creditHTML("help-credit")}
     </div>`;
     syncPlayClock();
   }

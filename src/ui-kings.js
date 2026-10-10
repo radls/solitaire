@@ -12,6 +12,7 @@ import {
 } from "./game/kings.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
+import { toggleTipPanel, winTipHTML } from "./tip.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -440,6 +441,7 @@ export function mount() {
         <li><span>Moves</span>${state.moves}</li>
       </ul>
       <p data-testid="win-count">Wins ${session.stats.won}</p>
+      ${winTipHTML(session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay</button>
@@ -528,7 +530,9 @@ export function mount() {
     if (!session.state?.won) return;
     if (!session.countedWin) {
       session.stats.won += 1;
+      session.stats.streak = (session.stats.streak || 0) + 1;
       session.countedWin = true;
+      persist();
     }
     sounds.win(session.muted);
     showWin();
@@ -608,6 +612,7 @@ export function mount() {
     session.drag = null;
     if (wasWin && !session.state.won) {
       session.stats.won = Math.max(0, session.stats.won - 1);
+      session.stats.streak = Math.max(0, (session.stats.streak || 0) - 1);
       session.countedWin = false;
     }
     hideOverlay();
@@ -882,6 +887,7 @@ export function mount() {
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
+    if (event.target.closest(".tip-panel")) return;
     const btn = event.target.closest("[data-act]");
     if (!btn) {
       if (event.target === root.overlay && (session.modal === "help" || session.modal === "confirm")) {
@@ -889,11 +895,20 @@ export function mount() {
       }
       return;
     }
+    if (btn.dataset.act === "tip") {
+      toggleTipPanel(btn.closest(".modal"));
+      return;
+    }
     if (btn.dataset.act === "close") hideOverlay();
-    else if (btn.dataset.act === "new") startDeal(undefined);
-    else if (btn.dataset.act === "replay") {
+    else if (btn.dataset.act === "new") {
+      if (gameInProgress()) session.stats.streak = 0;
+      startDeal(undefined);
+    } else if (btn.dataset.act === "replay") {
       if (session.modal === "help") confirmReplay();
-      else replay();
+      else {
+        if (gameInProgress()) session.stats.streak = 0;
+        replay();
+      }
     } else if (btn.dataset.act === "undo") doUndo();
   });
   listen(window, "keydown", (event) => {

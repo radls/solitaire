@@ -14,6 +14,7 @@ import {
 } from "./game/freecell.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
+import { toggleTipPanel, winTipHTML } from "./tip.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -339,6 +340,7 @@ export function mount() {
       <p class="big">Well played</p>
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
       <p data-testid="win-count">Wins ${session.stats.won} of ${session.stats.played}</p>
+      ${winTipHTML(session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
@@ -425,6 +427,7 @@ export function mount() {
     if (session.winShown) return;
     if (!session.countedWin) {
       session.stats.won += 1;
+      session.stats.streak = (session.stats.streak || 0) + 1;
       session.countedWin = true;
     }
     persist();
@@ -568,6 +571,7 @@ export function mount() {
     session.winShown = false;
     if (wasWin && !session.state.won) {
       session.stats.won = Math.max(0, session.stats.won - 1);
+      session.stats.streak = Math.max(0, (session.stats.streak || 0) - 1);
       session.countedWin = false;
     }
     hideOverlay();
@@ -767,14 +771,22 @@ export function mount() {
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
+    if (event.target.closest(".tip-panel")) return;
     if (event.target === root.overlay) {
       if (session.modal === "confirm" || session.modal === "help") hideOverlay();
       return;
     }
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
+    if (btn.dataset.act === "tip") {
+      toggleTipPanel(btn.closest(".modal"));
+      return;
+    }
     if (btn.dataset.act === "close") hideOverlay();
-    else if (btn.dataset.act === "new") startDeal(Number(btn.dataset.deal) || randomDeal());
+    else if (btn.dataset.act === "new") {
+      if (gameInProgress()) session.stats.streak = 0;
+      startDeal(Number(btn.dataset.deal) || randomDeal());
+    }
   });
   listen(root.overlay, "submit", (event) => {
     if (!event.target.closest("[data-deal-form]")) return;

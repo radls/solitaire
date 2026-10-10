@@ -106,6 +106,55 @@ async function confirmCheck(page, G, P, touch) {
   }
 }
 
+async function tipCheck(page, G, P) {
+  const BTC = "bc1qqhkwfx9l7umufx66s8kzep8yamtvhafea73fdj";
+  const btn = page.locator('[data-testid="win-modal"] [data-testid="btn-tip"]').first();
+  const vis = await btn.isVisible().catch(() => false);
+  const h = vis ? (await btn.boundingBox()).height : 0;
+  ok(G, P, "win screen has a Tip button >= 44px", vis && h >= 43.5, `${h}px`);
+  if (!vis) return;
+  const label = ((await btn.textContent()) || "").trim();
+  ok(G, P, "Tip button says 'Buy me a coffee in BTC'", /buy me a coffee in btc/i.test(label), label);
+  const prominent = await page.evaluate(() => {
+    const m = document.querySelector('[data-testid="win-modal"]'); const t = m.querySelector('[data-testid="btn-tip"]');
+    const others = [...m.querySelectorAll("button")].filter(b => b !== t && /new deal|replay|play again|close/i.test(b.textContent));
+    return others.length > 0 && others.every(b => t.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  ok(G, P, "Tip sits above the New/Replay/Close row", prominent);
+  await btn.click(); await page.waitForTimeout(300);
+  const panel = page.locator('[data-testid="tip-panel"]');
+  ok(G, P, "Tip opens the tip panel", await panel.isVisible().catch(() => false));
+  ok(G, P, "panel heading 'Buy me a coffee in BTC'", /buy me a coffee in btc/i.test(await panel.innerText().catch(() => "")));
+  const addr = ((await page.locator('[data-testid="tip-btc-address"]').textContent().catch(() => "")) || "").trim();
+  ok(G, P, "Bitcoin address shown exactly", addr === BTC, addr);
+  const qr = await page.locator('[data-testid="tip-btc-qr"] svg').count();
+  ok(G, P, "Bitcoin QR rendered", qr > 0);
+  const open = await page.locator('[data-testid="tip-btc-open"]').getAttribute("href").catch(() => null);
+  ok(G, P, "wallet link is bitcoin: URI", open === `bitcoin:${BTC}`, open);
+  const note = await page.locator('[data-testid="tip-x-note"]').textContent().catch(() => "");
+  ok(G, P, "X Money note mentions @ZeusRadls (text only)", /Or tip via X Money by messaging @ZeusRadls/.test(note) && (await page.locator('[data-testid="tip-panel"] a[href*="x.com"]').count()) === 0, note);
+  const noStripe = await page.evaluate(() => !/stripe/i.test(document.querySelector('[data-testid="tip-panel"]').innerHTML));
+  ok(G, P, "no Stripe in tip panel", noStripe);
+  const copy = page.locator('[data-testid="tip-btc-copy"]');
+  await copy.click().catch(() => {}); await page.waitForTimeout(250);
+  const ct = (await copy.textContent().catch(() => "")).trim();
+  ok(G, P, "Copy address gives feedback", /copied|select/i.test(ct), ct);
+  const clip = await page.evaluate(() => navigator.clipboard?.readText?.().catch(() => null) ?? null).catch(() => null);
+  if (clip !== null) ok(G, P, "clipboard holds the address", clip === BTC, clip);
+  const fit = await page.evaluate(() => {
+    const m = document.querySelector('[data-testid="win-modal"]'); const r = m.getBoundingClientRect();
+    const scrollable = m.scrollHeight <= m.clientHeight + 1 || /(auto|scroll)/.test(getComputedStyle(m).overflowY);
+    const smallTargets = [...m.querySelectorAll('[data-testid="tip-panel"] button, [data-testid="tip-panel"] a')].filter(e => e.getBoundingClientRect().height < 43.5).length;
+    return { inView: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1, scrollable, noH: document.documentElement.scrollWidth <= innerWidth + 1, smallTargets };
+  });
+  ok(G, P, "tip panel fits (in viewport, no sideways scroll, 44px targets)", fit.inView && fit.scrollable && fit.noH && fit.smallTargets === 0, JSON.stringify(fit));
+  if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-${G}-tip.png` });
+  ok(G, P, "win screen still open after Tip/Copy", await winVisible(page));
+  await btn.scrollIntoViewIfNeeded().catch(() => {});
+  await btn.click(); await page.waitForTimeout(200);
+  ok(G, P, "Tip again hides the panel", !(await panel.isVisible().catch(() => false)));
+}
+
 async function common(page, P) {
   const theme = await H(page, () => document.documentElement.dataset.theme);
   ok("shell", P, "night theme is default", theme === "night", theme);
@@ -218,6 +267,7 @@ async function klondike(page, ctx, P, touch) {
   await page.waitForTimeout(400);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
   await winCountOk(page, G, P);
+  await tipCheck(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-klondike-win.png` });
   await closeModal(page);
 }
@@ -362,6 +412,7 @@ async function freecell(page, ctx, P, touch) {
   const distinct = [...new Set(samples)];
   ok(G, P, "finish animates cards one by one", sawAnim && distinct.length >= 3, `foundation counts seen: ${distinct.join(",")}`);
   ok(G, P, "win modal waits for the last card", !modalEarly && (await winVisible(page)), `final ${samples.at(-1)}`);
+  ok(G, P, "Tip shown on win screen after the finish animation", await page.locator('[data-testid="win-modal"] [data-testid="btn-tip"]').isVisible().catch(() => false));
   await page.screenshot({ path: `${SHOTS}/${P}-freecell-finish-win.png` });
   await closeModal(page);
   // Finish button path
@@ -405,6 +456,7 @@ async function freecell(page, ctx, P, touch) {
   await page.waitForTimeout(400);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
   await winCountOk(page, G, P);
+  await tipCheck(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-freecell-win.png` });
   await closeModal(page);
 }
@@ -496,6 +548,7 @@ async function golf(page, ctx, P, touch) {
   const txt = await page.locator('[data-testid="win-modal"]').innerText().catch(() => "");
   ok(G, P, "course cleared detected + score -2", (await winVisible(page)) && /-2/.test(txt), txt.replace(/\s+/g, " ").slice(0, 120));
   await winCountOk(page, G, P);
+  await tipCheck(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-golf-cleared.png` });
   await closeModal(page);
   // stuck round end via last stock draw
@@ -620,6 +673,7 @@ async function kings(page, ctx, P, touch) {
   await page.waitForTimeout(500);
   ok(G, P, "win detected + calm win modal", await winVisible(page));
   await winCountOk(page, G, P);
+  await tipCheck(page, G, P);
   await page.screenshot({ path: `${SHOTS}/${P}-kings-win.png` });
   await closeModal(page);
 }
@@ -629,6 +683,7 @@ for (const vp of [
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
 ]) {
   const ctx = await browser.newContext(vp.opts);
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
   const page = await ctx.newPage();
   const errs = []; page.on("pageerror", e => errs.push(e.message)); page.on("console", m => { if (m.type() === "error") errs.push(m.text()); });
   await page.goto(BASE); await page.waitForTimeout(600);

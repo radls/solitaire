@@ -16,6 +16,7 @@ import {
 } from "./game/klondike.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
+import { toggleTipPanel, winTipHTML } from "./tip.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -422,6 +423,7 @@ export function mount() {
           <li><span>Best time</span>${stats.bestTimeMs == null ? "—" : formatTime(stats.bestTimeMs)}</li>
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
         </ul>
+        ${winTipHTML(stats.streak)}
         <div class="modal-actions">
           <button class="btn primary" data-act="again">Play again</button>
         </div>
@@ -768,9 +770,14 @@ export function mount() {
   listen(root.draw3, "click", () => confirmNew(3));
 
   listen(root.overlay, "click", (event) => {
+    if (event.target.closest(".tip-panel")) return;
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     const act = btn.dataset.act;
+    if (act === "tip") {
+      toggleTipPanel(btn.closest(".modal"));
+      return;
+    }
     if (act === "close") hideOverlay();
     else if (act === "again" || act === "new") startNewGame(Number(btn.dataset.draw || session.state.drawCount));
   });

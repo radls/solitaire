@@ -14,6 +14,7 @@ import {
 } from "./game/golf.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
+import { toggleTipPanel, winTipHTML } from "./tip.js";
 
 const DRAG_THRESHOLD = 7;
 const HISTORY_CAP = 200;
@@ -75,6 +76,8 @@ export function mount() {
     notedEnd: false,
     countedClear: false,
     improvedBest: false,
+    missedRound: false,
+    streakBeforeMiss: 0,
     bestSnapshot: saved.stats.bestScore,
   };
 
@@ -327,6 +330,7 @@ export function mount() {
         <li><span>Best score</span>${best == null ? "—" : best}</li>
       </ul>
       <p data-testid="win-count">Courses cleared ${session.stats.cleared}</p>
+      ${winTipHTML(session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay this deal</button>
@@ -399,6 +403,12 @@ export function mount() {
     if (isCleared(session.state)) {
       session.stats.cleared += 1;
       session.countedClear = true;
+      session.stats.streak = (session.stats.streak || 0) + 1;
+      session.missedRound = false;
+    } else {
+      session.streakBeforeMiss = session.stats.streak || 0;
+      session.stats.streak = 0;
+      session.missedRound = true;
     }
     if (session.stats.bestScore == null || value < session.stats.bestScore) {
       session.bestSnapshot = session.stats.bestScore;
@@ -419,6 +429,7 @@ export function mount() {
     session.notedEnd = false;
     session.countedClear = false;
     session.improvedBest = false;
+    session.missedRound = false;
     session.state = deal({ seed });
     session.stats.played += 1;
     persist();
@@ -467,6 +478,11 @@ export function mount() {
     if (wasCleared && !isCleared(session.state)) {
       session.stats.cleared = Math.max(0, session.stats.cleared - 1);
       session.countedClear = false;
+      session.stats.streak = Math.max(0, (session.stats.streak || 0) - 1);
+    }
+    if (wasOver && !session.state.over && session.missedRound) {
+      session.stats.streak = session.streakBeforeMiss || 0;
+      session.missedRound = false;
     }
     if (wasOver && !session.state.over && session.improvedBest) {
       session.stats.bestScore = session.bestSnapshot;
@@ -628,17 +644,27 @@ export function mount() {
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
+    if (event.target.closest(".tip-panel")) return;
     if (event.target === root.overlay) {
       hideOverlay();
       return;
     }
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
+    if (btn.dataset.act === "tip") {
+      toggleTipPanel(btn.closest(".modal"));
+      return;
+    }
     if (btn.dataset.act === "close") hideOverlay();
-    else if (btn.dataset.act === "new") startDeal(undefined);
-    else if (btn.dataset.act === "replay") {
+    else if (btn.dataset.act === "new") {
+      if (gameInProgress()) session.stats.streak = 0;
+      startDeal(undefined);
+    } else if (btn.dataset.act === "replay") {
       if (session.modal === "help") confirmReplay();
-      else replay();
+      else {
+        if (gameInProgress()) session.stats.streak = 0;
+        replay();
+      }
     }
   });
   listen(window, "keydown", (event) => {
@@ -684,6 +710,7 @@ export function mount() {
       session.notedEnd = !!next?.over;
       session.countedClear = false;
       session.improvedBest = false;
+      session.missedRound = false;
       persist();
       render();
       refreshMeters();

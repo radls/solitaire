@@ -45,6 +45,10 @@ FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a 
 
 King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a corner when that move is legal. Header buttons stay at least 44px tall. Seed and Replay are in Help.
 
+## Tip jar
+
+Every win screen has a Tip button. It shows the Bitcoin address with a copy button and a QR code. Edit `TIP_BTC_ADDRESS` and `TIP_X_HANDLE` in `src/config.js`. An empty value hides that part. The X Money line is a plain text note, with no link.
+
 ## Scripts
 
 | Command | Purpose |

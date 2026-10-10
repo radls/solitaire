@@ -1,5 +1,6 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
+//   CRONLY=1 runs only the shell + daily/picker/timer/stuck/phone checks.
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
@@ -66,7 +67,7 @@ async function layoutChecks(page, G, P, label) {
 const statusText = (page) => page.locator("#status-text").textContent();
 
 async function openHelp(page) {
-  await page.locator('[data-testid="btn-help"]').first().click(); await page.waitForTimeout(250);
+  await page.locator('[data-testid="btn-help"], #btn-help').first().click(); await page.waitForTimeout(250);
 }
 async function helpDealText(page) {
   await openHelp(page);
@@ -80,7 +81,7 @@ async function winCountOk(page, G, P) {
 async function hintCheck(page, G, P) {
   await page.waitForTimeout(500);
   const before = await statusText(page);
-  await page.locator('[data-testid="btn-hint"]').first().click(); await page.waitForTimeout(250);
+  await page.locator('[data-testid="btn-hint"]:visible, [data-testid="thumb-hint"]:visible').first().click(); await page.waitForTimeout(250);
   const h = await H(page, () => document.querySelectorAll(".hint-from, .hint-to").length);
   const after = await statusText(page);
   ok(G, P, "Hint highlights a move or the stock", h > 0 && after !== before, `${h} highlighted; "${after}"`);
@@ -88,7 +89,7 @@ async function hintCheck(page, G, P) {
 async function confirmCheck(page, G, P, touch) {
   // requires moves > 0 and game in progress
   const st0 = strip(await S(page));
-  await page.locator('[data-testid="btn-new"]').first().click(); await page.waitForTimeout(250);
+  await page.locator('[data-testid="btn-new"]:visible, [data-testid="thumb-new"]:visible').first().click(); await page.waitForTimeout(250);
   const vis = await page.locator('[data-testid="confirm-modal"]').isVisible().catch(() => false);
   ok(G, P, "New mid-game asks to confirm", vis);
   if (vis) { await page.locator('[data-testid="confirm-cancel"]').click(); await page.waitForTimeout(200); }
@@ -160,7 +161,7 @@ async function common(page, P) {
   ok("shell", P, "night theme is default", theme === "night", theme);
   const vp = await H(page, () => document.querySelector('meta[name=viewport]').content);
   ok("shell", P, "viewport blocks zoom", /user-scalable=no/.test(vp) && /maximum-scale=1/.test(vp), vp);
-  ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid="pick-klondike"], [data-testid="pick-freecell"], [data-testid="pick-golf"], [data-testid="pick-kings"]').count()) === 4);
+  ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid^="pick-"][data-pick]').count()) === 4);
   const surprise = await H(page, () => /surprise/i.test(document.body.innerText));
   ok("shell", P, "no 'surprise' copy", !surprise);
 }
@@ -208,7 +209,7 @@ async function klondike(page, ctx, P, touch) {
     ok(G, P, "legal tap-select-tap move", h1 === h0 + 1, JSON.stringify(mv));
     const st2 = await statusText(page);
     ok(G, P, "status text updates after tap move", st2 !== st1 && !/destination/i.test(st2), `"${st1}" -> "${st2}"`);
-    await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+    await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
     ok(G, P, "undo restores state", strip(await S(page)) === strip(before));
   } else ok(G, P, "legal tap-select-tap move", false, "no legal move found");
   // drag
@@ -229,7 +230,7 @@ async function klondike(page, ctx, P, touch) {
   ok(G, P, "state persists across reload", strip(await S(page)) === snap);
   const e0 = await H(page, () => Date.now() - window.__solitaire.getState().startedAt);
   if (await H(page, () => window.__solitaire.historyLength()) > 0) {
-    await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+    await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
     const e1 = await H(page, () => Date.now() - window.__solitaire.getState().startedAt);
     ok(G, P, "timer continuous on undo after reload", Math.abs(e1 - e0) < 1500, `${e0}ms -> ${e1}ms`);
   } else ok(G, P, "timer continuous on undo after reload", true, "no history; skipped");
@@ -310,8 +311,8 @@ async function freecell(page, ctx, P, touch) {
   await drag(page, ctx, page.locator('.card[data-zone="cascade"][data-index="0"]').last(), page.locator('[data-drop="freecell:1"]'), touch);
   st = JSON.parse(await S(page));
   ok(G, P, "drag move to free cell", st.freecells[1]?.id === "diamonds-6");
-  await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
-  await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+  await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
+  await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
   ok(G, P, "undo x2 restores deal", strip(await S(page)) === strip(before));
   // QA path: 2 moves, Help -> Deal (same #) must confirm; Keep playing keeps progress; go-ahead resets
   await page.waitForTimeout(600);
@@ -491,7 +492,7 @@ async function golf(page, ctx, P, touch) {
     await tapEl(page, page.locator(`.card[data-zone="column"][data-index="${c}"]`).last(), touch);
     st = JSON.parse(await S(page));
     ok(G, P, "legal tap play to waste", st.columns[c].length === JSON.parse(before).columns[c].length - 1);
-    await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+    await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
     ok(G, P, "undo restores state", strip(await S(page)) === strip(before));
     await drag(page, ctx, page.locator(`.card[data-zone="column"][data-index="${c}"]`).last(), page.locator('[data-drop="waste"]'), touch);
     st = JSON.parse(await S(page));
@@ -620,7 +621,7 @@ async function kings(page, ctx, P, touch) {
     ok(G, P, "legal tap-select-tap move", (await H(page, () => window.__solitaire.historyLength())) === h0 + 1, JSON.stringify(mv));
     const s2 = await statusText(page);
     ok(G, P, "status text updates after tap move", s2 !== s1, `"${s1}" -> "${s2}"`);
-    await tapEl(page, page.locator('[data-testid="btn-undo"]'), false);
+    await tapEl(page, page.locator('[data-testid="btn-undo"]:visible, [data-testid="thumb-undo"]:visible'), false);
     ok(G, P, "undo restores state", strip(await S(page)) === strip(before));
     await page.waitForTimeout(500);
     const h1 = await H(page, () => window.__solitaire.historyLength());
@@ -678,6 +679,181 @@ async function kings(page, ctx, P, touch) {
   await closeModal(page);
 }
 
+// ---- Play CR batch 1 checks ----
+const vis = (page, sel) => page.locator(sel).first().isVisible().catch(() => false);
+const todayKey = (page) => H(page, () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+async function home(page) { await closeModal(page); await page.locator('[data-testid="btn-home"]').first().click(); await page.waitForTimeout(300); }
+async function uiBtn(page, name, P) { // phone uses the bottom thumb bar
+  const t = page.locator(`[data-testid="thumb-${name}"]`);
+  if (P === "mobile" && await t.isVisible().catch(() => false)) return t;
+  return page.locator(`[data-testid="btn-${name}"]`).first();
+}
+async function crChecks(page, ctx, P, touch) {
+  const C = "cr";
+  // CR2 picker
+  await home(page);
+  const meters = await H(page, () => ["meter-time", "meter-moves", "meter-score"].map(id => document.getElementById(id)).filter(e => e && e.offsetParent && e.getClientRects().length).length);
+  ok(C, P, "picker hides Time/Moves/Score placeholders", meters === 0, `${meters} visible`);
+  for (const g of ["klondike", "freecell", "golf", "kings"]) {
+    const t = (await page.locator(`[data-testid="pick-stats-${g}"]`).textContent().catch(() => "")).trim();
+    ok(C, P, `picker stats on ${g}`, /(Wins|Cleared) \d+ · Streak \d+|No games yet/.test(t), t);
+    ok(C, P, `Today's deal button on ${g}`, await vis(page, `[data-testid="daily-${g}"]`));
+  }
+  await page.screenshot({ path: `${SHOTS}/${P}-picker-cr.png` });
+  // honest resume: fresh klondike deal with 0 moves -> no Resume
+  await pick(page, "klondike");
+  await H(page, () => window.__solitaire.newGame({ seed: 4242 }));
+  await page.waitForTimeout(300);
+  await closeModal(page);
+  const mv0 = await H(page, () => window.__solitaire.getState().moves);
+  // CR4: timer not started before first move
+  await page.waitForTimeout(1300);
+  const t0 = (await page.locator("#meter-time").textContent()).trim();
+  ok(C, P, "timer waits for first move", mv0 === 0 && /^0:00$/.test(t0), `moves ${mv0}, ${t0}`);
+  await home(page);
+  ok(C, P, "no Resume before a real move", !(await vis(page, '[data-testid="resume-klondike"]')));
+  await pick(page, "klondike");
+  await tapEl(page, page.locator('[data-drop="stock"]').first(), touch);
+  await page.waitForTimeout(1300);
+  const t1 = (await page.locator("#meter-time").textContent()).trim();
+  ok(C, P, "timer starts on first move", t1 !== "0:00", t1);
+  // pause while help open
+  await openHelp(page); await page.waitForTimeout(300);
+  const e1 = await H(page, () => document.getElementById("meter-time").textContent);
+  await page.waitForTimeout(2200);
+  const e2 = await H(page, () => document.getElementById("meter-time").textContent);
+  ok(C, P, "timer pauses while Help is open", e1 === e2, `${e1} -> ${e2}`);
+  // CR5 rules on touch
+  if (P === "mobile") {
+    const order = await H(page, () => { const m = document.querySelector("#overlay .modal"); const tt = m?.querySelector('[data-testid="touch-tips"]'); const ps = m ? [...m.querySelectorAll("p, ul, ol, div[data-testid]")] : []; return { has: !!tt && !!tt.offsetParent, kbd: !!m?.querySelector('[data-testid="kbd-tips"]')?.offsetParent, firstText: tt ? ps.filter(e => !e.closest(".help-deal") && e.offsetParent).indexOf(tt) : -1 }; });
+    ok(C, P, "touch: gesture tips shown first in Help", order.has && order.firstText >= 0 && order.firstText <= 1, JSON.stringify(order));
+    ok(C, P, "touch: keyboard shortcuts hidden", !order.kbd);
+  } else {
+    const kbd = await vis(page, '#overlay [data-testid="kbd-tips"]');
+    ok(C, P, "desktop: keyboard shortcuts in Help", kbd);
+  }
+  await closeModal(page);
+  // reload keeps elapsed time
+  const before = await H(page, () => document.getElementById("meter-time").textContent);
+  await page.reload(); await page.waitForTimeout(700); await pick(page, "klondike");
+  const after = await H(page, () => document.getElementById("meter-time").textContent);
+  ok(C, P, "elapsed time kept across reload", after !== "0:00" && after >= before, `${before} -> ${after}`);
+  await home(page);
+  const rt = (await page.locator('[data-testid="resume-klondike"]').textContent().catch(() => "")).trim();
+  ok(C, P, "Resume after a real move shows time · moves", /Resume.*\d+:\d\d.*\d+ moves?/i.test(rt), rt);
+  // CR3 Klondike stuck modal
+  await pick(page, "klondike");
+  const stuckState = () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = [...s.tableau.flat(), ...s.stock, ...s.waste, ...s.foundations.flat()].map(c => ({ ...c }));
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    const tops = ["spades-9", "clubs-9", "spades-5", "clubs-5", "spades-12", "clubs-12", "spades-3"];
+    const used = new Set([...tops, "hearts-1"]);
+    const rest = all.filter(c => !used.has(c.id)).map(c => ({ ...c, faceUp: false }));
+    s.tableau = tops.map((id, i) => [...rest.filter((_, j) => j % 7 === i), { ...by[id], faceUp: true }]);
+    s.tableau[0].push({ ...by["hearts-1"], faceUp: true });
+    s.stock = []; s.waste = []; s.foundations = [[], [], [], []]; s.won = false;
+    window.__solitaire.setState(s);
+  };
+  await H(page, stuckState); await page.waitForTimeout(300);
+  await page.waitForTimeout(600);
+  await tapEl(page, page.locator('.card[data-zone="tableau"][data-index="0"]').last(), touch);
+  await tapEl(page, page.locator('[data-drop="foundation:0"]'), touch);
+  await page.waitForTimeout(400);
+  let sm = await vis(page, '[data-testid="stuck-modal"]');
+  if (!sm) { // stock may still hold cards that must be cycled first; the check is reachability-based
+    const st = await H(page, () => window.__solitaire.getState().stock.length);
+    ok(C, P, "Klondike stuck modal (note)", true, `not shown immediately; stock ${st}`);
+  }
+  ok(C, P, "Klondike shows 'No more moves' modal", sm, await H(page, () => document.querySelector("#overlay")?.innerText?.slice(0, 80)));
+  if (sm) {
+    for (const id of ["stuck-undo", "stuck-replay", "stuck-new"]) ok(C, P, `stuck modal has ${id}`, await vis(page, `[data-testid="${id}"]`));
+    await page.screenshot({ path: `${SHOTS}/${P}-klondike-stuck.png` });
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    ok(C, P, "stuck: status says No more moves", /no more moves/i.test(await statusText(page)));
+    await (await uiBtn(page, "hint", P)).click(); await page.waitForTimeout(250);
+    ok(C, P, "stuck: Hint re-opens the modal", await vis(page, '[data-testid="stuck-modal"]'));
+    const h0 = await H(page, () => window.__solitaire.historyLength());
+    await page.locator('[data-testid="stuck-undo"]').click(); await page.waitForTimeout(300);
+    ok(C, P, "stuck: Undo takes back the last move", !(await vis(page, '[data-testid="stuck-modal"]')) && (await H(page, () => window.__solitaire.historyLength())) === h0 - 1);
+    const seed = await H(page, () => window.__solitaire.getState().seed);
+    await tapEl(page, page.locator('.card[data-zone="tableau"][data-index="0"]').last(), touch);
+    await tapEl(page, page.locator('[data-drop="foundation:0"]'), touch); await page.waitForTimeout(400);
+    await page.locator('[data-testid="stuck-replay"]').click().catch(() => {}); await page.waitForTimeout(300);
+    const s2 = await H(page, () => window.__solitaire.getState());
+    ok(C, P, "stuck: Replay deals the same seed fresh", s2.seed === seed && s2.moves === 0 && !(await vis(page, '#overlay .modal')), `${s2.seed}/${seed} moves ${s2.moves}`);
+  }
+  // CR5 thumb bar (phone) / none on desktop
+  if (P === "mobile") {
+    const tb = await H(page, () => { const bar = document.querySelector('[data-testid="thumb-bar"]'); if (!bar || getComputedStyle(bar).display === "none" || bar.hidden || !bar.getClientRects().length) return null; const bs = ["undo", "hint", "new"].map(n => bar.querySelector(`[data-testid="thumb-${n}"]`)); const tops = [...document.querySelectorAll('.toolbar [data-testid="btn-undo"], .toolbar [data-testid="btn-new"], .toolbar [data-testid="btn-hint"]')].filter(e => e.offsetParent).length; const r = bar.getBoundingClientRect(); return { all: bs.every(Boolean), h: Math.min(...bs.map(b => b?.getBoundingClientRect().height ?? 0)), bottom: Math.round(innerHeight - r.bottom), dupes: tops }; });
+    ok(C, P, "thumb bar with Undo/Hint/New >= 44px at bottom", tb && tb.all && tb.h >= 43.5 && tb.bottom <= 2, JSON.stringify(tb));
+    ok(C, P, "no duplicate Undo/Hint/New in top toolbar on phone", tb && tb.dupes === 0, JSON.stringify(tb));
+    // New with 0 moves: no confirm
+    const s0 = await H(page, () => window.__solitaire.getState().seed);
+    await page.locator('[data-testid="thumb-new"]').tap(); await page.waitForTimeout(300);
+    const cf0 = await vis(page, '[data-testid="confirm-modal"]');
+    ok(C, P, "thumb New with no moves deals without confirm", !cf0 && (await H(page, () => window.__solitaire.getState().seed)) !== s0);
+    await closeModal(page); await page.waitForTimeout(700);
+    await tapEl(page, page.locator('[data-drop="stock"]').first(), true);
+    await page.waitForTimeout(700);
+    const mvA = await H(page, () => window.__solitaire.getState().moves);
+    if (!mvA) await page.screenshot({ path: `${SHOTS}/${P}-thumb-debug.png` });
+    await page.locator('[data-testid="thumb-new"]').tap(); await page.waitForTimeout(300);
+    ok(C, P, "thumb New after a move asks to confirm", await vis(page, '[data-testid="confirm-modal"]'), `moves ${mvA}`);
+    await page.locator('[data-testid="confirm-cancel"]').click().catch(() => {}); await page.waitForTimeout(200);
+    const hl = await H(page, () => window.__solitaire.historyLength());
+    await page.locator('[data-testid="thumb-undo"]').tap(); await page.waitForTimeout(300);
+    ok(C, P, "thumb Undo works", (await H(page, () => window.__solitaire.historyLength())) === hl - 1);
+    await page.locator('[data-testid="thumb-hint"]').tap(); await page.waitForTimeout(300);
+    ok(C, P, "thumb Hint works", (await H(page, () => document.querySelectorAll(".hint-from, .hint-to").length)) > 0 || /stock|draw|move/i.test(await statusText(page)));
+    // larger cards: FreeCell then Golf
+    for (const [g, minW] of [["freecell", 44], ["golf", 51]]) {
+      await pick(page, g); await closeModal(page);
+      const m = await H(page, () => { const cards = [...document.querySelectorAll("#table .card")]; const w = Math.max(...cards.map(c => c.getBoundingClientRect().width)); const bottom = Math.max(...cards.map(c => c.getBoundingClientRect().bottom)); const bar = document.querySelector('[data-testid="thumb-bar"]')?.getBoundingClientRect().top ?? innerHeight; const byCol = {}; for (const c of cards) (byCol[c.dataset.zone + ":" + c.dataset.index] ||= []).push(c.getBoundingClientRect().top); const steps = Object.values(byCol).filter(a => a.length > 2).map(a => a[1] - a[0]).filter(x => x > 0); return { w: Math.round(w), step: steps.length ? Math.round(Math.min(...steps)) : null, bottom: Math.round(bottom), bar: Math.round(bar) }; });
+      ok(C, P, `${g}: larger cards on phone`, m.w >= minW, JSON.stringify(m));
+      ok(C, P, `${g}: cards stay above the thumb bar`, m.bottom <= m.bar + 1, JSON.stringify(m));
+      ok(C, P, `${g}: overlap strip more visible (> 15px)`, m.step > 15, JSON.stringify(m));
+      await layoutChecks(page, C, P, `${g} phone`);
+      await page.screenshot({ path: `${SHOTS}/${P}-${g}-phone.png` });
+    }
+  } else {
+    ok(C, P, "desktop: no thumb bar", !(await vis(page, '[data-testid="thumb-bar"]')));
+  }
+  // CR1 daily deal (Golf, finish it)
+  await home(page);
+  const key = await todayKey(page);
+  await page.locator('[data-testid="daily-golf"]').click(); await page.waitForTimeout(400);
+  if (await vis(page, '[data-testid="confirm-modal"]')) { await page.locator('[data-testid="confirm-ok"], [data-testid="confirm-yes"], [data-testid="confirm-modal"] .primary').first().click(); await page.waitForTimeout(300); }
+  const ds = await H(page, () => window.__solitaire.getState());
+  ok(C, P, "Today's deal opens Golf on today's daily", (await H(page, () => window.__solitaire.game())) === "golf" && ds.daily === key, `${ds.daily} vs ${key}`);
+  const seedTxt = await H(page, () => document.getElementById("status-seed").textContent + " " + document.getElementById("status-text").textContent);
+  ok(C, P, "daily label while playing", /Daily/.test(seedTxt), seedTxt);
+  await home(page);
+  await page.locator('[data-testid="daily-golf"]').click(); await page.waitForTimeout(400);
+  ok(C, P, "daily deal is stable (same seed when reopened)", (await H(page, () => window.__solitaire.getState().seed)) === ds.seed);
+  // finish it: one play left
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const mk = (su, r) => ({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    s.columns = Array.from({ length: s.columns.length }, () => []); s.columns[0] = [mk("diamonds", 5)];
+    s.waste = [mk("hearts", 4)]; s.stock = [mk("clubs", 9)]; s.over = false; s.wonAt = null;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(700);
+  await tapEl(page, page.locator('.card[data-zone="column"][data-index="0"]').last(), touch);
+  await page.waitForTimeout(600);
+  const dd = (await page.locator('[data-testid="daily-done"]').textContent().catch(() => "")).trim();
+  ok(C, P, "end screen shows today's deal done + day streak", /Today's deal done · \d+ days? in a row/.test(dd), dd);
+  await home(page);
+  const db = (await page.locator('[data-testid="daily-golf"]').textContent().catch(() => "")).trim();
+  ok(C, P, "picker marks today's Golf as done", /Done today/.test(db), db);
+  const gs = (await page.locator('[data-testid="pick-stats-golf"]').textContent().catch(() => "")).trim();
+  ok(C, P, "picker shows daily streak", /Daily \d+ days?/.test(gs), gs);
+  await layoutChecks(page, "shell", P, "picker after CR");
+  const surprise = await H(page, () => /surprise|secret/i.test(document.body.innerText));
+  ok(C, P, "no surprise/secret copy on picker", !surprise);
+}
+
 for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
@@ -690,11 +866,12 @@ for (const vp of [
   await common(page, vp.P);
   await layoutChecks(page, "shell", vp.P, "picker");
   await page.screenshot({ path: `${SHOTS}/${vp.P}-picker.png` });
-  for (const [name, fn] of [["klondike", klondike], ["freecell", freecell], ["golf", golf], ["kings", kings]]) {
+  for (const [name, fn] of (process.env.CRONLY ? [] : [["klondike", klondike], ["freecell", freecell], ["golf", golf], ["kings", kings]])) {
     try { await fn(page, ctx, vp.P, vp.touch); } catch (e) { ok(name, vp.P, "exception", false, e.message.split("\n")[0]); }
     const sw = await H(page, () => document.documentElement.scrollWidth <= window.innerWidth + 1);
     ok(name, vp.P, "no horizontal scroll", sw);
   }
+  try { await crChecks(page, ctx, vp.P, vp.touch); } catch (e) { ok("cr", vp.P, "exception", false, e.message.split("\n")[0]); }
   // theme toggle + sound default
   const prefs = await H(page, () => JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}"));
   ok("shell", vp.P, "sound off by default", prefs.sound !== true, JSON.stringify(prefs));
@@ -711,5 +888,5 @@ for (const vp of [
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf", "kings"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

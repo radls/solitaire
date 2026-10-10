@@ -13,6 +13,7 @@ import {
   emptyState,
   hint,
   hintMoves,
+  isStuck,
   isWon,
   listLegalMoves,
   moveCards,
@@ -50,6 +51,24 @@ describe("deal", () => {
       expect(ids).toHaveLength(52);
       expect(new Set(ids).size).toBe(52);
     }
+  });
+
+  it("does not start the clock until the first draw, and undo keeps it running", () => {
+    const state = deal({ seed: 1 });
+    expect(state.startedAt).toBe(0);
+    expect(state.pausedAt).toBe(0);
+    expect(elapsedMs(state, 50_000)).toBe(0);
+    const before = Date.now();
+    const drawn = draw(state);
+    expect(drawn.ok).toBe(true);
+    expect(drawn.state.startedAt).toBeGreaterThanOrEqual(before);
+    expect(state.startedAt).toBe(0);
+    const again = draw(drawn.state);
+    expect(again.state.startedAt).toBe(drawn.state.startedAt);
+    const restored = continueClock(drawn.state, state);
+    expect(restored.moves).toBe(0);
+    expect(restored.startedAt).toBe(drawn.state.startedAt);
+    expect(elapsedMs(restored, drawn.state.startedAt + 4_000)).toBe(4_000);
   });
 
   it("is reproducible for a given seed", () => {
@@ -414,13 +433,15 @@ describe("auto-move, hints, win", () => {
   });
 
   it("keeps elapsed time when an undo snapshot is restored", () => {
-    const live = game({ startedAt: 50_000, moves: 4, score: 10 });
+    const live = game({ startedAt: 50_000, pausedAt: 70_000, moves: 4, score: 10 });
     const snapshot = game({ startedAt: 1_000, moves: 3, score: 5 });
     const restored = continueClock(live, snapshot);
     expect(restored.startedAt).toBe(50_000);
+    expect(restored.pausedAt).toBe(70_000);
     expect(restored.moves).toBe(3);
     expect(restored.score).toBe(5);
     expect(snapshot.startedAt).toBe(1_000);
+    expect(elapsedMs(restored, 80_000)).toBe(20_000);
     expect(elapsedMs(restored, 80_000)).toBe(elapsedMs(live, 80_000));
   });
 
@@ -480,7 +501,107 @@ describe("auto-move, hints, win", () => {
   });
 
   it("subtracts a time penalty from the displayed score", () => {
-    const state = game({ score: 20, startedAt: 0 });
-    expect(timedScore(state, 25_000)).toBe(16);
+    const running = game({ score: 20, startedAt: 5_000 });
+    expect(timedScore(running, 30_000)).toBe(16);
+    const paused = game({ score: 20, startedAt: 5_000, pausedAt: 15_000 });
+    expect(timedScore(paused, 50_000)).toBe(18);
+    const unstarted = game({ score: 20, startedAt: 0 });
+    expect(elapsedMs(unstarted, 25_000)).toBe(0);
+    expect(timedScore(unstarted, 25_000)).toBe(20);
+  });
+});
+
+describe("isStuck", () => {
+  const blocked = () => [
+    [C("spades", 10)],
+    [C("hearts", 10)],
+    [C("diamonds", 10)],
+    [C("clubs", 10)],
+    [C("spades", 8)],
+    [C("hearts", 8)],
+    [C("diamonds", 8)],
+  ];
+
+  function stuckBase(partial = {}) {
+    return game({
+      tableau: blocked(),
+      foundations: [[], [], [], []],
+      stock: [],
+      waste: [],
+      ...partial,
+    });
+  }
+
+  it("is false for a won deal", () => {
+    const foundations = ["spades", "hearts", "diamonds", "clubs"].map((suit) =>
+      Array.from({ length: 13 }, (_, i) => C(suit, i + 1)),
+    );
+    expect(isStuck(game({ foundations, stock: [], waste: [] }))).toBe(false);
+  });
+
+  it("is false when a tableau card can still move", () => {
+    const tableau = blocked();
+    tableau[0] = [C("hearts", 9)];
+    tableau[1] = [C("spades", 10)];
+    expect(isStuck(stuckBase({ tableau }))).toBe(false);
+  });
+
+  it("is false when a foundation card can return to the tableau", () => {
+    const tableau = blocked();
+    tableau[0] = [C("spades", 2)];
+    expect(
+      isStuck(
+        stuckBase({
+          tableau,
+          foundations: [[C("hearts", 1)], [], [], []],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("detects a dead draw-1 deal and a dead draw-3 deal", () => {
+    const buried = [C("hearts", 9), C("spades", 5), C("hearts", 5)];
+    const draw1 = stuckBase({ drawCount: 1, waste: buried });
+    const draw3 = stuckBase({ drawCount: 3, waste: buried });
+    expect(isStuck(draw1)).toBe(false);
+    expect(isStuck(draw3)).toBe(true);
+    expect(draw1.waste.map((card) => card.id)).toEqual(buried.map((card) => card.id));
+  });
+
+  it("sees a card that drawing will expose, in either draw mode", () => {
+    const stock = [C("hearts", 9, false), C("spades", 5, false), C("diamonds", 5, false)];
+    expect(isStuck(stuckBase({ drawCount: 1, stock }))).toBe(false);
+    expect(isStuck(stuckBase({ drawCount: 3, stock }))).toBe(false);
+    const later = [
+      C("hearts", 9, false),
+      C("spades", 5, false),
+      C("hearts", 5, false),
+      C("diamonds", 5, false),
+    ];
+    expect(isStuck(stuckBase({ drawCount: 3, stock: later }))).toBe(false);
+  });
+
+  it("ignores a card buried inside a draw-3 group", () => {
+    const stock = [C("spades", 5, false), C("hearts", 9, false), C("diamonds", 5, false)];
+    expect(isStuck(stuckBase({ drawCount: 3, stock }))).toBe(true);
+    expect(isStuck(stuckBase({ drawCount: 1, stock }))).toBe(false);
+  });
+
+  it("respects a redeal limit", () => {
+    const waste = [C("hearts", 9), C("spades", 5)];
+    expect(isStuck(stuckBase({ drawCount: 1, waste, redealLimit: 0 }))).toBe(true);
+    expect(isStuck(stuckBase({ drawCount: 1, waste }))).toBe(false);
+    expect(isStuck(stuckBase({ drawCount: 1, waste, redealLimit: 1 }))).toBe(false);
+  });
+
+  it("is true when nothing in the stock or on the tableau can move", () => {
+    const state = stuckBase({
+      drawCount: 1,
+      stock: [C("spades", 5, false), C("hearts", 4, false)],
+      waste: [C("clubs", 2)],
+    });
+    const snapshot = structuredClone(state);
+    expect(isStuck(state)).toBe(true);
+    expect(state).toEqual(snapshot);
   });
 });

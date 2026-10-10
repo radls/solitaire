@@ -1,4 +1,5 @@
 import { makeCard, oppositeColor } from "./cards.js";
+import { elapsed, startClock, transferClock } from "./clock.js";
 
 export const CASCADE_COUNT = 8;
 export const FREE_CELL_COUNT = 4;
@@ -23,6 +24,7 @@ export function emptyState(overrides = {}) {
     moves: 0,
     won: false,
     startedAt: 0,
+    pausedAt: 0,
     wonAt: null,
     ...overrides,
   };
@@ -38,7 +40,7 @@ function orderedDeck() {
   return deck;
 }
 
-export function deal(dealNumber = 1, now = Date.now()) {
+export function deal(dealNumber = 1) {
   const n = Number.isFinite(Number(dealNumber)) ? Math.trunc(Number(dealNumber)) : 1;
   let seed = BigInt(n);
   const rand = () => {
@@ -55,7 +57,6 @@ export function deal(dealNumber = 1, now = Date.now()) {
   return emptyState({
     dealNumber: n,
     cascades,
-    startedAt: now,
   });
 }
 
@@ -65,9 +66,7 @@ export function cloneState(state) {
 
 /** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
 export function continueClock(current, snapshot) {
-  const next = cloneState(snapshot);
-  next.startedAt = current.startedAt;
-  return next;
+  return transferClock(current, cloneState(snapshot));
 }
 
 export function top(pile) {
@@ -79,8 +78,7 @@ export function isWon(state) {
 }
 
 export function elapsedMs(state, now = Date.now()) {
-  const end = state.won && state.wonAt ? state.wonAt : now;
-  return Math.max(0, end - (state.startedAt || 0));
+  return elapsed(state, now);
 }
 
 function inRange(index, length) {
@@ -232,6 +230,7 @@ export function moveCards(state, from, to) {
   const placed = put(next, to, taken.cards, state);
   if (!placed.ok) return { ok: false, reason: placed.reason, state };
   next.moves += 1;
+  startClock(next);
   markWin(next);
   return { ok: true, state: next };
 }

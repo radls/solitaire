@@ -8,7 +8,7 @@ const ok = (game, P, name, cond, note = "") => { results.push({ game, P, name, p
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 const H = (page, fn, arg) => page.evaluate(fn, arg);
 const S = (page) => H(page, () => JSON.stringify(window.__solitaire.getState()));
-const strip = (s) => { const o = JSON.parse(s); delete o.startedAt; delete o.savedAt; return JSON.stringify(o); };
+const strip = (s) => { const o = JSON.parse(s); delete o.startedAt; delete o.pausedAt; delete o.savedAt; return JSON.stringify(o); };
 
 async function tapEl(page, loc, touch) { try { if (touch) await loc.tap({ timeout: 4000 }); else await loc.click({ timeout: 4000 }); } catch (e) { console.log("  (tap failed: " + e.message.split("\n")[0] + ")"); } await page.waitForTimeout(150); }
 async function drag(page, ctx, srcLoc, dstLoc, touch) {

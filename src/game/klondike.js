@@ -1,4 +1,5 @@
 import { buildDeck, mulberry32, oppositeColor, shuffle } from "./cards.js";
+import { elapsed, startClock, transferClock } from "./clock.js";
 
 export const TABLEAU_COUNT = 7;
 export const FOUNDATION_COUNT = 4;
@@ -15,13 +16,14 @@ export function emptyState(overrides = {}) {
     score: 0,
     won: false,
     startedAt: 0,
+    pausedAt: 0,
     wonAt: null,
     recycled: 0,
     ...overrides,
   };
 }
 
-export function deal({ seed, drawCount = 1, now = Date.now() } = {}) {
+export function deal({ seed, drawCount = 1 } = {}) {
   const resolvedSeed = seed == null ? (Math.random() * 0xffffffff) >>> 0 : seed >>> 0;
   const rng = mulberry32(resolvedSeed);
   const deck = shuffle(buildDeck(), rng);
@@ -40,7 +42,6 @@ export function deal({ seed, drawCount = 1, now = Date.now() } = {}) {
     drawCount: drawCount === 3 ? 3 : 1,
     tableau,
     stock,
-    startedAt: now,
   });
 }
 
@@ -81,15 +82,12 @@ export function canAutoComplete(state) {
 }
 
 export function timedScore(state, now = Date.now()) {
-  const end = state.won && state.wonAt ? state.wonAt : now;
-  const elapsed = Math.max(0, end - state.startedAt);
-  const penalty = Math.floor(elapsed / 10000) * 2;
+  const penalty = Math.floor(elapsedMs(state, now) / 10000) * 2;
   return Math.max(0, state.score - penalty);
 }
 
 export function elapsedMs(state, now = Date.now()) {
-  const end = state.won && state.wonAt ? state.wonAt : now;
-  return Math.max(0, end - state.startedAt);
+  return elapsed(state, now);
 }
 
 function flipExposed(state) {
@@ -225,6 +223,7 @@ export function draw(state) {
     next.waste = [];
     next.recycled += 1;
     next.moves += 1;
+    startClock(next);
     const penalty = next.drawCount === 3 ? 20 : 100;
     next.score = Math.max(0, next.score - penalty);
     return { ok: true, state: next, recycled: true };
@@ -236,6 +235,7 @@ export function draw(state) {
     next.waste.push(card);
   }
   next.moves += 1;
+  startClock(next);
   return { ok: true, state: next, recycled: false, drawn: n };
 }
 
@@ -256,6 +256,7 @@ export function moveCards(state, from, to) {
 
   next.score = Math.max(0, next.score + scoreMove(from, to));
   next.moves += 1;
+  startClock(next);
   const flipped = flipExposed(next);
   finish(next);
   return {
@@ -412,9 +413,60 @@ export function hint(state) {
 
 /** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
 export function continueClock(current, snapshot) {
-  const next = cloneState(snapshot);
-  next.startedAt = current.startedAt;
-  return next;
+  return transferClock(current, cloneState(snapshot));
+}
+
+function hasBoardMove(state) {
+  if (listLegalMoves(state).some((move) => move.kind !== "draw")) return true;
+  for (let fi = 0; fi < FOUNDATION_COUNT; fi++) {
+    const card = top(state.foundations[fi]);
+    if (!card) continue;
+    for (let col = 0; col < TABLEAU_COUNT; col++) {
+      if (canStackTableau(card, top(state.tableau[col]))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Further draws are allowed. A numeric `redealLimit` caps waste recycles
+ * (0 means the stock cannot be rebuilt). The shipped rules leave it unset,
+ * so the waste may be turned over without a cap.
+ */
+function canRedeal(state) {
+  if (!state.waste.length) return false;
+  if (Number.isInteger(state.redealLimit) && state.recycled >= state.redealLimit) return false;
+  return true;
+}
+
+function pileKey(pile) {
+  return pile.map((card) => card.id).join(".");
+}
+
+/**
+ * True when the deal is not won and no tableau or foundation move can be
+ * reached by drawing, including every waste top a stock/waste cycle can
+ * expose under the draw count and any redeal limit. Drawing never changes
+ * the tableau, so a card that stays buried under a draw-3 group does not count.
+ */
+export function isStuck(state) {
+  if (!state || state.won || isWon(state)) return false;
+  if (hasBoardMove(state)) return false;
+  if (!state.stock.length && !canRedeal(state)) return true;
+
+  const seen = new Set();
+  let current = cloneState(state);
+  for (let guard = 0; guard < 400; guard++) {
+    const key = `${pileKey(current.stock)}|${pileKey(current.waste)}`;
+    if (seen.has(key)) return true;
+    seen.add(key);
+    if (!current.stock.length && !canRedeal(current)) return true;
+    const drawn = draw(current);
+    if (!drawn.ok) return true;
+    current = drawn.state;
+    if (hasBoardMove(current)) return false;
+  }
+  return true;
 }
 
 export function autoCompleteStep(state) {

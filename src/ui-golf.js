@@ -12,6 +12,7 @@ import {
   listLegalMoves,
   score,
 } from "./game/golf.js";
+import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
@@ -89,9 +90,8 @@ export function mount() {
   if (resume) {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
-    if (typeof saved.savedAt === "number") {
-      const frozen = elapsedMs(session.state, saved.savedAt);
-      session.state.startedAt = Date.now() - frozen;
+    if (!session.state.startedAt || typeof saved.savedAt === "number") {
+      restoreClock(session.state, saved.savedAt);
     }
   }
 
@@ -284,8 +284,15 @@ export function mount() {
     });
   }
 
+  function syncPlayClock() {
+    if (!session.state || !root.overlay) return;
+    const paused = !root.overlay.hidden || document.visibilityState === "hidden";
+    syncClock(session.state, paused);
+  }
+
   function refreshMeters() {
     if (!alive || !session.state) return;
+    syncPlayClock();
     if (root.time) root.time.textContent = formatTime(elapsedMs(session.state));
     if (root.moves) root.moves.textContent = String(session.state.moves);
     if (root.left) root.left.textContent = String(cardsLeft(session.state));
@@ -296,6 +303,7 @@ export function mount() {
     if (!root.overlay) return;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
+    syncPlayClock();
   }
 
   function applyHintHighlight() {
@@ -337,6 +345,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function showHelp() {
@@ -356,6 +365,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function gameInProgress() {
@@ -377,6 +387,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok">New deal</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function confirmReplay() {
@@ -394,6 +405,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="replay" data-testid="confirm-ok">Replay</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function noteRoundEnd() {
@@ -691,6 +703,14 @@ export function mount() {
   });
 
   const timer = window.setInterval(refreshMeters, 250);
+  const clockObserver = new MutationObserver(() => syncPlayClock());
+  if (root.overlay) {
+    clockObserver.observe(root.overlay, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  listen(document, "visibilitychange", () => {
+    syncPlayClock();
+    refreshMeters();
+  });
   if (resume) {
     persist();
     render();
@@ -732,6 +752,7 @@ export function mount() {
       document.documentElement.classList.remove("is-dragging");
       ac.abort();
       window.clearInterval(timer);
+      clockObserver.disconnect();
       session.drag = null;
       clearLayoutVars();
       if (scoreLabel) scoreLabel.textContent = "Score";

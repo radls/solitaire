@@ -10,10 +10,12 @@ import {
   draw,
   elapsedMs,
   hint as findHint,
+  isStuck,
   listLegalMoves,
   moveCards,
   timedScore,
 } from "./game/klondike.js";
+import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
@@ -82,6 +84,7 @@ export function mount() {
     muted: loadPrefs().sound !== true,
     stats: stored.stats,
     autoTimer: 0,
+    modal: null,
   };
 
   const params = new URLSearchParams(location.search);
@@ -92,8 +95,7 @@ export function mount() {
   if (!params.has("seed") && stored.saved?.state && !stored.saved.state.won) {
     session.state = stored.saved.state;
     session.history = stored.saved.history ?? [];
-    const frozen = elapsedMs(session.state, stored.saved.savedAt ?? session.state.startedAt);
-    session.state.startedAt = Date.now() - frozen;
+    restoreClock(session.state, stored.saved.savedAt);
   } else {
     session.state = deal({
       seed: Number.isFinite(urlSeed) ? urlSeed : undefined,
@@ -356,7 +358,14 @@ export function mount() {
     el.classList.add("nudge");
   }
 
+  function syncPlayClock() {
+    if (!session.state || !root.overlay) return;
+    const paused = !root.overlay.hidden || document.visibilityState === "hidden";
+    syncClock(session.state, paused);
+  }
+
   function refreshMeters() {
+    syncPlayClock();
     const now = Date.now();
     root.time.textContent = formatTime(elapsedMs(session.state, now));
     root.score.textContent = String(timedScore(session.state, now));
@@ -399,15 +408,47 @@ export function mount() {
     }
   }
 
-  function showOverlay(html, { win = false } = {}) {
+  function showOverlay(html, { win = false, modal = null } = {}) {
+    session.modal = modal;
     root.overlay.hidden = false;
     root.overlay.innerHTML = html;
     root.overlay.querySelector(".modal")?.classList.toggle("win", win);
+    syncPlayClock();
   }
 
   function hideOverlay() {
+    const wasStuck = session.modal === "stuck";
+    session.modal = null;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
+    syncPlayClock();
+    if (wasStuck && session.state && !session.state.won && isStuck(session.state)) {
+      setStatus("No more moves.");
+    }
+  }
+
+  function showStuck() {
+    const undoDisabled = session.history.length ? "" : " disabled";
+    showOverlay(
+      `<div class="modal" data-testid="stuck-modal">
+        <h2>No more moves</h2>
+        <p>No card can move, and drawing will not open one.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn" data-act="undo" data-testid="stuck-undo"${undoDisabled}>Undo</button>
+          <button type="button" class="btn" data-act="replay" data-testid="stuck-replay">Replay this deal</button>
+          <button type="button" class="btn primary" data-act="new" data-testid="stuck-new">New deal</button>
+        </div>
+      </div>`,
+      { modal: "stuck" },
+    );
+  }
+
+  function showIfStuck() {
+    if (!session.state || session.state.won || !isStuck(session.state)) return false;
+    session.hintMove = null;
+    showStuck();
+    setStatus("No more moves.");
+    return true;
   }
 
   function showWin() {
@@ -428,7 +469,7 @@ export function mount() {
           <button class="btn primary" data-act="again">Play again</button>
         </div>
       </div>`,
-      { win: true },
+      { win: true, modal: "win" },
     );
   }
 
@@ -449,7 +490,7 @@ export function mount() {
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>
-    </div>`);
+    </div>`, { modal: "help" });
   }
 
   function confirmNew(drawCount) {
@@ -461,23 +502,29 @@ export function mount() {
           <button class="btn" data-act="close">Keep playing</button>
           <button class="btn primary" data-act="new" data-draw="${drawCount}">New game</button>
         </div>
-      </div>`);
+      </div>`, { modal: "confirm" });
       return;
     }
     startNewGame(drawCount);
   }
 
-  function startNewGame(drawCount = session.state.drawCount) {
+  function startNewGame(drawCount = session.state.drawCount, seed) {
     if (session.state.moves > 0 && !session.state.won) session.stats.streak = 0;
     hideOverlay();
     session.history = [];
     session.selected = null;
     session.hintMove = null;
     session.countedPlay = false;
-    session.state = deal({ drawCount });
+    session.state = deal({ drawCount, seed });
     persist();
     render();
-    setStatus(drawCount === 3 ? "Draw three from the stock." : "Draw one from the stock.");
+    if (!showIfStuck()) {
+      setStatus(drawCount === 3 ? "Draw three from the stock." : "Draw one from the stock.");
+    }
+  }
+
+  function replayDeal() {
+    startNewGame(session.state.drawCount, session.state.seed);
   }
 
   function countPlay() {
@@ -520,7 +567,7 @@ export function mount() {
       sounds.win(session.muted);
       showWin();
       setStatus("All four foundations complete.");
-    } else {
+    } else if (!showIfStuck()) {
       setStatus(statusForSuccess(result, to));
     }
     return true;
@@ -543,10 +590,17 @@ export function mount() {
     persist();
     render();
     sounds.undo(session.muted);
-    setStatus("Undid the last move.");
+    if (!showIfStuck()) {
+      if (session.modal === "stuck") hideOverlay();
+      setStatus("Undid the last move.");
+    }
   }
 
   function doHint() {
+    if (showIfStuck()) {
+      render();
+      return null;
+    }
     const move = findHint(session.state);
     session.hintMove = move;
     render();
@@ -772,13 +826,18 @@ export function mount() {
   listen(root.overlay, "click", (event) => {
     if (event.target.closest(".tip-panel")) return;
     const btn = event.target.closest("[data-act]");
-    if (!btn) return;
+    if (!btn) {
+      if (event.target === root.overlay && session.modal === "stuck") hideOverlay();
+      return;
+    }
     const act = btn.dataset.act;
     if (act === "tip") {
       toggleTipPanel(btn.closest(".modal"));
       return;
     }
     if (act === "close") hideOverlay();
+    else if (act === "undo") doUndo();
+    else if (act === "replay") replayDeal();
     else if (act === "again" || act === "new") startNewGame(Number(btn.dataset.draw || session.state.drawCount));
   });
 
@@ -807,9 +866,17 @@ export function mount() {
   });
 
   const timer = window.setInterval(refreshMeters, 250);
+  const clockObserver = new MutationObserver(() => syncPlayClock());
+  if (root.overlay) {
+    clockObserver.observe(root.overlay, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  listen(document, "visibilitychange", () => {
+    syncPlayClock();
+    refreshMeters();
+  });
   persist();
   render();
-  setStatus("Move cards on the tableau, or draw from the stock.");
+  if (!showIfStuck()) setStatus("Move cards on the tableau, or draw from the stock.");
 
   return {
     getState: () => session.state,
@@ -842,6 +909,7 @@ export function mount() {
       persist();
       ac.abort();
       window.clearInterval(timer);
+      clockObserver.disconnect();
       document.documentElement.classList.remove("is-dragging");
       clearLayoutVars();
       if (session.autoTimer) window.clearTimeout(session.autoTimer);

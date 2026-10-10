@@ -8,6 +8,7 @@ import {
   continueClock,
   deal,
   drawStock,
+  elapsedMs,
   hint,
   isCleared,
   isRoundOver,
@@ -38,7 +39,8 @@ describe("deal", () => {
   it("lays out 7 columns of 5 face-up cards, one waste card, and 16 stock cards", () => {
     const state = deal({ seed: 42, now: 10 });
     expect(state.seed).toBe(42);
-    expect(state.startedAt).toBe(10);
+    expect(state.startedAt).toBe(0);
+    expect(elapsedMs(state, 10_000)).toBe(0);
     expect(state.moves).toBe(0);
     expect(state.over).toBe(false);
     expect(state.wonAt).toBeNull();
@@ -70,7 +72,8 @@ describe("deal", () => {
     expect(b.columns).toEqual(a.columns);
     expect(b.waste).toEqual(a.waste);
     expect(b.stock).toEqual(a.stock);
-    expect(b.startedAt).toBe(99);
+    expect(b.startedAt).toBe(0);
+    expect(a.startedAt).toBe(0);
 
     const zero = deal({ seed: 0, now: 1 });
     expect(zero.seed).toBe(0);
@@ -266,6 +269,19 @@ describe("round over and score", () => {
 });
 
 describe("undo clock", () => {
+  it("starts on the first draw and keeps running when that draw is undone", () => {
+    const state = deal({ seed: 3 });
+    expect(state.startedAt).toBe(0);
+    const before = Date.now();
+    const drawn = drawStock(state);
+    expect(drawn.state.startedAt).toBeGreaterThanOrEqual(before);
+    expect(state.startedAt).toBe(0);
+    const restored = continueClock(drawn.state, state);
+    expect(restored.moves).toBe(0);
+    expect(restored.startedAt).toBe(drawn.state.startedAt);
+    expect(elapsedMs(restored, drawn.state.startedAt + 2_000)).toBe(2_000);
+  });
+
   it("keeps the live clock when restoring an undo snapshot", () => {
     const live = blank({ startedAt: 5_000, moves: 2 });
     const snapshot = blank({ startedAt: 100, moves: 1 });

@@ -1,4 +1,5 @@
 import { buildDeck, mulberry32, oppositeColor, shuffle } from "./cards.js";
+import { elapsed, startClock, transferClock } from "./clock.js";
 
 export const SIDE_COUNT = 4;
 export const CORNER_COUNT = 4;
@@ -16,9 +17,7 @@ export function cloneState(state) {
 
 /** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
 export function continueClock(current, snapshot) {
-  const next = cloneState(snapshot);
-  next.startedAt = current.startedAt;
-  return next;
+  return transferClock(current, cloneState(snapshot));
 }
 
 function fail(state, reason) {
@@ -59,8 +58,7 @@ export function isWon(state) {
 }
 
 export function elapsedMs(state, now = Date.now()) {
-  const end = state?.won && state.wonAt ? state.wonAt : now;
-  return Math.max(0, end - (state?.startedAt || 0));
+  return elapsed(state, now);
 }
 
 function emptyPiles(n) {
@@ -72,7 +70,7 @@ function emptyPiles(n) {
  * empty corner instead, and that side is dealt again. Corners are indexed
  * northwest, northeast, southwest, southeast.
  */
-export function deal({ seed, now = Date.now() } = {}) {
+export function deal({ seed } = {}) {
   const resolvedSeed = resolveSeed(seed);
   const deck = shuffle(buildDeck(), mulberry32(resolvedSeed));
   const sides = emptyPiles(SIDE_COUNT);
@@ -100,7 +98,8 @@ export function deal({ seed, now = Date.now() } = {}) {
     stock,
     waste: [],
     moves: 0,
-    startedAt: now,
+    startedAt: 0,
+    pausedAt: 0,
     wonAt: null,
     won: false,
     stuck: false,
@@ -175,6 +174,7 @@ export function moveCards(state, from, to) {
   const destPile = to.zone === "side" ? next.sides[to.index] : next.corners[to.index];
   destPile.push(...moving);
   next.moves += 1;
+  startClock(next);
   next.idlePasses = 0;
   next.stuck = false;
   if (isWon(next)) {
@@ -203,12 +203,14 @@ export function drawStock(state) {
     next.idlePasses += 1;
     if (next.idlePasses >= 2) next.stuck = true;
     next.moves += 1;
+    startClock(next);
     return { ok: true, state: next, recycled: true };
   }
   const card = next.stock.pop();
   card.faceUp = true;
   next.waste.push(card);
   next.moves += 1;
+  startClock(next);
   return { ok: true, state: next, recycled: false };
 }
 

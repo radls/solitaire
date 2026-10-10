@@ -5,6 +5,7 @@ import {
   autoPlaySafe,
   continueClock,
   deal,
+  elapsedMs,
   foundationStep,
   hint,
   isTriviallySolvable,
@@ -401,6 +402,25 @@ describe("isTriviallySolvable", () => {
 });
 
 describe("undo clock", () => {
+  it("starts on the first move and keeps running when that move is undone", () => {
+    const dealt = deal(1);
+    expect(dealt.startedAt).toBe(0);
+    expect(elapsedMs(dealt, 4_000)).toBe(0);
+    const state = blank();
+    state.cascades[0] = [C("hearts", 1)];
+    state.cascades[1] = [C("spades", 1)];
+    const before = Date.now();
+    const moved = moveCards(state, { zone: "cascade", index: 0, count: 1 }, { zone: "foundation" });
+    expect(moved.ok).toBe(true);
+    expect(moved.state.startedAt).toBeGreaterThanOrEqual(before);
+    expect(state.startedAt).toBe(0);
+    const second = moveCards(moved.state, { zone: "cascade", index: 1, count: 1 }, { zone: "foundation" });
+    expect(second.state.startedAt).toBe(moved.state.startedAt);
+    const restored = continueClock(moved.state, state);
+    expect(restored.moves).toBe(0);
+    expect(restored.startedAt).toBe(moved.state.startedAt);
+  });
+
   it("keeps the live clock when restoring an undo snapshot", () => {
     const live = blank();
     live.startedAt = 8_000;

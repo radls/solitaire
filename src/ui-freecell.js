@@ -12,6 +12,7 @@ import {
   listLegalMoves,
   moveCards,
 } from "./game/freecell.js";
+import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
@@ -90,9 +91,8 @@ export function mount() {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
     session.countedPlay = session.state.moves > 0;
-    if (typeof saved.savedAt === "number") {
-      const frozen = elapsedMs(session.state, saved.savedAt);
-      session.state.startedAt = Date.now() - frozen;
+    if (!session.state.startedAt || typeof saved.savedAt === "number") {
+      restoreClock(session.state, saved.savedAt);
     }
   } else {
     session.state = deal(randomDeal());
@@ -312,8 +312,15 @@ export function mount() {
     });
   }
 
+  function syncPlayClock() {
+    if (!session.state || !root.overlay) return;
+    const paused = !root.overlay.hidden || document.visibilityState === "hidden";
+    syncClock(session.state, paused);
+  }
+
   function refreshMeters() {
     if (!alive) return;
+    syncPlayClock();
     root.time.textContent = formatTime(elapsedMs(session.state));
   }
 
@@ -321,6 +328,7 @@ export function mount() {
     session.modal = null;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
+    syncPlayClock();
   }
 
   function applyHintHighlight() {
@@ -345,6 +353,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function showHelp() {
@@ -363,6 +372,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function gameInProgress() {
@@ -385,6 +395,7 @@ export function mount() {
         <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dealNumber ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
       </div>
     </div>`;
+    syncPlayClock();
   }
 
   function stopAuto() {
@@ -824,6 +835,14 @@ export function mount() {
   });
 
   const timer = window.setInterval(refreshMeters, 250);
+  const clockObserver = new MutationObserver(() => syncPlayClock());
+  if (root.overlay) {
+    clockObserver.observe(root.overlay, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  listen(document, "visibilitychange", () => {
+    syncPlayClock();
+    refreshMeters();
+  });
   render();
   refreshMeters();
   setStatus("Move a card into a free cell, cascade, or foundation.");
@@ -868,6 +887,7 @@ export function mount() {
       document.documentElement.classList.remove("is-dragging");
       ac.abort();
       window.clearInterval(timer);
+      clockObserver.disconnect();
       session.drag = null;
       clearLayoutVars();
       if (root.dragLayer) root.dragLayer.innerHTML = "";

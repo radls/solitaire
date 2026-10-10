@@ -1,4 +1,5 @@
 import { buildDeck, mulberry32, shuffle } from "./cards.js";
+import { elapsed, startClock, transferClock } from "./clock.js";
 
 export const COLUMN_COUNT = 7;
 export const COLUMN_ROWS = 5;
@@ -16,9 +17,7 @@ export function cloneState(state) {
 
 /** Undo restores a snapshot but keeps the live clock so elapsed time does not jump. */
 export function continueClock(current, snapshot) {
-  const next = cloneState(snapshot);
-  next.startedAt = current.startedAt;
-  return next;
+  return transferClock(current, cloneState(snapshot));
 }
 
 function top(pile) {
@@ -62,11 +61,11 @@ export function score(state) {
 }
 
 export function elapsedMs(state, now = Date.now()) {
-  const end = state?.over && state.wonAt ? state.wonAt : now;
-  return Math.max(0, end - (state?.startedAt || 0));
+  return elapsed(state, now);
 }
 
 function finish(state) {
+  startClock(state);
   state.moves += 1;
   if (isRoundOver(state)) {
     state.over = true;
@@ -75,7 +74,7 @@ function finish(state) {
   return { ok: true, state };
 }
 
-export function deal({ seed, now = Date.now() } = {}) {
+export function deal({ seed } = {}) {
   const resolvedSeed = resolveSeed(seed);
   const rng = mulberry32(resolvedSeed);
   const deck = shuffle(buildDeck(), rng);
@@ -97,7 +96,8 @@ export function deal({ seed, now = Date.now() } = {}) {
     waste,
     stock,
     moves: 0,
-    startedAt: now,
+    startedAt: 0,
+    pausedAt: 0,
     wonAt: null,
     over: false,
   };

@@ -20,6 +20,17 @@ import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
+import {
+  bindThumb,
+  growKlondikePeeks,
+  isPhonePortrait,
+  kbdTipsHTML,
+  layoutBottomInset,
+  listenLayout,
+  shrinkToFit,
+  syncThumbDisabled,
+  touchTipsHTML,
+} from "./phone-layout.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -138,6 +149,7 @@ export function mount(options = {}) {
 
   function setStatus(text) {
     root.status.textContent = text;
+    if (window.innerWidth <= 600) requestAnimationFrame(() => fit());
   }
 
   function formatTime(ms) {
@@ -295,6 +307,7 @@ export function mount(options = {}) {
     root.moves.textContent = String(state.moves);
     root.seed.textContent = seedStatusText(state, `Seed ${state.seed}`);
     root.undo.disabled = session.history.length === 0;
+    syncThumbDisabled();
     root.draw1.classList.toggle("active", state.drawCount === 1);
     root.draw3.classList.toggle("active", state.drawCount === 3);
     root.finish.hidden = !canAutoComplete(state) || state.won;
@@ -326,20 +339,75 @@ export function mount(options = {}) {
     return padY + gap;
   }
 
+  function applyFit(cardW, cardH, peekUp, peekDown, gap, width) {
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--peek-up", `${peekUp}px`);
+    style.setProperty("--peek-down", `${peekDown}px`);
+    style.setProperty("--col-gap", `${gap}px`);
+    style.setProperty("--waste-extra", width < 720 ? "26px" : "2.6rem");
+    style.setProperty("--waste-spread", width < 720 ? "12px" : "20px");
+  }
+
   function fit() {
     const board = root.table?.querySelector(".board");
     if (!board || !session.state) return;
     const width = board.clientWidth;
     if (!width) return;
     const gap = width < 800 ? 4 : Math.min(16, Math.round(width * 0.012));
-    const cardW = Math.min(120, Math.floor((width - gap * 6) / 7));
-    if (cardW < 28) return;
-    const cardH = Math.round(cardW * 1.42);
+    let cardW = Math.min(120, Math.floor((width - gap * 6) / 7));
+    if (cardW < 28 && window.innerWidth > 600) return;
+    cardW = Math.max(24, cardW);
+    let cardH = Math.round(cardW * 1.42);
     let peekUp = Math.round(cardW * 0.3);
     let peekDown = Math.round(cardW * 0.16);
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
     const topH = board.querySelector(".row.top")?.offsetHeight || cardH;
+
+    if (window.innerWidth <= 600) {
+      const contentSpace = Math.floor(
+        window.innerHeight - layoutBottomInset() - headerH - statusH - verticalChrome(board) - 4,
+      );
+      const fitsWidth = (w) => {
+        const ch = Math.round(w * 1.42);
+        let tallest = ch;
+        for (const pile of session.state.tableau) tallest = Math.max(tallest, pileHeight(pile, ch, 1, 1));
+        return ch + tallest <= contentSpace;
+      };
+      if (!fitsWidth(cardW)) cardW = shrinkToFit(cardW, 24, fitsWidth);
+      cardH = Math.round(cardW * 1.42);
+      peekUp = Math.round(cardW * 0.3);
+      peekDown = Math.round(cardW * 0.16);
+      const avail = contentSpace - cardH;
+      const fits = (up, down) =>
+        session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
+      if (avail > 0 && !fits(peekUp, peekDown)) {
+        let lo = 0;
+        let hi = 1;
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(Math.max(1, Math.round(peekUp * mid)), Math.max(1, Math.round(peekDown * mid)))) lo = mid;
+          else hi = mid;
+        }
+        peekUp = Math.max(1, Math.round(peekUp * lo));
+        peekDown = Math.max(1, Math.round(peekDown * lo));
+      } else if (isPhonePortrait() && fits(peekUp, peekDown)) {
+        const grown = growKlondikePeeks({
+          peekUp,
+          peekDown,
+          cardH,
+          avail,
+          piles: session.state.tableau,
+        });
+        peekUp = grown.peekUp;
+        peekDown = grown.peekDown;
+      }
+      applyFit(cardW, cardH, peekUp, peekDown, gap, width);
+      return;
+    }
+
     const avail = window.innerHeight - headerH - statusH - topH - verticalChrome(board) - 4;
     const fits = (up, down) =>
       session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
@@ -361,14 +429,7 @@ export function mount(options = {}) {
         peekDown = down;
       }
     }
-    const style = document.body.style;
-    style.setProperty("--card-w", `${cardW}px`);
-    style.setProperty("--card-h", `${cardH}px`);
-    style.setProperty("--peek-up", `${peekUp}px`);
-    style.setProperty("--peek-down", `${peekDown}px`);
-    style.setProperty("--col-gap", `${gap}px`);
-    style.setProperty("--waste-extra", width < 720 ? "26px" : "2.6rem");
-    style.setProperty("--waste-spread", width < 720 ? "12px" : "20px");
+    applyFit(cardW, cardH, peekUp, peekDown, gap, width);
   }
 
   function nudgeBoard() {
@@ -513,17 +574,18 @@ export function mount(options = {}) {
 
   function showHelp() {
     const stats = session.stats;
-    showOverlay(`<div class="modal">
-      <h2>Klondike</h2>
-      <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
-      <ul>
-        <li><kbd>N</kbd> new game</li>
+    const gestures = `<p>Tap a card, then tap a column or foundation. Double-tap sends it to the best spot.</p><p>Drag a card to choose the spot. Tap the stock to draw.</p>`;
+    const shortcuts = `<li><kbd>N</kbd> new game</li>
         <li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li>
         <li><kbd>H</kbd> hint</li>
         <li><kbd>Space</kbd> draw</li>
         <li><kbd>A</kbd> finish (when every card is face up)</li>
-        <li>Double-tap a card to send it to a foundation</li>
-      </ul>
+        <li>Double-tap a card to send it to a foundation</li>`;
+    showOverlay(`<div class="modal">
+      <h2>Klondike</h2>
+      ${touchTipsHTML(gestures)}
+      <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
+      ${kbdTipsHTML(shortcuts)}
       <p>Won ${stats.won} of ${stats.played} games. Streak ${stats.streak}.</p>
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
@@ -534,12 +596,12 @@ export function mount(options = {}) {
   function confirmNew(drawCount, extra = {}) {
     if (session.state.moves > 0 && !session.state.won) {
       const dailyAttr = extra.daily ? ` data-daily="1"` : "";
-      showOverlay(`<div class="modal">
+      showOverlay(`<div class="modal" data-testid="confirm-modal">
         <h2>Start a new game?</h2>
         <p>The current deal will be abandoned and your streak will reset.</p>
         <div class="modal-actions">
-          <button class="btn" data-act="close">Keep playing</button>
-          <button class="btn primary" data-act="new" data-draw="${drawCount}"${dailyAttr}>New game</button>
+          <button class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
+          <button class="btn primary" data-act="new" data-testid="confirm-ok" data-draw="${drawCount}"${dailyAttr}>New game</button>
         </div>
       </div>`, { modal: "confirm" });
       return;
@@ -856,11 +918,13 @@ export function mount(options = {}) {
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
-  listen(window, "resize", () => fit());
+  listenLayout(listen, fit);
 
-  listen(document.getElementById("btn-new"), "click", () => confirmNew(session.state.drawCount));
+  const onNew = () => confirmNew(session.state.drawCount);
+  listen(document.getElementById("btn-new"), "click", onNew);
   listen(root.undo, "click", doUndo);
   listen(document.getElementById("btn-hint"), "click", doHint);
+  bindThumb(listen, { undo: doUndo, hint: doHint, newGame: onNew });
   listen(root.finish, "click", doFinish);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
@@ -926,6 +990,11 @@ export function mount(options = {}) {
   listen(document, "visibilitychange", () => {
     syncPlayClock();
     refreshMeters();
+    if (session.state) persist();
+  });
+  // Save the frozen elapsed time when the page goes away (reload, close, app switch).
+  listen(window, "pagehide", () => {
+    if (session.state) persist();
   });
   persist();
   render();

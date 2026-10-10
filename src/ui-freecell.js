@@ -24,6 +24,17 @@ import {
   seedStatusText,
   todayKey,
 } from "./daily.js";
+import {
+  bindThumb,
+  fanPeek,
+  isPhonePortrait,
+  kbdTipsHTML,
+  layoutBottomInset,
+  listenLayout,
+  shrinkToFit,
+  syncThumbDisabled,
+  touchTipsHTML,
+} from "./phone-layout.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -140,6 +151,7 @@ export function mount(options = {}) {
 
   function setStatus(text) {
     root.status.textContent = text;
+    if (window.innerWidth <= 600) requestAnimationFrame(() => fit());
   }
 
   function formatTime(ms) {
@@ -230,13 +242,21 @@ export function mount(options = {}) {
     }
   }
 
+  function applyFreeCellFit(cardW, cardH, peek) {
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--fc-peek", `${peek}px`);
+    style.setProperty("--col-gap", `${GAP}px`);
+  }
+
   function fit() {
     const board = root.table.querySelector(".board.freecell");
     if (!board) return;
     const width = board.clientWidth;
     if (!width) return;
-    const cardW = Math.max(30, Math.min(110, Math.floor((width - GAP * 7) / 8)));
-    const cardH = Math.round(cardW * 1.42);
+    let cardW = Math.max(30, Math.min(110, Math.floor((width - GAP * 7) / 8)));
+    let cardH = Math.round(cardW * 1.42);
     const longest = Math.max(1, ...session.state.cascades.map((pile) => pile.length));
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
@@ -245,19 +265,40 @@ export function mount(options = {}) {
     const ts = table ? getComputedStyle(table) : null;
     const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
     const gap = parseFloat(getComputedStyle(board).rowGap) || 0;
-    const availH = window.innerHeight - headerH - statusH - topH - padY - gap - 4;
     let peek = Math.round(cardW * 0.34);
+
+    if (window.innerWidth <= 600) {
+      const contentSpace = Math.floor(window.innerHeight - layoutBottomInset() - headerH - statusH - padY - gap - 4);
+      const steps = Math.max(0, longest - 1);
+      const fitsWidth = (w) => {
+        const ch = Math.round(w * 1.42);
+        return ch + ch + steps <= contentSpace;
+      };
+      if (!fitsWidth(cardW)) cardW = shrinkToFit(cardW, 24, fitsWidth);
+      cardH = Math.round(cardW * 1.42);
+      peek = Math.round(cardW * 0.34);
+      const availH = contentSpace - cardH;
+      if (steps > 0) {
+        if (isPhonePortrait()) peek = fanPeek(peek, cardH, availH, steps);
+        else {
+          const room = Math.floor((availH - cardH) / steps);
+          const natural = peek;
+          if (room >= 14) peek = Math.min(natural, room);
+          else peek = Math.max(1, Math.min(natural, room));
+        }
+      }
+      applyFreeCellFit(cardW, cardH, peek);
+      return;
+    }
+
+    const availH = window.innerHeight - headerH - statusH - topH - padY - gap - 4;
     if (longest > 1) {
       const room = Math.floor((availH - cardH) / (longest - 1));
       const natural = Math.round(cardW * 0.34);
       if (room >= 14) peek = Math.min(natural, room);
       else peek = Math.max(1, Math.min(natural, room));
     }
-    const style = document.body.style;
-    style.setProperty("--card-w", `${cardW}px`);
-    style.setProperty("--card-h", `${cardH}px`);
-    style.setProperty("--fc-peek", `${peek}px`);
-    style.setProperty("--col-gap", `${GAP}px`);
+    applyFreeCellFit(cardW, cardH, peek);
   }
 
   function updateMute() {
@@ -329,6 +370,7 @@ export function mount(options = {}) {
     root.moves.textContent = String(state.moves);
     root.seed.textContent = seedStatusText(state);
     root.undo.disabled = session.history.length === 0;
+    syncThumbDisabled();
     if (root.finish) {
       const home = state.won || isWon(state);
       root.finish.hidden = home || !isTriviallySolvable(state);
@@ -389,8 +431,11 @@ export function mount(options = {}) {
   function showHelp() {
     session.modal = "help";
     root.overlay.hidden = false;
+    const gestures = `<p>Tap a card, then tap a free cell, cascade, or foundation.</p><p>Drag to choose the spot. Double-tap sends one card to a foundation, or into an open free cell.</p>`;
+    const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>FreeCell</h2>
+      ${touchTipsHTML(gestures)}
       <p>Microsoft deal numbers 1–32000. Eight cascades, all cards face up. Four free cells and four foundations.</p>
       <p>Build cascades down by alternating color. Any card or legal run may move to an empty cascade. Build foundations up by suit, ace through king. A free cell holds one card.</p>
       <p data-testid="deal-number">Deal #${session.state.dealNumber}</p>
@@ -398,6 +443,7 @@ export function mount(options = {}) {
         <input data-testid="deal-input" inputmode="numeric" type="text" autocomplete="off" value="${session.state.dealNumber}" aria-label="Deal number" style="font-size:16px" />
         <button type="submit" class="btn primary">Deal</button>
       </form>
+      ${kbdTipsHTML(shortcuts)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -621,6 +667,7 @@ export function mount(options = {}) {
     session.selected = null;
     session.hintMove = null;
     if (root.undo) root.undo.disabled = false;
+    syncThumbDisabled();
     queueAuto();
     if (!session.animating && session.history[session.history.length - 1] === snapshot) {
       session.history.pop();
@@ -817,7 +864,7 @@ export function mount(options = {}) {
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
-  listen(window, "resize", () => fit());
+  listenLayout(listen, fit);
   function doHint() {
     const move = findHint(session.state);
     session.hintMove = move;
@@ -829,8 +876,10 @@ export function mount(options = {}) {
 
   listen(root.undo, "click", doUndo);
   listen(root.finish, "click", doFinish);
-  listen(document.getElementById("btn-new"), "click", () => confirmNewDeal());
+  const onNew = () => confirmNewDeal();
+  listen(document.getElementById("btn-new"), "click", onNew);
   listen(document.getElementById("btn-hint"), "click", doHint);
+  bindThumb(listen, { undo: doUndo, hint: doHint, newGame: onNew });
   listen(document.getElementById("btn-help"), "click", showHelp);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
@@ -899,6 +948,11 @@ export function mount(options = {}) {
   listen(document, "visibilitychange", () => {
     syncPlayClock();
     refreshMeters();
+    if (session.state) persist();
+  });
+  // Save the frozen elapsed time when the page goes away (reload, close, app switch).
+  listen(window, "pagehide", () => {
+    if (session.state) persist();
   });
   render();
   refreshMeters();
@@ -940,6 +994,7 @@ export function mount(options = {}) {
     historyLength: () => session.history.length,
     listMoves: () => listLegalMoves(session.state),
     unmount() {
+      if (session.state) persist();
       alive = false;
       stopAuto();
       document.documentElement.classList.remove("is-dragging");

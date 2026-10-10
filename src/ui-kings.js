@@ -15,6 +15,16 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
+import {
+  bindThumb,
+  fanPeek,
+  isPhonePortrait,
+  kbdTipsHTML,
+  layoutBottomInset,
+  listenLayout,
+  syncThumbDisabled,
+  touchTipsHTML,
+} from "./phone-layout.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -226,7 +236,8 @@ export function mount(options = {}) {
     const innerGap = 4;
     const rowGap = 6;
     let cardW = Math.floor((width - colGap * 2 - innerGap) / 4);
-    cardW = Math.max(26, Math.min(118, cardW));
+    if (window.innerWidth <= 600) cardW = Math.max(22, cardW);
+    else cardW = Math.max(26, Math.min(118, cardW));
 
     const lengths = session.state.sides.map((pile) => Math.max(1, pile.length));
     const extra =
@@ -240,23 +251,30 @@ export function mount(options = {}) {
     const table = root.table;
     const ts = table ? getComputedStyle(table) : null;
     const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
+    const phone = window.innerWidth <= 600;
     let avail = window.innerHeight - headerH - statusH - padY - rowGap * 2 - 8;
-    if (avail < 90) avail = 90;
+    if (phone) avail -= layoutBottomInset();
+    else if (avail < 90) avail = 90;
 
     let cardH = Math.round(cardW * 1.42);
     const minPeek = extra > 0 ? 1 : 0;
+    const minCard = phone ? 24 : 36;
     if (cardH * 3 + extra * minPeek > avail) {
-      cardH = Math.max(36, Math.floor((avail - extra * minPeek) / 3));
-      cardW = Math.max(26, Math.min(cardW, Math.floor(cardH / 1.42)));
+      cardH = Math.max(minCard, Math.floor((avail - extra * minPeek) / 3));
+      cardW = Math.max(phone ? 22 : 26, Math.min(cardW, Math.floor(cardH / 1.42)));
       cardH = Math.round(cardW * 1.42);
       if (cardH * 3 + extra * minPeek > avail) {
-        cardH = Math.max(36, Math.floor((avail - extra * minPeek) / 3));
+        cardH = Math.max(minCard, Math.floor((avail - extra * minPeek) / 3));
       }
     }
     let peek = Math.round(cardW * 0.26);
     if (extra > 0) {
       const room = Math.floor((avail - cardH * 3) / extra);
-      peek = Math.max(1, Math.min(peek, room));
+      if (isPhonePortrait()) {
+        const columnAvail = cardH + extra * Math.max(room, 1);
+        peek = fanPeek(peek, cardH, columnAvail, extra);
+        if (cardH * 3 + extra * peek > avail) peek = Math.max(1, room);
+      } else peek = Math.max(1, Math.min(peek, room));
     }
 
     const style = document.body.style;
@@ -406,6 +424,7 @@ export function mount(options = {}) {
     if (root.home) root.home.textContent = String(cardsInCorners(state));
     if (root.seed) root.seed.textContent = seedStatusText(state);
     if (root.undo) root.undo.disabled = session.history.length === 0;
+    syncThumbDisabled();
     updateMute();
     applyHintHighlight();
     if (session.selected) highlightDrops(session.selected, true);
@@ -493,8 +512,11 @@ export function mount(options = {}) {
   function showHelp() {
     session.modal = "help";
     root.overlay.hidden = false;
+    const gestures = `<p>Tap a card, then tap a side or a corner. Drag to choose the spot.</p><p>Double-tap a card to move it to a corner. Tap the bottom card of a side pile to take the whole pile.</p><p>Tap the stock to draw. When the stock is empty, tap it to turn the waste over.</p>`;
+    const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li><li><kbd>Space</kbd> draw</li><li><kbd>R</kbd> replay</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>King's Corners</h2>
+      ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
         <button type="button" class="btn" data-act="replay" data-testid="btn-replay">Replay this deal</button>
@@ -507,6 +529,7 @@ export function mount(options = {}) {
       <p>Move the top waste card, the top card of a side, or a whole side pile. A whole pile moves when its bottom card fits. A king-led pile may fill an empty corner. Partial runs stay put.</p>
       <p>The deal is won when all 52 cards are in the corners. If you turn the stock over twice without another move, there is nothing left to try.</p>
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
+      ${kbdTipsHTML(shortcuts)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -913,7 +936,7 @@ export function mount(options = {}) {
     session.drag = null;
     if (session.selected) highlightDrops(session.selected, true);
   });
-  listen(window, "resize", () => fit());
+  listenLayout(listen, fit);
   if (window.ResizeObserver) {
     observer = new ResizeObserver(() => fit());
     const topbar = document.querySelector(".topbar");
@@ -932,8 +955,10 @@ export function mount(options = {}) {
   }
 
   listen(root.undo, "click", doUndo);
-  listen(document.getElementById("btn-new"), "click", () => confirmNewDeal());
+  const onNew = () => confirmNewDeal();
+  listen(document.getElementById("btn-new"), "click", onNew);
   listen(document.getElementById("btn-hint"), "click", doHint);
+  bindThumb(listen, { undo: doUndo, hint: doHint, newGame: onNew });
   listen(document.getElementById("btn-help"), "click", showHelp);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
@@ -1001,6 +1026,11 @@ export function mount(options = {}) {
   listen(document, "visibilitychange", () => {
     syncPlayClock();
     refreshMeters();
+    if (session.state) persist();
+  });
+  // Save the frozen elapsed time when the page goes away (reload, close, app switch).
+  listen(window, "pagehide", () => {
+    if (session.state) persist();
   });
   if (resume) {
     persist();
@@ -1045,6 +1075,7 @@ export function mount(options = {}) {
     listMoves: () => listLegalMoves(session.state),
     isAnimating: () => false,
     unmount() {
+      if (session.state) persist();
       alive = false;
       document.documentElement.classList.remove("is-dragging");
       observer?.disconnect();

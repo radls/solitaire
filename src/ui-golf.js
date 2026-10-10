@@ -17,6 +17,17 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
+import {
+  bindThumb,
+  fanPeek,
+  isPhonePortrait,
+  kbdTipsHTML,
+  layoutBottomInset,
+  listenLayout,
+  shrinkToFit,
+  syncThumbDisabled,
+  touchTipsHTML,
+} from "./phone-layout.js";
 
 const DRAG_THRESHOLD = 7;
 const HISTORY_CAP = 200;
@@ -120,6 +131,7 @@ export function mount(options = {}) {
 
   function setStatus(text) {
     if (root.status) root.status.textContent = text;
+    if (window.innerWidth <= 600) requestAnimationFrame(() => fit());
   }
 
   function formatTime(ms) {
@@ -180,13 +192,21 @@ export function mount(options = {}) {
     }
   }
 
+  function applyGolfFit(cardW, cardH, peek) {
+    const style = document.body.style;
+    style.setProperty("--card-w", `${cardW}px`);
+    style.setProperty("--card-h", `${cardH}px`);
+    style.setProperty("--golf-peek", `${peek}px`);
+    style.setProperty("--col-gap", `${GAP}px`);
+  }
+
   function fit() {
     const board = root.table?.querySelector(".board.golf");
     if (!board) return;
     const width = board.clientWidth;
     if (!width) return;
-    const cardW = Math.max(30, Math.min(120, Math.floor((width - GAP * 6) / 7)));
-    const cardH = Math.round(cardW * 1.42);
+    let cardW = Math.max(30, Math.min(120, Math.floor((width - GAP * 6) / 7)));
+    let cardH = Math.round(cardW * 1.42);
     const longest = Math.max(1, ...session.state.columns.map((pile) => pile.length));
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
@@ -195,17 +215,33 @@ export function mount(options = {}) {
     const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
     const gap = parseFloat(getComputedStyle(board).rowGap) || 0;
     const bottomH = board.querySelector(".golf-bottom")?.offsetHeight || cardH;
-    const avail = window.innerHeight - headerH - statusH - bottomH - padY - gap - 4;
     let peek = Math.round(cardW * 0.56);
+
+    if (window.innerWidth <= 600) {
+      const contentSpace = Math.floor(window.innerHeight - layoutBottomInset() - headerH - statusH - padY - gap - 4);
+      const steps = Math.max(0, longest - 1);
+      const fitsWidth = (w) => {
+        const ch = Math.round(w * 1.42);
+        return ch + steps + ch <= contentSpace;
+      };
+      if (!fitsWidth(cardW)) cardW = shrinkToFit(cardW, 24, fitsWidth);
+      cardH = Math.round(cardW * 1.42);
+      peek = Math.round(cardW * 0.56);
+      const avail = contentSpace - cardH;
+      if (steps > 0) {
+        if (isPhonePortrait()) peek = fanPeek(peek, cardH, avail, steps);
+        else peek = Math.max(1, Math.min(peek, Math.floor((avail - cardH) / steps)));
+      }
+      applyGolfFit(cardW, cardH, peek);
+      return;
+    }
+
+    const avail = window.innerHeight - headerH - statusH - bottomH - padY - gap - 4;
     if (longest > 1) {
       const room = Math.floor((avail - cardH) / (longest - 1));
       peek = Math.max(12, Math.min(peek, room));
     }
-    const style = document.body.style;
-    style.setProperty("--card-w", `${cardW}px`);
-    style.setProperty("--card-h", `${cardH}px`);
-    style.setProperty("--golf-peek", `${peek}px`);
-    style.setProperty("--col-gap", `${GAP}px`);
+    applyGolfFit(cardW, cardH, peek);
   }
 
   function updateMute() {
@@ -288,6 +324,7 @@ export function mount(options = {}) {
     if (root.left) root.left.textContent = String(cardsLeft(state));
     if (root.seed) root.seed.textContent = seedStatusText(state);
     if (root.undo) root.undo.disabled = session.history.length === 0;
+    syncThumbDisabled();
     applyHintHighlight();
     updateMute();
     fit();
@@ -364,8 +401,11 @@ export function mount(options = {}) {
   function showHelp() {
     session.modal = "help";
     root.overlay.hidden = false;
+    const gestures = `<p>Tap the exposed card of a column to play it onto the waste.</p><p>Drag that card onto the waste to choose it. Tap the stock to draw.</p>`;
+    const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li><li><kbd>Space</kbd> draw</li><li><kbd>R</kbd> replay</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>Golf</h2>
+      ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
         <button type="button" class="btn" data-act="replay" data-testid="btn-replay">Replay this deal</button>
@@ -374,6 +414,7 @@ export function mount(options = {}) {
       <p>Play the exposed card of a column onto the waste when it is one rank higher or one rank lower. Suit does not matter. Only that exposed card can be played.</p>
       <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
       <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
+      ${kbdTipsHTML(shortcuts)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -674,7 +715,7 @@ export function mount(options = {}) {
     }
     session.drag = null;
   });
-  listen(window, "resize", () => fit());
+  listenLayout(listen, fit);
   function doHint() {
     const move = findHint(session.state);
     session.hintMove = move;
@@ -686,8 +727,10 @@ export function mount(options = {}) {
   }
 
   listen(root.undo, "click", doUndo);
-  listen(document.getElementById("btn-new"), "click", () => confirmNewDeal());
+  const onNew = () => confirmNewDeal();
+  listen(document.getElementById("btn-new"), "click", onNew);
   listen(document.getElementById("btn-hint"), "click", doHint);
+  bindThumb(listen, { undo: doUndo, hint: doHint, newGame: onNew });
   listen(document.getElementById("btn-help"), "click", showHelp);
   listen(root.mute, "click", () => {
     session.muted = !session.muted;
@@ -750,6 +793,11 @@ export function mount(options = {}) {
   listen(document, "visibilitychange", () => {
     syncPlayClock();
     refreshMeters();
+    if (session.state) persist();
+  });
+  // Save the frozen elapsed time when the page goes away (reload, close, app switch).
+  listen(window, "pagehide", () => {
+    if (session.state) persist();
   });
   if (resume) {
     persist();
@@ -791,6 +839,7 @@ export function mount(options = {}) {
     historyLength: () => session.history.length,
     listMoves: () => listLegalMoves(session.state),
     unmount() {
+      if (session.state) persist();
       alive = false;
       document.documentElement.classList.remove("is-dragging");
       ac.abort();

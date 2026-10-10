@@ -1382,6 +1382,108 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   place-items: safe center;
 }
 
+/* Phone thumb bar. Hidden on the picker and on any layout wider than a phone. */
+:root {
+  --thumb-pad-y: 0.4rem;
+  --thumb-btn: 44px;
+  --thumb-h: calc(var(--thumb-pad-y) + var(--thumb-btn) + var(--thumb-pad-y) + 1px + env(safe-area-inset-bottom, 0px));
+}
+
+.thumb-bar {
+  display: none;
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-height: var(--thumb-h);
+  padding:
+    var(--thumb-pad-y)
+    calc(0.65rem + env(safe-area-inset-right, 0px))
+    calc(var(--thumb-pad-y) + env(safe-area-inset-bottom, 0px))
+    calc(0.65rem + env(safe-area-inset-left, 0px));
+  background: var(--felt-ink);
+  border-top: 1px solid var(--line);
+}
+
+.thumb-bar .btn {
+  flex: 1 1 0;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+[data-testid="touch-tips"] {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--gold-soft);
+}
+
+[data-testid="touch-tips"] p {
+  margin: 0.28rem 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+[data-testid="touch-tips"] p:first-child {
+  margin-top: 0;
+}
+
+[data-testid="touch-tips"] p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  html:has(body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"])) {
+    overflow: hidden;
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) #app {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    padding-bottom: var(--thumb-h);
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) .table {
+    min-height: 0;
+    padding: 0.28rem 0.18rem 0.1rem;
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) .status {
+    padding-bottom: 0.35rem;
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) :is(#btn-undo, #btn-new, #btn-hint) {
+    display: none;
+  }
+
+  body:is([data-game="klondike"], [data-game="freecell"], [data-game="golf"], [data-game="kings"]) .thumb-bar {
+    display: flex;
+  }
+
+  #overlay {
+    overflow: auto;
+    place-items: start center;
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .tip-panel {
   margin-top: 0.95rem;
   padding-top: 0.85rem;

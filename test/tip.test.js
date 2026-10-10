@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "../src/config.js";
-import { bitcoinUri, isLikelyBech32Btc, streakLine, tipSections, winTipHTML } from "../src/tip.js";
+import {
+  bitcoinUri,
+  isLikelyBech32Btc,
+  markTipCta,
+  readTipCtaDay,
+  shouldShowTipCta,
+  streakLine,
+  stuckTipHTML,
+  TIP_STORE_KEY,
+  tipCtaHTML,
+  tipEntryHTML,
+  tipSections,
+  winScreenTipHTML,
+  winTipHTML,
+} from "../src/tip.js";
 
 const LIVE = { TIP_BTC_ADDRESS, TIP_X_HANDLE, SITE_URL };
 
@@ -136,6 +150,107 @@ describe("tipSections", () => {
     expect(sections.fallback).toBe(true);
     expect(sections.fallbackNote).toBe("Thanks for playing");
     expect(sections.shareUrl).toBe(SITE_URL);
+  });
+
+  it("shows the once-a-day CTA on a new day, and not again the same day", () => {
+    expect(shouldShowTipCta("2026-10-10", "2026-10-10")).toBe(false);
+    expect(shouldShowTipCta(" 2026-10-10 ", "2026-10-10")).toBe(false);
+    expect(shouldShowTipCta("2026-10-09", "2026-10-10")).toBe(true);
+    expect(shouldShowTipCta("2025-01-01", "2026-10-10")).toBe(true);
+  });
+
+  it("treats a missing saved day as not yet shown", () => {
+    for (const saved of [undefined, null, "", "   ", 0, 12, {}, []]) {
+      expect(shouldShowTipCta(saved, "2026-10-10")).toBe(true);
+    }
+    expect(shouldShowTipCta("2026-10-10", "")).toBe(true);
+    expect(shouldShowTipCta("2026-10-10", null)).toBe(true);
+  });
+
+  it("remembers the local day and ignores broken storage", () => {
+    const box = {};
+    const storage = {
+      getItem(key) {
+        return Object.prototype.hasOwnProperty.call(box, key) ? box[key] : null;
+      },
+      setItem(key, value) {
+        box[key] = String(value);
+      },
+    };
+    expect(readTipCtaDay(storage)).toBe(null);
+    expect(markTipCta("2026-10-10", storage)).toBe(true);
+    expect(box[TIP_STORE_KEY]).toBe(JSON.stringify({ ctaDay: "2026-10-10" }));
+    expect(readTipCtaDay(storage)).toBe("2026-10-10");
+    expect(shouldShowTipCta(readTipCtaDay(storage), "2026-10-10")).toBe(false);
+    expect(shouldShowTipCta(readTipCtaDay(storage), "2026-10-11")).toBe(true);
+
+    const broken = {
+      getItem() {
+        throw new Error("denied");
+      },
+      setItem() {
+        throw new Error("quota");
+      },
+    };
+    expect(() => readTipCtaDay(broken)).not.toThrow();
+    expect(readTipCtaDay(broken)).toBe(null);
+    expect(() => markTipCta("2026-10-10", broken)).not.toThrow();
+    expect(markTipCta("2026-10-10", broken)).toBe(false);
+    expect(markTipCta("2026-10-10", null)).toBe(false);
+    expect(shouldShowTipCta(readTipCtaDay(broken), "2026-10-10")).toBe(true);
+
+    const corrupt = {
+      getItem() {
+        return "{not json";
+      },
+      setItem() {},
+    };
+    expect(readTipCtaDay(corrupt)).toBe(null);
+    expect(readTipCtaDay({ getItem: () => JSON.stringify({ ctaDay: 4 }), setItem() {} })).toBe(null);
+    expect(readTipCtaDay({ getItem: () => "null", setItem() {} })).toBe(null);
+  });
+
+  it("shows the CTA once per day, then the small tip button", () => {
+    const box = {};
+    const storage = {
+      getItem(key) {
+        return Object.prototype.hasOwnProperty.call(box, key) ? box[key] : null;
+      },
+      setItem(key, value) {
+        box[key] = String(value);
+      },
+    };
+    const first = winScreenTipHTML(4, "2026-10-10", storage);
+    expect(first).toContain('data-testid="tip-cta"');
+    expect(first).toContain("Enjoying a quiet game? A small BTC tip keeps it going.");
+    expect(first).toContain('data-testid="btn-tip"');
+    expect(first).toContain("☕ Buy me a coffee in BTC");
+    expect(first).not.toContain("tip-streak");
+    expect(first).not.toMatch(/!/);
+    expect(first).not.toMatch(/<a\b|https?:|x\.com|stripe/i);
+
+    const again = winScreenTipHTML(4, "2026-10-10", storage);
+    expect(again).not.toContain("tip-cta");
+    expect(again).toContain('data-testid="btn-tip"');
+    expect(again).toContain('data-testid="tip-streak"');
+    expect(stuckTipHTML("2026-10-10", storage)).toBe("");
+
+    const next = stuckTipHTML("2026-10-11", storage);
+    expect(next).toContain('data-testid="tip-cta"');
+    expect(winScreenTipHTML(1, "2026-10-11", storage)).not.toContain("tip-cta");
+    expect(winScreenTipHTML(1, "2026-10-11", storage)).toContain('data-testid="btn-tip"');
+  });
+
+  it("keeps a quiet tip entry free of the address", () => {
+    const entry = tipEntryHTML("help-tip");
+    expect(entry).toContain('data-testid="help-tip"');
+    expect(entry).toContain('data-act="tip"');
+    expect(entry).toContain("☕ Tip in BTC");
+    expect(entry).not.toContain(TIP_BTC_ADDRESS);
+    expect(entry).not.toMatch(/!/);
+    const cta = tipCtaHTML();
+    expect(cta).toContain('data-testid="tip-cta"');
+    expect(cta.indexOf('data-testid="btn-tip"')).toBeGreaterThan(cta.indexOf("Enjoying a quiet game?"));
   });
 
   it("omits the share link when the site URL is empty", () => {

@@ -1,4 +1,10 @@
 import { SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "./config.js";
+import { todayKey } from "./daily.js";
+
+/** Once-a-day tip reminder. `{ ctaDay: "YYYY-MM-DD" }` is the local day it was shown. */
+export const TIP_STORE_KEY = "grok-solitaire:tip";
+
+const TIP_CTA_LINE = "Enjoying a quiet game? A small BTC tip keeps it going.";
 
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32_SET = new Set(BECH32_CHARSET);
@@ -77,6 +83,89 @@ export function winTipHTML(streak) {
   const line = streakLine(streak);
   const note = line ? `<p class="tip-streak" data-testid="tip-streak">${escapeHtml(line)}</p>` : "";
   return `${note}<div class="tip-offer">${tipButtonHTML()}</div>`;
+}
+
+/** Soft entry that opens the tip panel. Picker and Help use this; it is not the once-a-day CTA. */
+export function tipEntryHTML(testId) {
+  const id = escapeHtml(testId);
+  return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">☕ Tip in BTC</button>`;
+}
+
+/** One calm line and the coffee button. Shown at most once per local calendar day. */
+export function tipCtaHTML() {
+  return `<div class="tip-cta" data-testid="tip-cta"><p>${escapeHtml(TIP_CTA_LINE)}</p><div class="tip-offer">${tipButtonHTML()}</div></div>`;
+}
+
+/**
+ * True when the once-a-day block has not been shown on `today`.
+ * A missing, blank, or non-string saved day counts as not yet shown.
+ */
+export function shouldShowTipCta(ctaDay, today) {
+  const saved = typeof ctaDay === "string" ? ctaDay.trim() : "";
+  const day = typeof today === "string" ? today.trim() : "";
+  if (!saved || !day) return true;
+  return saved !== day;
+}
+
+function resolveStorage(storage) {
+  if (storage !== undefined) return storage || null;
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Saved `ctaDay`, or null when storage is missing, unreadable, or the value is not a string. */
+export function readTipCtaDay(storage) {
+  try {
+    const store = resolveStorage(storage);
+    if (!store || typeof store.getItem !== "function") return null;
+    const raw = store.getItem(TIP_STORE_KEY);
+    if (typeof raw !== "string" || !raw) return null;
+    const parsed = JSON.parse(raw);
+    const day = parsed && typeof parsed === "object" ? parsed.ctaDay : null;
+    return typeof day === "string" && day.trim() ? day.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember that the once-a-day block was shown. Never throws. */
+export function markTipCta(today, storage) {
+  try {
+    const store = resolveStorage(storage);
+    if (!store || typeof store.setItem !== "function") return false;
+    const day = typeof today === "string" ? today.trim() : "";
+    if (!day) return false;
+    store.setItem(TIP_STORE_KEY, JSON.stringify({ ctaDay: day }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function claimTipCta(today, storage) {
+  const day = typeof today === "string" && today.trim() ? today.trim() : todayKey();
+  if (!shouldShowTipCta(readTipCtaDay(storage), day)) return "";
+  markTipCta(day, storage);
+  return tipCtaHTML();
+}
+
+/**
+ * Win screens. The first end-of-game of the local day gets the CTA.
+ * Later wins that day keep the small coffee button.
+ */
+export function winScreenTipHTML(streak, today, storage) {
+  const cta = claimTipCta(today, storage);
+  if (cta) return cta;
+  return winTipHTML(streak);
+}
+
+/** Klondike stuck panel. Empty except on the once-a-day showing. */
+export function stuckTipHTML(today, storage) {
+  return claimTipCta(today, storage);
 }
 
 function tipPanelMarkup(sections) {
@@ -267,6 +356,20 @@ function bindTipPanel(panel, sections) {
   if (sections.btc) fillQr(panel.querySelector("[data-testid='tip-btc-qr']"), sections.uri);
 }
 
+/** Insert the tip panel once. `position: "start"` places it above a Close row. */
+export function mountTipPanel(modalEl, { position = "end" } = {}) {
+  if (!modalEl) return null;
+  const existing = modalEl.querySelector("[data-testid='tip-panel']");
+  if (existing) return existing;
+  const sections = tipSections({ TIP_BTC_ADDRESS, TIP_X_HANDLE, SITE_URL });
+  const where = position === "start" ? "afterbegin" : "beforeend";
+  modalEl.insertAdjacentHTML(where, tipPanelMarkup(sections));
+  modalEl.classList.add("tip-open");
+  const panel = modalEl.querySelector("[data-testid='tip-panel']");
+  if (panel) bindTipPanel(panel, sections);
+  return panel;
+}
+
 export function toggleTipPanel(modalEl) {
   if (!modalEl) return;
   const existing = modalEl.querySelector("[data-testid='tip-panel']");
@@ -275,12 +378,8 @@ export function toggleTipPanel(modalEl) {
     modalEl.classList.remove("tip-open");
     return;
   }
-  const sections = tipSections({ TIP_BTC_ADDRESS, TIP_X_HANDLE, SITE_URL });
-  modalEl.insertAdjacentHTML("beforeend", tipPanelMarkup(sections));
-  modalEl.classList.add("tip-open");
-  const panel = modalEl.querySelector("[data-testid='tip-panel']");
+  const panel = mountTipPanel(modalEl);
   if (!panel) return;
-  bindTipPanel(panel, sections);
   const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   panel.scrollIntoView({ block: "nearest", inline: "nearest", behavior: reduce ? "auto" : "smooth" });
 }

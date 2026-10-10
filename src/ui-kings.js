@@ -13,7 +13,7 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
-import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
   bindThumb,
@@ -491,7 +491,7 @@ export function mount(options = {}) {
         <li><span>Moves</span>${state.moves}</li>
       </ul>
       <p data-testid="win-count">Wins ${session.stats.won}</p>
-      ${winTipHTML(session.stats.streak)}
+      ${winScreenTipHTML(session.stats.streak)}
       ${dailyDoneHTML()}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
@@ -542,6 +542,7 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
+      ${tipEntryHTML("help-tip")}
     </div>`;
     syncPlayClock();
   }

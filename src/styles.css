@@ -1379,6 +1379,74 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   padding: 0.5rem 0.85rem;
 }
 
+.tip-entry {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0.35rem auto 0;
+  padding: 0.4rem 0.85rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.picker > .tip-entry {
+  grid-column: 1 / -1;
+  justify-self: center;
+  align-self: center;
+  margin: 0.15rem auto 0.2rem;
+}
+
+.tip-entry:hover,
+.tip-entry:focus-visible {
+  color: var(--gold);
+}
+
+.tip-entry:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.tip-cta {
+  margin-top: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tip-cta p {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tip-cta .tip-offer {
+  margin-top: 0;
+}
+
+[data-testid="tip-modal"] .tip-panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+[data-testid="tip-modal"] .modal-actions .btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .btn.tip-btn:hover,
 .btn.tip-btn:focus-visible {
   background: transparent;

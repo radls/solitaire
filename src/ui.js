@@ -18,7 +18,7 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
-import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
   bindThumb,
@@ -546,6 +546,7 @@ export function mount(options = {}) {
       `<div class="modal" data-testid="stuck-modal">
         <h2>No useful moves</h2>
         <p>Drawing and moving cards won't open anything new.</p>
+        ${stuckTipHTML()}
         <div class="modal-actions">
           <button type="button" class="btn" data-act="undo" data-testid="stuck-undo"${undoDisabled}>Undo</button>
           <button type="button" class="btn" data-act="replay" data-testid="stuck-replay">Replay this deal</button>
@@ -578,7 +579,7 @@ export function mount(options = {}) {
           <li><span>Best time</span>${stats.bestTimeMs == null ? "—" : formatTime(stats.bestTimeMs)}</li>
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
         </ul>
-        ${winTipHTML(stats.streak)}
+        ${winScreenTipHTML(stats.streak)}
         ${dailyDoneHTML()}
         <div class="modal-actions">
           <button class="btn primary" data-act="again">Play again</button>
@@ -598,7 +599,7 @@ export function mount(options = {}) {
         <li><kbd>Space</kbd> draw</li>
         <li><kbd>A</kbd> finish (when every card is face up)</li>
         <li>Double-tap a card to send it to a foundation</li>`;
-    showOverlay(`<div class="modal">
+    showOverlay(`<div class="modal" data-testid="help-modal">
       <h2>Klondike</h2>
       ${touchTipsHTML(gestures)}
       <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
@@ -608,6 +609,7 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>
+      ${tipEntryHTML("help-tip")}
     </div>`, { modal: "help" });
   }
 

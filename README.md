@@ -47,7 +47,7 @@ King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a cor
 
 ## Tip jar
 
-Every win screen has a Tip button. It shows the Bitcoin address with a copy button and a QR code. Edit `TIP_BTC_ADDRESS` and `TIP_X_HANDLE` in `src/config.js`. An empty value hides that part. The X Money line is a plain text note, with no link.
+Every win screen has a Tip button. The first win, or the first time Klondike is stuck, on a local calendar day also shows a short reminder. Later wins that day keep the small Tip button. The Games picker and each Help panel have a quiet Tip in BTC entry. The panel shows the Bitcoin address with a copy button and a QR code. Edit `TIP_BTC_ADDRESS` and `TIP_X_HANDLE` in `src/config.js`. An empty value hides that part. The X Money line is a plain text note, with no link.
 
 ## Scripts
 
@@ -67,8 +67,9 @@ In-progress games and stats are stored in `localStorage`:
 | `grok-solitaire:golf` | Golf deal, undo history, and stats |
 | `grok-solitaire:kings` | King's Corners deal, undo history (capped at 200), and stats (`played`, `won`) |
 | `grok-solitaire:prefs` | `lastGame`, `theme` (`night` or `classic`), and `sound` (default `false`) |
+| `grok-solitaire:tip` | Once-a-day tip reminder, `ctaDay` as a local `YYYY-MM-DD` |
 
-Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload returns to `lastGame`.
+Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload with no `game`, `seed`, `draw`, or `daily` parameter returns to `lastGame` when that deal is unfinished and already has a move. Any other cold load opens the Games picker. `?game=`, `?seed=`, `?draw=`, and `?daily=1` still open a game directly.
 
 Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal). Open King's Corners with `?game=kings` or `?game=kings&seed=2`.
 

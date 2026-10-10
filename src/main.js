@@ -4,7 +4,8 @@ import { mount as mountFreeCell } from "./ui-freecell.js";
 import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
 import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
-import { canResume, dailyButtonLabel, pickerStatsText, resumeText, todayKey } from "./daily.js";
+import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey } from "./daily.js";
+import { mountTipPanel, tipEntryHTML } from "./tip.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -113,6 +114,7 @@ function pickCard({ game, testid, kicker, name, blurb, stats, state, savedAt }) 
 }
 
 function showPicker() {
+  dismissTipModal();
   unmountActive();
   mode = "picker";
   document.body.dataset.game = "picker";
@@ -166,11 +168,38 @@ function showPicker() {
         state: kings.state,
         savedAt: kings.savedAt,
       })}
+      ${tipEntryHTML("picker-tip")}
     </div>`;
   syncHooks();
 }
 
+function dismissTipModal() {
+  const overlay = document.getElementById("overlay");
+  if (!overlay?.querySelector("[data-testid='tip-modal']")) return;
+  overlay.hidden = true;
+  overlay.innerHTML = "";
+}
+
+function openPickerTip() {
+  const overlay = document.getElementById("overlay");
+  if (!overlay) return;
+  overlay.innerHTML = `<div class="modal" data-testid="tip-modal">
+      <div class="modal-actions">
+        <button type="button" class="btn" data-act="close">Close</button>
+      </div>
+    </div>`;
+  const modal = overlay.querySelector("[data-testid='tip-modal']");
+  mountTipPanel(modal, { position: "start" });
+  overlay.hidden = false;
+  try {
+    modal?.querySelector("[data-act='close']")?.focus?.({ preventScroll: true });
+  } catch {
+    /* Focusing Close is a convenience. The modal is already open. */
+  }
+}
+
 function showKlondike(opts) {
+  dismissTipModal();
   unmountActive();
   mode = "klondike";
   savePrefs({ lastGame: "klondike" });
@@ -180,6 +209,7 @@ function showKlondike(opts) {
 }
 
 function showFreeCell(opts) {
+  dismissTipModal();
   unmountActive();
   mode = "freecell";
   savePrefs({ lastGame: "freecell" });
@@ -189,6 +219,7 @@ function showFreeCell(opts) {
 }
 
 function showGolf(opts) {
+  dismissTipModal();
   unmountActive();
   mode = "golf";
   savePrefs({ lastGame: "golf" });
@@ -198,6 +229,7 @@ function showGolf(opts) {
 }
 
 function showKings(opts) {
+  dismissTipModal();
   unmountActive();
   mode = "kings";
   savePrefs({ lastGame: "kings" });
@@ -217,6 +249,10 @@ function pick(id, opts) {
 document.getElementById("btn-home").addEventListener("click", () => showPicker());
 document.getElementById("table").addEventListener("click", (event) => {
   if (mode !== "picker") return;
+  if (event.target.closest("[data-testid='picker-tip']")) {
+    openPickerTip();
+    return;
+  }
   const dailyBtn = event.target.closest("[data-daily]");
   if (dailyBtn) {
     pick(dailyBtn.dataset.daily, { daily: true });
@@ -227,13 +263,41 @@ document.getElementById("table").addEventListener("click", (event) => {
   pick(tile.dataset.pick);
 });
 
+document.getElementById("overlay")?.addEventListener("click", (event) => {
+  const overlay = document.getElementById("overlay");
+  if (!overlay?.querySelector("[data-testid='tip-modal']")) return;
+  if (event.target.closest(".tip-panel")) return;
+  if (event.target.closest("[data-act='close']") || event.target === overlay) dismissTipModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const overlay = document.getElementById("overlay");
+  if (!overlay || overlay.hidden || !overlay.querySelector("[data-testid='tip-modal']")) return;
+  dismissTipModal();
+});
+
+function savedBoards() {
+  return {
+    klondike: load().saved?.state ?? null,
+    freecell: loadFreeCell().state ?? null,
+    golf: loadGolf().state ?? null,
+    kings: loadKings().state ?? null,
+  };
+}
+
 const params = new URLSearchParams(location.search);
 const requested = params.get("game");
 const dailyQuery = params.get("daily") === "1";
+const bareLoad = !params.has("game") && !params.has("seed") && !params.has("draw") && !params.has("daily");
 if (requested === "freecell" || requested === "klondike" || requested === "golf" || requested === "kings") {
   pick(requested, { daily: dailyQuery });
 } else if (params.has("seed") || params.has("draw")) pick("klondike");
-else {
+else if (bareLoad) {
+  const target = startupTarget(loadPrefs(), savedBoards());
+  if (target === "picker") showPicker();
+  else pick(target);
+} else {
   const last = loadPrefs().lastGame;
   if (last === "freecell" || last === "klondike" || last === "golf" || last === "kings") pick(last);
   else showPicker();

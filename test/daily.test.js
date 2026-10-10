@@ -10,6 +10,7 @@ import {
   nextDailyStreak,
   pickerStatsText,
   resumeText,
+  startupTarget,
   todayKey,
 } from "../src/daily.js";
 
@@ -183,5 +184,34 @@ describe("picker copy", () => {
     expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000)).toBe(0);
     expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000, 2)).toBe(60_000);
     expect(frozenElapsedMs({ moves: 4, startedAt: 1_000 }, 61_000)).toBe(60_000);
+  });
+});
+
+describe("startupTarget", () => {
+  const playing = { moves: 3 };
+  const fresh = { moves: 0 };
+  const won = { moves: 8, won: true };
+  const over = { moves: 4, over: true };
+
+  it("resumes lastGame only when that save is in progress", () => {
+    expect(startupTarget({ lastGame: "klondike" }, { klondike: playing })).toBe("klondike");
+    expect(startupTarget({ lastGame: "freecell" }, { freecell: playing })).toBe("freecell");
+    expect(startupTarget({ lastGame: "golf" }, { golf: playing })).toBe("golf");
+    expect(startupTarget({ lastGame: "kings" }, { kings: { moves: 1, won: false, over: false } })).toBe("kings");
+  });
+
+  it("shows the picker when there is nothing to resume", () => {
+    expect(startupTarget(null, null)).toBe("picker");
+    expect(startupTarget(undefined, undefined)).toBe("picker");
+    expect(startupTarget({}, { klondike: playing })).toBe("picker");
+    expect(startupTarget({ lastGame: null }, { klondike: playing })).toBe("picker");
+    expect(startupTarget({ lastGame: "spider" }, { spider: playing })).toBe("picker");
+    expect(startupTarget({ lastGame: "klondike" }, {})).toBe("picker");
+    expect(startupTarget({ lastGame: "klondike" }, { klondike: null })).toBe("picker");
+    expect(startupTarget({ lastGame: "klondike" }, { klondike: fresh })).toBe("picker");
+    expect(startupTarget({ lastGame: "freecell" }, { freecell: won })).toBe("picker");
+    expect(startupTarget({ lastGame: "golf" }, { golf: over, klondike: playing })).toBe("picker");
+    expect(startupTarget({ lastGame: "kings" }, { kings: { moves: 2, won: true } })).toBe("picker");
+    expect(startupTarget({ lastGame: "klondike" }, null)).toBe("picker");
   });
 });

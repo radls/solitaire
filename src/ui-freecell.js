@@ -15,7 +15,7 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
-import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
   dailyDoneText,
   dailyFreeCellDeal,
@@ -430,7 +430,7 @@ export function mount(options = {}) {
       <p class="big">Well played</p>
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
       <p data-testid="win-count">Wins ${won} of ${played}</p>
-      ${winTipHTML(session.stats.streak)}
+      ${winScreenTipHTML(session.stats.streak)}
       ${dailyDoneHTML()}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="new">New deal</button>
@@ -458,6 +458,7 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
+      ${tipEntryHTML("help-tip")}
     </div>`;
     syncPlayClock();
   }

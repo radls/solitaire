@@ -158,3 +158,18 @@ export function canResume(state) {
   if (state.won || state.over) return false;
   return true;
 }
+
+const START_GAMES = new Set(["klondike", "freecell", "golf", "kings"]);
+
+/**
+ * Where a cold load with no game URL params should land.
+ * Resume `prefs.lastGame` only when `saves[game]` is an in-progress board
+ * with at least one move. Otherwise the Games picker.
+ * `saves` maps a game id to its saved state, or null.
+ */
+export function startupTarget(prefs, saves) {
+  const game = prefs && typeof prefs === "object" ? prefs.lastGame : null;
+  if (!START_GAMES.has(game)) return "picker";
+  const state = saves && typeof saves === "object" ? saves[game] : null;
+  return canResume(state) ? game : "picker";
+}

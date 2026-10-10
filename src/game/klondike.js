@@ -416,18 +416,6 @@ export function continueClock(current, snapshot) {
   return transferClock(current, cloneState(snapshot));
 }
 
-function hasBoardMove(state) {
-  if (listLegalMoves(state).some((move) => move.kind !== "draw")) return true;
-  for (let fi = 0; fi < FOUNDATION_COUNT; fi++) {
-    const card = top(state.foundations[fi]);
-    if (!card) continue;
-    for (let col = 0; col < TABLEAU_COUNT; col++) {
-      if (canStackTableau(card, top(state.tableau[col]))) return true;
-    }
-  }
-  return false;
-}
-
 /**
  * Further draws are allowed. A numeric `redealLimit` caps waste recycles
  * (0 means the stock cannot be rebuilt). The shipped rules leave it unset,
@@ -439,32 +427,108 @@ function canRedeal(state) {
   return true;
 }
 
-function pileKey(pile) {
-  return pile.map((card) => card.id).join(".");
+const STUCK_CAP = 3000;
+
+function isProgressMove(move) {
+  return move.kind === "to-foundation" || move.kind === "waste-to-tableau" || move.kind === "uncover";
+}
+
+/** Shallow copy. Card objects are shared until a face changes. */
+function forkState(state) {
+  return {
+    ...state,
+    tableau: state.tableau.map((pile) => pile.slice()),
+    foundations: state.foundations.map((pile) => pile.slice()),
+    stock: state.stock.slice(),
+    waste: state.waste.slice(),
+  };
+}
+
+function layoutKey(state) {
+  const mark = (card) => (card.faceUp ? card.id : `${card.id}*`);
+  const pile = (cards) => cards.map(mark).join(".");
+  const body = [
+    state.tableau.map(pile).join("/"),
+    state.foundations.map(pile).join("/"),
+    pile(state.stock),
+    pile(state.waste),
+  ].join("|");
+  return Number.isInteger(state.redealLimit) ? `${state.recycled}:${body}` : body;
+}
+
+function applyTableau(state, move) {
+  const next = forkState(state);
+  const from = next.tableau[move.from.index];
+  const count = move.from.count ?? 1;
+  const start = from.length - count;
+  const cards = from.splice(start);
+  if (start > 0 && from.length && !from[from.length - 1].faceUp) {
+    const exposed = from[from.length - 1];
+    from[from.length - 1] = { ...exposed, faceUp: true };
+  }
+  next.tableau[move.to.index] = next.tableau[move.to.index].concat(cards);
+  return next;
+}
+
+function applyDraw(state) {
+  if (!state.stock.length && !canRedeal(state)) return null;
+  const next = forkState(state);
+  if (next.stock.length) {
+    const n = Math.min(next.drawCount || 1, next.stock.length);
+    for (let i = 0; i < n; i++) {
+      const card = next.stock.pop();
+      next.waste.push({ ...card, faceUp: true });
+    }
+    return next;
+  }
+  next.stock = next.waste
+    .slice()
+    .reverse()
+    .map((card) => ({ ...card, faceUp: false }));
+  next.waste = [];
+  next.recycled += 1;
+  return next;
 }
 
 /**
- * True when the deal is not won and no tableau or foundation move can be
- * reached by drawing, including every waste top a stock/waste cycle can
- * expose under the draw count and any redeal limit. Drawing never changes
- * the tableau, so a card that stays buried under a draw-3 group does not count.
+ * True when the deal is not won and no real progress can be reached.
+ * Progress is a move to a foundation, a face-down card turning up, a
+ * waste-to-tableau move, or a win. Tableau-to-tableau shuffles and stock
+ * draws/redeals are explored (draw count and redeal limit included).
+ * Foundation-to-tableau is ignored. The search stops at 3000 layouts and
+ * then reports not stuck.
  */
 export function isStuck(state) {
   if (!state || state.won || isWon(state)) return false;
-  if (hasBoardMove(state)) return false;
-  if (!state.stock.length && !canRedeal(state)) return true;
 
   const seen = new Set();
-  let current = cloneState(state);
-  for (let guard = 0; guard < 400; guard++) {
-    const key = `${pileKey(current.stock)}|${pileKey(current.waste)}`;
-    if (seen.has(key)) return true;
+  const queue = [state];
+  seen.add(layoutKey(state));
+  let head = 0;
+
+  while (head < queue.length) {
+    const current = queue[head++];
+    if (current.won || isWon(current)) return false;
+    const moves = listLegalMoves(current);
+    if (moves.some(isProgressMove)) return false;
+
+    for (const move of moves) {
+      if (move.from?.zone !== "tableau" || move.to?.zone !== "tableau") continue;
+      const next = applyTableau(current, move);
+      const key = layoutKey(next);
+      if (seen.has(key)) continue;
+      if (seen.size >= STUCK_CAP) return false;
+      seen.add(key);
+      queue.push(next);
+    }
+
+    const drawn = applyDraw(current);
+    if (!drawn) continue;
+    const key = layoutKey(drawn);
+    if (seen.has(key)) continue;
+    if (seen.size >= STUCK_CAP) return false;
     seen.add(key);
-    if (!current.stock.length && !canRedeal(current)) return true;
-    const drawn = draw(current);
-    if (!drawn.ok) return true;
-    current = drawn.state;
-    if (hasBoardMove(current)) return false;
+    queue.push(drawn);
   }
   return true;
 }

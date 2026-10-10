@@ -42,6 +42,26 @@ export function elapsed(state, now = Date.now()) {
 }
 
 /**
+ * Elapsed time for the meter.
+ * `moves === 0` and an empty undo history means the deal never started, even
+ * when a legacy save left `startedAt` running (the clock used to start at
+ * deal time). Pass `historyLength > 0` once a move has been made, including
+ * undo back to 0 moves, so that clock keeps running. An unplayed clock is
+ * cleared so the first real move starts at 0:00.
+ */
+export function meterElapsed(state, historyLength = 0, now = Date.now()) {
+  if (!state) return 0;
+  if (state.moves === 0 && !(historyLength > 0) && !state.won && !state.over) {
+    if (state.startedAt || state.pausedAt) {
+      state.startedAt = 0;
+      state.pausedAt = 0;
+    }
+    return 0;
+  }
+  return elapsed(state, now);
+}
+
+/**
  * Rebuild `startedAt` after a reload so the saved elapsed time continues.
  * A deal that never started stays at 0. Pause is cleared; the caller pauses
  * again if it reopens a dialog. A missing `savedAt` keeps the previous
@@ -49,7 +69,9 @@ export function elapsed(state, now = Date.now()) {
  */
 export function restoreClock(state, savedAt, now = Date.now()) {
   if (!state) return state;
-  if (!state.startedAt) {
+  // Legacy saves started the clock at deal time. No moves, and not already
+  // finished, means nobody has played — keep the meter at 0:00.
+  if (!state.startedAt || (state.moves === 0 && !state.won && !state.over)) {
     state.startedAt = 0;
     state.pausedAt = 0;
     return state;

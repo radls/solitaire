@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canResume,
+  dailyButtonLabel,
   dailyFreeCellDeal,
   dailyOpenPlan,
   dailySeed,
@@ -144,6 +145,14 @@ describe("picker copy", () => {
     expect(pickerStatsText("kings", { played: 2, won: 1, streak: 1 })).toBe("Wins 1 · Streak 1");
   });
 
+  it("puts the daily streak on the deal button once it is at least 1", () => {
+    const key = "2026-10-10";
+    expect(dailyButtonLabel({ dailyStreak: 0 }, key)).toBe("Today's deal");
+    expect(dailyButtonLabel({ dailyStreak: 2 }, key)).toBe("Today's deal · 2-day streak");
+    expect(dailyButtonLabel({ dailyStreak: 1, dailyLast: "2026-10-09" }, key)).toBe("Today's deal · 1-day streak");
+    expect(dailyButtonLabel({ dailyStreak: 3, dailyLast: key }, key)).toBe("Done today ✓ · 3-day streak");
+  });
+
   it("shows resume only for an unfinished deal that has a move", () => {
     expect(canResume({ moves: 0 })).toBe(false);
     expect(canResume({ moves: 4, won: true })).toBe(false);
@@ -152,5 +161,8 @@ describe("picker copy", () => {
     expect(resumeText({ moves: 41, startedAt: 1_000, pausedAt: 0 }, 1_000 + 192_000)).toBe("Resume · 3:12 · 41 moves");
     expect(resumeText({ moves: 2, startedAt: 0 }, 50_000)).toBe("Resume · 0:00 · 2 moves");
     expect(frozenElapsedMs({ startedAt: 0 }, 50_000)).toBe(0);
+    expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000)).toBe(0);
+    expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000, 2)).toBe(60_000);
+    expect(frozenElapsedMs({ moves: 4, startedAt: 1_000 }, 61_000)).toBe(60_000);
   });
 });

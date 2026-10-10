@@ -847,11 +847,59 @@ async function crChecks(page, ctx, P, touch) {
   await home(page);
   const db = (await page.locator('[data-testid="daily-golf"]').textContent().catch(() => "")).trim();
   ok(C, P, "picker marks today's Golf as done", /Done today/.test(db), db);
+  ok(C, P, "daily streak visible on the Today button", /\d+-day streak/.test(db), db);
   const gs = (await page.locator('[data-testid="pick-stats-golf"]').textContent().catch(() => "")).trim();
   ok(C, P, "picker shows daily streak", /Daily \d+ days?/.test(gs), gs);
   await layoutChecks(page, "shell", P, "picker after CR");
   const surprise = await H(page, () => /surprise|secret/i.test(document.body.innerText));
   ok(C, P, "no surprise/secret copy on picker", !surprise);
+}
+
+// ---- Fix pass checks: legacy timer, shuffle-only stuck, daily streak visibility ----
+const STORE = { klondike: "grok-solitaire-v1", freecell: "grok-solitaire:freecell", golf: "grok-solitaire:golf", kings: "grok-solitaire:kings" };
+async function fixChecks(page, ctx, P, touch) {
+  const C = "cr";
+  for (const g of ["klondike", "freecell", "golf", "kings"]) {
+    await pick(page, g); await closeModal(page);
+    await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+    await page.waitForTimeout(300);
+    // a board saved by the old build: clock running from deal time, no moves (written from the picker so nothing overwrites it)
+    await home(page);
+    await H(page, ({ key, g }) => {
+      const raw = JSON.parse(localStorage.getItem(key));
+      const box = g === "klondike" ? raw.saved : raw;
+      box.state.moves = 0; box.state.startedAt = Date.now() - 60000; box.state.pausedAt = 0; box.history = []; box.savedAt = Date.now();
+      localStorage.setItem(key, JSON.stringify(raw));
+    }, { key: STORE[g], g });
+    await page.reload(); await page.waitForTimeout(500); await pick(page, g); await closeModal(page);
+    await page.waitForTimeout(2200);
+    const r = await H(page, () => ({ t: document.getElementById("meter-time").textContent.trim(), m: window.__solitaire.getState().moves }));
+    ok(C, P, `${g}: timer 0:00 with MOVES 0 (old save, after reload)`, r.m === 0 && r.t === "0:00", JSON.stringify(r));
+    await home(page);
+    const rv = await vis(page, `[data-testid="resume-${g}"]`);
+    ok(C, P, `${g}: no Resume for an untouched board`, !rv);
+  }
+  // Klondike: only a pointless shuffle left -> No more moves
+  await pick(page, "klondike"); await closeModal(page);
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const all = [...s.tableau.flat(), ...s.stock, ...s.waste, ...s.foundations.flat()].map(c => ({ ...c }));
+    const by = Object.fromEntries(all.map(c => [c.id, c]));
+    const tops = [["spades-6", "hearts-5"], ["clubs-6"], ["spades-9", "hearts-1"], ["clubs-9"], ["spades-12"], ["clubs-12"], ["spades-3"]];
+    const used = new Set(tops.flat());
+    const rest = all.filter(c => !used.has(c.id)).map(c => ({ ...c, faceUp: false }));
+    s.tableau = tops.map((ids, i) => [...rest.filter((_, j) => j % 7 === i), ...ids.map(id => ({ ...by[id], faceUp: true }))]);
+    s.stock = []; s.waste = []; s.foundations = [[], [], [], []]; s.won = false;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(700);
+  await tapEl(page, page.locator('.card[data-zone="tableau"][data-index="2"]').last(), touch);
+  await tapEl(page, page.locator('[data-drop="foundation:0"]'), touch);
+  await page.waitForTimeout(500);
+  ok(C, P, "Klondike: No more moves when only a pointless shuffle is left", await vis(page, '[data-testid="stuck-modal"]'));
+  const acts = await H(page, () => [...document.querySelectorAll('[data-testid="stuck-modal"] button')].map(b => b.textContent.trim()).join(" · "));
+  ok(C, P, "stuck modal: Undo · Replay this deal · New deal", /Undo/.test(acts) && /Replay this deal/.test(acts) && /New deal/.test(acts), acts);
+  await closeModal(page);
 }
 
 for (const vp of [
@@ -871,6 +919,7 @@ for (const vp of [
     const sw = await H(page, () => document.documentElement.scrollWidth <= window.innerWidth + 1);
     ok(name, vp.P, "no horizontal scroll", sw);
   }
+  try { await fixChecks(page, ctx, vp.P, vp.touch); } catch (e) { ok("cr", vp.P, "fix exception", false, e.message.split("\n")[0]); }
   try { await crChecks(page, ctx, vp.P, vp.touch); } catch (e) { ok("cr", vp.P, "exception", false, e.message.split("\n")[0]); }
   // theme toggle + sound default
   const prefs = await H(page, () => JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}"));

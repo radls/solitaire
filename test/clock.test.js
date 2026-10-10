@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   elapsed,
+  meterElapsed,
   pauseClock,
   restoreClock,
   resumeClock,
@@ -76,6 +77,38 @@ describe("fair play clock", () => {
     restoreClock(fresh, 20_000, 50_000);
     expect(fresh.startedAt).toBe(0);
     expect(elapsed(fresh, 80_000)).toBe(0);
+  });
+
+  it("clears a legacy deal-time clock when no move has been made", () => {
+    const now = 1_700_000_000_000;
+    const legacy = board({ moves: 0, startedAt: now - 60_000, pausedAt: now - 1_000 });
+    restoreClock(legacy, now - 1_000, now);
+    expect(legacy.startedAt).toBe(0);
+    expect(legacy.pausedAt).toBe(0);
+    expect(elapsed(legacy, now + 5_000)).toBe(0);
+    expect(elapsed(legacy, now + 120_000)).toBe(0);
+  });
+
+  it("keeps elapsed when a save already has moves", () => {
+    const now = 1_700_000_000_000;
+    const savedAt = now - 1_000;
+    const played = board({ moves: 4, startedAt: now - 60_000 });
+    restoreClock(played, savedAt, now);
+    expect(elapsed(played, now)).toBe(59_000);
+    expect(played.pausedAt).toBe(0);
+  });
+
+  it("shows 0:00 for an unplayed deal and keeps the clock after undo to 0 moves", () => {
+    const now = 80_000;
+    const legacy = board({ moves: 0, startedAt: now - 60_000, pausedAt: 1 });
+    expect(meterElapsed(legacy, 0, now)).toBe(0);
+    expect(legacy.startedAt).toBe(0);
+    expect(legacy.pausedAt).toBe(0);
+    expect(meterElapsed(legacy, 0, now + 30_000)).toBe(0);
+
+    const undone = board({ moves: 0, startedAt: 10_000 });
+    expect(meterElapsed(undone, 1, 16_000)).toBe(6_000);
+    expect(undone.startedAt).toBe(10_000);
   });
 
   it("copies the live clock onto an undo snapshot", () => {

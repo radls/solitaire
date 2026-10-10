@@ -539,14 +539,21 @@ describe("isStuck", () => {
     expect(isStuck(game({ foundations, stock: [], waste: [] }))).toBe(false);
   });
 
-  it("is false when a tableau card can still move", () => {
+  it("is true when a tableau card can only shuffle onto another build", () => {
     const tableau = blocked();
     tableau[0] = [C("hearts", 9)];
+    tableau[1] = [C("spades", 10)];
+    expect(isStuck(stuckBase({ tableau }))).toBe(true);
+  });
+
+  it("is false when a tableau move turns a face-down card up", () => {
+    const tableau = blocked();
+    tableau[0] = [C("diamonds", 7, false), C("hearts", 9)];
     tableau[1] = [C("spades", 10)];
     expect(isStuck(stuckBase({ tableau }))).toBe(false);
   });
 
-  it("is false when a foundation card can return to the tableau", () => {
+  it("is true when the only move returns a foundation card to the tableau", () => {
     const tableau = blocked();
     tableau[0] = [C("spades", 2)];
     expect(
@@ -556,7 +563,7 @@ describe("isStuck", () => {
           foundations: [[C("hearts", 1)], [], [], []],
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("detects a dead draw-1 deal and a dead draw-3 deal", () => {
@@ -603,5 +610,52 @@ describe("isStuck", () => {
     const snapshot = structuredClone(state);
     expect(isStuck(state)).toBe(true);
     expect(state).toEqual(snapshot);
+  });
+
+  it("is stuck when a 5 of hearts can only hop between two black 6s", () => {
+    const state = game({
+      tableau: [
+        [C("spades", 6), C("hearts", 5)],
+        [C("clubs", 6)],
+        [C("diamonds", 10)],
+        [C("hearts", 10)],
+        [C("spades", 8)],
+        [C("clubs", 8)],
+        [C("diamonds", 4)],
+      ],
+      foundations: [[], [], [], []],
+      stock: [],
+      waste: [],
+    });
+    const snapshot = structuredClone(state);
+    expect(isStuck(state)).toBe(true);
+    expect(state).toEqual(snapshot);
+  });
+
+  it("is not stuck when that hop board also has a playable ace", () => {
+    const state = game({
+      tableau: [
+        [C("spades", 6), C("hearts", 5)],
+        [C("clubs", 6)],
+        [C("diamonds", 1)],
+        [C("hearts", 10)],
+        [C("spades", 8)],
+        [C("clubs", 8)],
+        [C("diamonds", 4)],
+      ],
+      foundations: [[], [], [], []],
+      stock: [],
+      waste: [],
+    });
+    expect(isStuck(state)).toBe(false);
+  });
+
+  it("is stuck when kings can only move between empty columns", () => {
+    const tableau = [[], [], [], [], [], [], []];
+    tableau[0] = [C("spades", 13)];
+    tableau[1] = [C("hearts", 13)];
+    tableau[2] = [C("diamonds", 13)];
+    tableau[3] = [C("clubs", 13)];
+    expect(isStuck(game({ tableau, stock: [], waste: [] }))).toBe(true);
   });
 });

@@ -119,10 +119,20 @@ function formatClock(ms) {
 }
 
 /** Elapsed time frozen at save. A deal that never started is 0. */
-export function frozenElapsedMs(state, savedAt) {
+export function frozenElapsedMs(state, savedAt, historyLength = 0) {
   if (!state?.startedAt) return 0;
+  if (state.moves === 0 && !(historyLength > 0) && !state.won && !state.over) return 0;
   const at = typeof savedAt === "number" ? savedAt : state.startedAt;
   return elapsed(state, at);
+}
+
+/** Picker daily button. The streak is shown once it is at least 1. */
+export function dailyButtonLabel(stats, key) {
+  const done = stats?.dailyLast === key;
+  const base = done ? "Done today ✓" : "Today's deal";
+  const streak = Number(stats?.dailyStreak) || 0;
+  if (streak < 1) return base;
+  return `${base} · ${streak}-day streak`;
 }
 
 export function resumeText(state, savedAt) {

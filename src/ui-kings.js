@@ -10,7 +10,7 @@ import {
   isWon,
   listLegalMoves,
 } from "./game/kings.js";
-import { restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
@@ -87,6 +87,7 @@ export function mount(options = {}) {
     lastClick: { key: "", at: 0 },
     muted: loadPrefs().sound !== true,
     countedWin: false,
+    clockPlayed: false,
     modal: null,
   };
 
@@ -440,10 +441,18 @@ export function mount(options = {}) {
     syncClock(session.state, paused);
   }
 
+  function readMeter(now = Date.now()) {
+    const state = session.state;
+    if (!state) return 0;
+    if (state.moves > 0 || session.history.length > 0) session.clockPlayed = true;
+    const historyLength = session.history.length > 0 ? session.history.length : session.clockPlayed ? 1 : 0;
+    return meterElapsed(state, historyLength, now);
+  }
+
   function refreshMeters() {
     if (!alive || !session.state) return;
     syncPlayClock();
-    if (root.time) root.time.textContent = formatTime(elapsedMs(session.state));
+    if (root.time) root.time.textContent = formatTime(readMeter());
     if (root.moves) root.moves.textContent = String(session.state.moves);
     if (root.home) root.home.textContent = String(cardsInCorners(session.state));
   }
@@ -604,7 +613,12 @@ export function mount(options = {}) {
 
   function dailyDoneHTML() {
     const key = todayKey();
-    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    if (session.state?.daily !== key) return "";
+    if (session.stats.dailyLast !== key) {
+      creditDaily();
+      persist();
+    }
+    if (session.stats.dailyLast !== key) return "";
     return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
   }
 
@@ -613,6 +627,7 @@ export function mount(options = {}) {
     const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
     const resolved = extra.daily ? dailySeed("kings", dailyKey) : seed;
     session.history = [];
+    session.clockPlayed = false;
     session.selected = null;
     session.hintMove = null;
     session.drag = null;
@@ -1056,6 +1071,7 @@ export function mount(options = {}) {
         if (next.wonAt == null) next.wonAt = Date.now();
       }
       session.countedWin = false;
+      session.clockPlayed = (next?.moves > 0) || session.history.length > 0;
       persist();
       render();
       refreshMeters();

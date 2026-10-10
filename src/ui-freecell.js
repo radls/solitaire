@@ -12,7 +12,7 @@ import {
   listLegalMoves,
   moveCards,
 } from "./game/freecell.js";
-import { restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
@@ -102,6 +102,7 @@ export function mount(options = {}) {
     countedWin: false,
     winShown: false,
     autoTimer: 0,
+    clockPlayed: false,
     animating: false,
     landedId: null,
   };
@@ -389,10 +390,18 @@ export function mount(options = {}) {
     syncClock(session.state, paused);
   }
 
+  function readMeter(now = Date.now()) {
+    const state = session.state;
+    if (!state) return 0;
+    if (state.moves > 0 || session.history.length > 0) session.clockPlayed = true;
+    const historyLength = session.history.length > 0 ? session.history.length : session.clockPlayed ? 1 : 0;
+    return meterElapsed(state, historyLength, now);
+  }
+
   function refreshMeters() {
     if (!alive) return;
     syncPlayClock();
-    root.time.textContent = formatTime(elapsedMs(session.state));
+    root.time.textContent = formatTime(readMeter());
   }
 
   function hideOverlay() {
@@ -493,7 +502,12 @@ export function mount(options = {}) {
 
   function dailyDoneHTML() {
     const key = todayKey();
-    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    if (session.state?.daily !== key) return "";
+    if (session.stats.dailyLast !== key) {
+      creditDaily();
+      persist();
+    }
+    if (session.stats.dailyLast !== key) return "";
     return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
   }
 
@@ -503,6 +517,7 @@ export function mount(options = {}) {
     const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
     const number = extra.daily ? dailyFreeCellDeal(dailyKey) : dealNumber;
     session.history = [];
+    session.clockPlayed = false;
     session.selected = null;
     session.hintMove = null;
     session.landedId = null;
@@ -969,6 +984,7 @@ export function mount(options = {}) {
       session.selected = null;
       session.hintMove = null;
       session.winShown = false;
+      session.clockPlayed = (next?.moves > 0) || session.history.length > 0;
       persist();
       render();
       refreshMeters();

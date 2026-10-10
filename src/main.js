@@ -4,7 +4,7 @@ import { mount as mountFreeCell } from "./ui-freecell.js";
 import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
 import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
-import { canResume, pickerStatsText, resumeText, todayKey } from "./daily.js";
+import { canResume, dailyButtonLabel, pickerStatsText, resumeText, todayKey } from "./daily.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -86,8 +86,9 @@ function resumeMarkup(game, state, savedAt) {
 }
 
 function dailyButton(game, stats) {
-  const done = stats?.dailyLast === todayKey();
-  const label = done ? "Done today ✓" : "Today's deal";
+  const key = todayKey();
+  const done = stats?.dailyLast === key;
+  const label = dailyButtonLabel(stats, key);
   const badge = done ? "" : `<span class="today-badge">Today</span>`;
   return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${label}</button>`;
 }

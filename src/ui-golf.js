@@ -15,6 +15,8 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
+import { offerInstallHint } from "./install-hint.js";
+import { shakeMoved } from "./motion.js";
 import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
@@ -237,7 +239,7 @@ export function mount(options = {}) {
       return;
     }
 
-    const avail = window.innerHeight - headerH - statusH - bottomH - padY - gap - 4;
+    const avail = window.innerHeight - layoutBottomInset() - headerH - statusH - bottomH - padY - gap - 4;
     if (longest > 1) {
       const room = Math.floor((avail - cardH) / (longest - 1));
       peek = Math.max(12, Math.min(peek, room));
@@ -252,12 +254,8 @@ export function mount(options = {}) {
     root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
   }
 
-  function nudgeBoard() {
-    const el = root.table;
-    if (!el) return;
-    el.classList.remove("nudge");
-    void el.offsetWidth;
-    el.classList.add("nudge");
+  function nudgeBoard(from) {
+    shakeMoved(from);
   }
 
   function render() {
@@ -357,11 +355,16 @@ export function mount(options = {}) {
   }
 
   function hideOverlay() {
+    const celebrate = session.modal === "win" && isCleared(session.state);
     session.modal = null;
-    if (!root.overlay) return;
+    if (!root.overlay) {
+      if (celebrate) offerInstallHint();
+      return;
+    }
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
     syncPlayClock();
+    if (celebrate) offerInstallHint();
   }
 
   function applyHintHighlight() {
@@ -554,7 +557,13 @@ export function mount(options = {}) {
     const result = apply(session.state, action);
     if (!result.ok) {
       setStatus(statusFor(result));
-      nudgeBoard();
+      const from =
+        action?.type === "play"
+          ? { zone: "column", index: action.col, count: 1 }
+          : action?.type === "draw"
+            ? { zone: "stock" }
+            : null;
+      nudgeBoard(from);
       return result;
     }
     session.history.push(cloneState(session.state));
@@ -643,7 +652,13 @@ export function mount(options = {}) {
     highlightWaste(null, false);
     if (!drag || drag.from?.zone !== "column") return;
     const drop = document.elementFromPoint(x, y)?.closest?.("[data-drop]");
-    if (drop?.dataset.zone === "waste") doApply({ type: "play", col: drag.from.index });
+    if (drop?.dataset.zone === "waste") {
+      doApply({ type: "play", col: drag.from.index });
+      return;
+    }
+    sounds.illegal(session.muted);
+    setStatus("That card cannot move there.");
+    nudgeBoard(drag.from);
   }
 
   function onPointerDown(event) {
@@ -713,7 +728,9 @@ export function mount(options = {}) {
     }
     if (drag.from?.zone !== "column") return;
     if (Number(drag.originEl?.dataset.count) !== 1) {
+      sounds.illegal(session.muted);
       setStatus("Only the exposed card can be played.");
+      nudgeBoard({ zone: "column", index: drag.from.index, count: Number(drag.originEl?.dataset.count) || 1 });
       return;
     }
     doApply({ type: "play", col: drag.from.index });

@@ -167,7 +167,11 @@ export function saveKings(data) {
 const GAMES = new Set(["klondike", "freecell", "golf", "kings"]);
 
 function defaultPrefs() {
-  return { lastGame: null, theme: "night", sound: false };
+  return { lastGame: null, theme: "night", sound: false, installHint: null };
+}
+
+function normalizeInstallHint(value) {
+  return value === "dismissed" || value === "installed" ? value : null;
 }
 
 export function loadPrefs() {
@@ -177,7 +181,7 @@ export function loadPrefs() {
     const parsed = JSON.parse(raw);
     const lastGame = GAMES.has(parsed.lastGame) ? parsed.lastGame : null;
     const theme = parsed.theme === "classic" ? "classic" : "night";
-    return { lastGame, theme, sound: parsed.sound === true };
+    return { lastGame, theme, sound: parsed.sound === true, installHint: normalizeInstallHint(parsed.installHint) };
   } catch {
     return defaultPrefs();
   }
@@ -190,10 +194,10 @@ export function savePrefs(partial) {
     if (!GAMES.has(next.lastGame)) next.lastGame = null;
     if (next.theme !== "classic") next.theme = "night";
     next.sound = next.sound === true;
-    localStorage.setItem(
-      PREFS_KEY,
-      JSON.stringify({ lastGame: next.lastGame, theme: next.theme, sound: next.sound }),
-    );
+    const installHint = normalizeInstallHint(next.installHint);
+    const stored = { lastGame: next.lastGame, theme: next.theme, sound: next.sound };
+    if (installHint) stored.installHint = installHint;
+    localStorage.setItem(PREFS_KEY, JSON.stringify(stored));
   } catch {
     /* quota / private mode */
   }

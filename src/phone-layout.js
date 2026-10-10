@@ -15,16 +15,26 @@ export function isTouchDevice() {
   return "ontouchstart" in window;
 }
 
-/** Padding reserved under the board so cards clear the thumb bar and the home indicator. */
+/** Padding reserved under the board so cards clear the thumb bar, the install hint, and the home indicator. */
 export function layoutBottomInset() {
   if (typeof window === "undefined" || typeof document === "undefined") return 0;
-  if (window.innerWidth > 600) return 0;
-  const game = document.body?.dataset?.game;
-  if (!game || game === "picker") return 0;
-  const app = document.getElementById("app");
-  if (!app) return 0;
-  const pad = parseFloat(getComputedStyle(app).paddingBottom);
-  return Number.isFinite(pad) ? pad : 0;
+  let inset = 0;
+  if (window.innerWidth <= 600) {
+    const game = document.body?.dataset?.game;
+    if (game && game !== "picker") {
+      const app = document.getElementById("app");
+      const pad = app ? parseFloat(getComputedStyle(app).paddingBottom) : 0;
+      if (Number.isFinite(pad)) inset += pad;
+    }
+  }
+  const hint = document.getElementById("install-hint");
+  if (hint && !hint.hidden) {
+    const height = hint.getBoundingClientRect().height;
+    const style = getComputedStyle(hint);
+    const margin = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+    if (height > 0) inset += height + margin;
+  }
+  return inset;
 }
 
 /**

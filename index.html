@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#080c0b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <script>
       (function () {
         var theme = "night";
@@ -64,6 +68,14 @@
         <span id="status-text">Deal a card from the stock, or move a face-up card.</span>
         <span id="status-seed"></span>
       </footer>
+      <div id="install-hint" class="install-hint" data-testid="install-hint" hidden>
+        <p class="install-hint-copy">Add Solitaire to your home screen for quick bedtime games.</p>
+        <div class="install-hint-actions">
+          <button type="button" class="btn primary" id="install-go" data-testid="install-go" hidden>Install</button>
+          <p class="install-hint-share" id="install-share">Share → Add to Home Screen</p>
+          <button type="button" class="btn" id="install-dismiss" data-testid="install-dismiss">Not now</button>
+        </div>
+      </div>
       <nav class="thumb-bar" id="thumb-bar" data-testid="thumb-bar" aria-label="Play">
         <button type="button" class="btn" id="thumb-undo" data-testid="thumb-undo" disabled>Undo</button>
         <button type="button" class="btn" id="thumb-hint" data-testid="thumb-hint">Hint</button>

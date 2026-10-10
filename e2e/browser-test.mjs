@@ -1,6 +1,6 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
-//   CRONLY=1 runs only the shell + daily/picker/timer/stuck/phone checks.
+//   CRONLY=1 runs only the shell + daily/picker/timer/stuck/phone checks; B2ONLY=1 only the batch 2 checks.
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
@@ -924,10 +924,124 @@ async function fixChecks(page, ctx, P, touch) {
   await closeModal(page);
 }
 
+// ---- Batch 2: tip entry points, once-a-day tip CTA, PWA, move feedback, first-visit picker ----
+const BTC_ADDR = "bc1qqhkwfx9l7umufx66s8kzep8yamtvhafea73fdj";
+async function golfQuickWin(page, touch) {
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const mk = (su, r) => ({ id: `${su}-${r}`, suit: su, rank: r, faceUp: true });
+    s.columns = Array.from({ length: s.columns.length }, () => []); s.columns[0] = [mk("diamonds", 5)];
+    s.waste = [mk("hearts", 4)]; s.stock = [mk("clubs", 9)]; s.over = false; s.wonAt = null;
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(700);
+  await tapEl(page, page.locator('.card[data-zone="column"][data-index="0"]').last(), touch);
+  await page.waitForTimeout(700);
+}
+async function batch2(vp) {
+  const B = "batch2", P = vp.P, touch = vp.touch;
+  const ctx = await browser.newContext(vp.opts);
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
+  const page = await ctx.newPage();
+  const errs = []; page.on("pageerror", e => errs.push(e.message));
+  // 5) first visit -> picker; untouched board -> picker; real move -> resume
+  await page.goto(BASE); await page.waitForTimeout(700);
+  ok(B, P, "first visit opens the Games picker", (await H(page, () => window.__solitaire.game())) === null && await vis(page, '[data-testid="picker"]'));
+  await pick(page, "klondike"); await closeModal(page);
+  await page.reload(); await page.waitForTimeout(700);
+  ok(B, P, "untouched Klondike board -> picker on reload", (await H(page, () => window.__solitaire.game())) === null);
+  await pick(page, "klondike"); await closeModal(page); await page.waitForTimeout(600);
+  await tapEl(page, page.locator('[data-drop="stock"]').first(), touch); await page.waitForTimeout(300);
+  await page.reload(); await page.waitForTimeout(700);
+  ok(B, P, "in-progress Klondike resumes on reload", (await H(page, () => window.__solitaire.game())) === "klondike");
+  // 1) tip entry on picker + Help
+  await home(page);
+  const pt = page.locator('[data-testid="picker-tip"]');
+  const ptBox = await pt.boundingBox().catch(() => null);
+  ok(B, P, "picker has a soft Tip in BTC entry (>= 44px)", !!ptBox && ptBox.height >= 43.5 && /tip in btc/i.test(await pt.innerText().catch(() => "")), ptBox ? `${Math.round(ptBox.height)}px` : "missing");
+  await pt.click().catch(() => {}); await page.waitForTimeout(400);
+  let addr = ((await page.locator('[data-testid="tip-btc-address"]:visible').first().textContent().catch(() => "")) || "").trim();
+  ok(B, P, "picker Tip opens the tip panel with the exact address", addr === BTC_ADDR, addr);
+  ok(B, P, "picker tip panel has QR + X note", (await page.locator('[data-testid="tip-btc-qr"]:visible svg').count()) > 0 && /@ZeusRadls/.test(await page.locator('[data-testid="tip-x-note"]:visible').first().textContent().catch(() => "")));
+  const fitP = await H(page, () => document.documentElement.scrollWidth <= innerWidth + 1);
+  ok(B, P, "picker tip modal: no sideways scroll", fitP);
+  if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-picker-tip.png` });
+  await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+  ok(B, P, "picker tip modal closes with Escape", !(await vis(page, '[data-testid="tip-panel"]')));
+  for (const g of ["klondike", "freecell", "golf", "kings"]) {
+    await pick(page, g); await closeModal(page); await openHelp(page);
+    const ht = page.locator('#overlay [data-testid="help-tip"]');
+    const has = await ht.count() > 0;
+    if (has) { await ht.scrollIntoViewIfNeeded().catch(() => {}); await ht.click().catch(() => {}); await page.waitForTimeout(300); }
+    addr = ((await page.locator('#overlay [data-testid="tip-btc-address"]').first().textContent().catch(() => "")) || "").trim();
+    ok(B, P, `${g} Help has a Tip entry that opens the panel`, has && addr === BTC_ADDR, addr || (await H(page, () => (document.querySelector("#overlay")?.hidden ? "overlay hidden " : "") + (document.querySelector("#overlay")?.innerText || "").slice(0, 100))));
+    await closeModal(page); await closeModal(page);
+  }
+  // 2) once-a-day tip CTA (win), and PWA install hint after first win
+  await H(page, () => localStorage.removeItem("grok-solitaire:tip"));
+  await pick(page, "golf"); await closeModal(page);
+  await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+  await golfQuickWin(page, touch);
+  const cta = page.locator('[data-testid="win-modal"] [data-testid="tip-cta"]');
+  const ctaBox = await cta.boundingBox().catch(() => null);
+  ok(B, P, "first win today shows the tip CTA", !!ctaBox, await H(page, () => document.querySelector("#overlay")?.innerText?.slice(0, 120)));
+  ok(B, P, "tip CTA is above the fold", !!ctaBox && ctaBox.y + ctaBox.height <= (await H(page, () => innerHeight)), JSON.stringify(ctaBox));
+  ok(B, P, "tip CTA has the Buy me a coffee in BTC button", await vis(page, '[data-testid="tip-cta"] [data-testid="btn-tip"], [data-testid="win-modal"] [data-testid="btn-tip"]'));
+  if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-tip-cta.png` });
+  await closeModal(page); await page.waitForTimeout(500);
+  ok(B, P, "install hint appears after the first win", await vis(page, '[data-testid="install-hint"]'));
+  const ih = await H(page, () => { const h = document.querySelector('[data-testid="install-hint"]'); if (!h) return null; const r = h.getBoundingClientRect(); const bar = document.querySelector('[data-testid="thumb-bar"]'); const br = bar && bar.getClientRects().length ? bar.getBoundingClientRect() : null; const btns = [...h.querySelectorAll("button")].filter(b => b.getClientRects().length).map(b => b.getBoundingClientRect().height); return { overlapBar: br ? r.bottom > br.top + 1 : false, minBtn: Math.min(...btns), inView: r.top >= 0 && r.bottom <= innerHeight + 1, text: h.innerText.slice(0, 120) }; });
+  ok(B, P, "install hint sits clear of the thumb bar with 44px buttons", ih && !ih.overlapBar && ih.minBtn >= 43.5 && ih.inView, JSON.stringify(ih));
+  if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-install-hint.png` });
+  await page.locator('[data-testid="install-dismiss"]').click().catch(() => {}); await page.waitForTimeout(300);
+  ok(B, P, "Not now dismisses the install hint", !(await vis(page, '[data-testid="install-hint"]')));
+  await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+  await golfQuickWin(page, touch);
+  ok(B, P, "second win today: no tip CTA, Tip button still there", !(await vis(page, '[data-testid="tip-cta"]')) && await vis(page, '[data-testid="win-modal"] [data-testid="btn-tip"]'));
+  await closeModal(page); await page.waitForTimeout(500);
+  ok(B, P, "install hint stays dismissed", !(await vis(page, '[data-testid="install-hint"]')));
+  // stuck panel CTA: new day -> shown once
+  await H(page, () => { const d = new Date(Date.now() - 86400000); localStorage.setItem("grok-solitaire:tip", JSON.stringify({ ctaDay: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })); });
+  await page.goto(BASE + "?game=klondike&seed=22&draw=3"); await page.waitForTimeout(900);
+  ok(B, P, "stuck panel shows the tip CTA once on a new day", await vis(page, '[data-testid="stuck-modal"] [data-testid="tip-cta"]'));
+  await page.reload(); await page.waitForTimeout(900);
+  ok(B, P, "stuck panel: no tip CTA again the same day", await vis(page, '[data-testid="stuck-modal"]') && !(await vis(page, '[data-testid="tip-cta"]')));
+  await page.locator('[data-testid="stuck-new"]').click().catch(() => {}); await page.waitForTimeout(300);
+  // 3) manifest + icons
+  const man = await H(page, async () => { const l = document.querySelector('link[rel="manifest"]'); if (!l) return null; const r = await fetch(l.href); const j = await r.json(); const icons = await Promise.all((j.icons || []).map(async i => { const u = new URL(i.src, l.href); const ir = await fetch(u); return { sizes: i.sizes, purpose: i.purpose || "", ok: ir.ok, type: ir.headers.get("content-type") }; })); const apple = document.querySelector('link[rel="apple-touch-icon"]'); const ar = apple ? await fetch(apple.href) : null; return { name: j.name, display: j.display, start: j.start_url, theme: j.theme_color, icons, apple: ar?.ok ?? false }; });
+  ok(B, P, "manifest linked with name/standalone/theme", man && man.name && man.display === "standalone" && !!man.theme, JSON.stringify(man && { name: man.name, display: man.display, start: man.start, theme: man.theme }));
+  ok(B, P, "manifest icons 192 + 512 + maskable load as PNG", man && ["192x192", "512x512"].every(sz => man.icons.some(i => i.sizes === sz && i.ok && /png/.test(i.type))) && man.icons.some(i => /maskable/.test(i.purpose) && i.ok), JSON.stringify(man?.icons));
+  ok(B, P, "apple-touch-icon loads", man && man.apple);
+  // 4) feedback: invalid move shakes; hint pulses
+  await pick(page, "freecell"); await closeModal(page); await page.waitForTimeout(600);
+  const bad = await H(page, () => { const s = window.__solitaire.getState(); const legal = window.__solitaire.listMoves(); for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) { if (a === b) continue; if (!legal.some(m => m.from?.index === a && m.to?.zone === "cascade" && m.to?.index === b)) return [a, b]; } return null; });
+  const zoneC = await H(page, () => document.querySelector('.card[data-zone="cascade"]') ? "cascade" : "tableau");
+  if (bad) {
+    const src = page.locator(`.card[data-zone="${zoneC}"][data-index="${bad[0]}"]`).last();
+    await H(page, () => { window.__shook = false; new MutationObserver(ms => { for (const m of ms) if (m.target.classList?.contains("shake") || m.target.querySelector?.(".shake")) window.__shook = true; }).observe(document.getElementById("table"), { attributes: true, subtree: true, attributeFilter: ["class"], childList: true }); });
+    await drag(page, ctx, src, page.locator(`[data-drop="${zoneC}:${bad[1]}"]`), touch);
+    await page.waitForTimeout(100);
+    ok(B, P, "invalid drop shakes the card", await H(page, () => window.__shook || !!document.querySelector(".shake")), `${zoneC} ${bad}`);
+  } else ok(B, P, "invalid drop shakes the card", false, "no illegal pair");
+  await (await uiBtn(page, "hint", P)).click(); await page.waitForTimeout(200);
+  const pulse = await H(page, () => { const e = document.querySelector(".hint-from, .hint-to"); if (!e) return null; const cs = getComputedStyle(e); return { anim: cs.animationName, n: document.querySelectorAll(".hint-from, .hint-to").length }; });
+  ok(B, P, "Hint pulses source + target", pulse && pulse.n >= 2 && pulse.anim && pulse.anim !== "none", JSON.stringify(pulse));
+  const bedtime = await H(page, () => ({ theme: document.documentElement.dataset.theme, sound: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").sound }));
+  ok(B, P, "night theme + sound off kept", bedtime.theme === "night" && bedtime.sound !== true, JSON.stringify(bedtime));
+  ok(B, P, "no 'surprise' copy", !(await H(page, () => /surprise/i.test(document.body.innerText))));
+  ok(B, P, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  await ctx.close();
+}
+
+const VPS = [
+  { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
+  { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
+];
 for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
 ]) {
+  if (process.env.B2ONLY) continue;
   const ctx = await browser.newContext(vp.opts);
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
   const page = await ctx.newPage();
@@ -956,8 +1070,9 @@ for (const vp of [
   ok("shell", vp.P, "no console errors", errs.length === 0, errs.slice(0, 3).join(" | "));
   await ctx.close();
 }
+for (const vp of VPS) { try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

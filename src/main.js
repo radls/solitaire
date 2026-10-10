@@ -4,6 +4,7 @@ import { mount as mountFreeCell } from "./ui-freecell.js";
 import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
 import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
+import { bootInstallHint } from "./install-hint.js";
 import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey } from "./daily.js";
 import { mountTipPanel, tipEntryHTML } from "./tip.js";
 
@@ -21,6 +22,8 @@ function applyTheme(theme) {
   btn.innerHTML = next === "night" ? MOON : SUN;
   btn.setAttribute("aria-label", next === "night" ? "Switch to classic theme" : "Switch to night theme");
 }
+
+bootInstallHint();
 
 applyTheme(loadPrefs().theme);
 document.getElementById("btn-theme")?.addEventListener("click", () => {

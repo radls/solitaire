@@ -18,6 +18,8 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
+import { offerInstallHint } from "./install-hint.js";
+import { shakeMoved } from "./motion.js";
 import { stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
@@ -409,7 +411,7 @@ export function mount(options = {}) {
       return;
     }
 
-    const avail = window.innerHeight - headerH - statusH - topH - verticalChrome(board) - 4;
+    const avail = window.innerHeight - layoutBottomInset() - headerH - statusH - topH - verticalChrome(board) - 4;
     const fits = (up, down) =>
       session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
     if (avail > cardH && !fits(peekUp, peekDown)) {
@@ -433,12 +435,8 @@ export function mount(options = {}) {
     applyFit(cardW, cardH, peekUp, peekDown, gap, width);
   }
 
-  function nudgeBoard() {
-    const el = root.table;
-    if (!el) return;
-    el.classList.remove("nudge");
-    void el.offsetWidth;
-    el.classList.add("nudge");
+  function nudgeBoard(from) {
+    shakeMoved(from || session.selected);
   }
 
   function syncPlayClock() {
@@ -530,6 +528,7 @@ export function mount(options = {}) {
   }
 
   function hideOverlay() {
+    const celebrate = session.modal === "win" && !!session.state?.won;
     const wasStuck = session.modal === "stuck";
     session.modal = null;
     root.overlay.hidden = true;
@@ -538,6 +537,7 @@ export function mount(options = {}) {
     if (wasStuck && session.state && !session.state.won && isStuck(session.state)) {
       setStatus("No useful moves.");
     }
+    if (celebrate) offerInstallHint();
   }
 
   function showStuck() {
@@ -675,11 +675,11 @@ export function mount(options = {}) {
     return "Moved the card.";
   }
 
-  function commit(result, sound, to) {
+  function commit(result, sound, to, from) {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
-      nudgeBoard();
+      nudgeBoard(from);
       return false;
     }
     countPlay();
@@ -706,12 +706,12 @@ export function mount(options = {}) {
   }
 
   function tryMove(from, to) {
-    return commit(moveCards(session.state, from, to), "place", to);
+    return commit(moveCards(session.state, from, to), "place", to, from);
   }
 
   function doDraw() {
     const result = draw(session.state);
-    commit(result, result.recycled ? "recycle" : "draw");
+    commit(result, result.recycled ? "recycle" : "draw", null, { zone: "stock" });
   }
 
   function doUndo() {
@@ -743,7 +743,7 @@ export function mount(options = {}) {
   }
 
   function doAuto(from) {
-    return commit(autoMove(session.state, from), "place");
+    return commit(autoMove(session.state, from), "place", null, from);
   }
 
   function doFinish() {
@@ -835,7 +835,7 @@ export function mount(options = {}) {
     if (to) return tryMove(drag.from, to);
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
-    nudgeBoard();
+    nudgeBoard(drag.from);
     return false;
   }
 
@@ -1044,7 +1044,7 @@ export function mount(options = {}) {
       if (!result.ok) {
         sounds.illegal(session.muted);
         setStatus("That card cannot move there.");
-        nudgeBoard();
+        nudgeBoard(from);
         return result;
       }
       commit(result, "place", to);

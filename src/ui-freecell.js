@@ -15,6 +15,8 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
+import { offerInstallHint } from "./install-hint.js";
+import { shakeMoved } from "./motion.js";
 import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
   dailyDoneText,
@@ -292,7 +294,7 @@ export function mount(options = {}) {
       return;
     }
 
-    const availH = window.innerHeight - headerH - statusH - topH - padY - gap - 4;
+    const availH = window.innerHeight - layoutBottomInset() - headerH - statusH - topH - padY - gap - 4;
     if (longest > 1) {
       const room = Math.floor((availH - cardH) / (longest - 1));
       const natural = Math.round(cardW * 0.34);
@@ -308,12 +310,8 @@ export function mount(options = {}) {
     root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
   }
 
-  function nudgeBoard() {
-    const el = root.table;
-    if (!el) return;
-    el.classList.remove("nudge");
-    void el.offsetWidth;
-    el.classList.add("nudge");
+  function nudgeBoard(from) {
+    shakeMoved(from || session.selected);
   }
 
   function render() {
@@ -405,10 +403,12 @@ export function mount(options = {}) {
   }
 
   function hideOverlay() {
+    const celebrate = session.modal === "win" && !!session.state && !!(session.state.won || isWon(session.state));
     session.modal = null;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
     syncPlayClock();
+    if (celebrate) offerInstallHint();
   }
 
   function applyHintHighlight() {
@@ -621,7 +621,7 @@ export function mount(options = {}) {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
-      nudgeBoard();
+      nudgeBoard(from);
       return false;
     }
     if (!session.countedPlay) {
@@ -665,14 +665,14 @@ export function mount(options = {}) {
     if (from.zone === "freecell") {
       sounds.illegal(session.muted);
       setStatus("That card cannot move to a foundation.");
-      nudgeBoard();
+      nudgeBoard(single);
       return;
     }
     const index = session.state.freecells.findIndex((card) => card == null);
     if (index < 0) {
       sounds.illegal(session.muted);
       setStatus("No free cell is open.");
-      nudgeBoard();
+      nudgeBoard(single);
       return;
     }
     const toCell = moveCards(session.state, single, { zone: "freecell", index });
@@ -776,7 +776,7 @@ export function mount(options = {}) {
     if (to) return tryMove(drag.from, to);
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
-    nudgeBoard();
+    nudgeBoard(drag.from);
     return false;
   }
 
@@ -1007,7 +1007,7 @@ export function mount(options = {}) {
       if (!result.ok) {
         sounds.illegal(session.muted);
         setStatus("That card cannot move there.");
-        nudgeBoard();
+        nudgeBoard(from);
         return result;
       }
       commit(result, from, to);

@@ -13,6 +13,8 @@ import {
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
+import { offerInstallHint } from "./install-hint.js";
+import { shakeMoved } from "./motion.js";
 import { tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 import {
@@ -253,9 +255,8 @@ export function mount(options = {}) {
     const ts = table ? getComputedStyle(table) : null;
     const padY = ts ? (parseFloat(ts.paddingTop) || 0) + (parseFloat(ts.paddingBottom) || 0) : 0;
     const phone = window.innerWidth <= 600;
-    let avail = window.innerHeight - headerH - statusH - padY - rowGap * 2 - 8;
-    if (phone) avail -= layoutBottomInset();
-    else if (avail < 90) avail = 90;
+    let avail = window.innerHeight - headerH - statusH - padY - rowGap * 2 - 8 - layoutBottomInset();
+    if (!phone && avail < 90) avail = 90;
 
     let cardH = Math.round(cardW * 1.42);
     const minPeek = extra > 0 ? 1 : 0;
@@ -295,12 +296,8 @@ export function mount(options = {}) {
     root.mute.setAttribute("aria-pressed", session.muted ? "false" : "true");
   }
 
-  function nudgeBoard() {
-    const el = root.table;
-    if (!el) return;
-    el.classList.remove("nudge");
-    void el.offsetWidth;
-    el.classList.add("nudge");
+  function nudgeBoard(from) {
+    shakeMoved(from || session.selected);
   }
 
   function well(content = "", recycle = false) {
@@ -458,11 +455,16 @@ export function mount(options = {}) {
   }
 
   function hideOverlay() {
+    const celebrate = session.modal === "win" && !!(session.state?.won || (session.state && isWon(session.state)));
     session.modal = null;
-    if (!root.overlay) return;
+    if (!root.overlay) {
+      if (celebrate) offerInstallHint();
+      return;
+    }
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
     syncPlayClock();
+    if (celebrate) offerInstallHint();
   }
 
   function applyHintHighlight() {
@@ -656,7 +658,8 @@ export function mount(options = {}) {
     if (!result.ok) {
       sounds.illegal(session.muted);
       setStatus(statusFor(result));
-      nudgeBoard();
+      const from = action?.type === "move" ? action.from : action?.type === "draw" ? { zone: "stock" } : session.selected;
+      nudgeBoard(from);
       if (session.selected) highlightDrops(session.selected, true);
       return { ok: false, reason: result.reason, state: session.state };
     }
@@ -725,7 +728,7 @@ export function mount(options = {}) {
     if (!isMovable(src)) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move to a corner.");
-      nudgeBoard();
+      nudgeBoard(src);
       return;
     }
     const key = locKey(src);
@@ -735,7 +738,7 @@ export function mount(options = {}) {
     if (!moves.length) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move to a corner.");
-      nudgeBoard();
+      nudgeBoard(src);
       return;
     }
     doApply({ type: "move", from: moves[0].from, to: moves[0].to });
@@ -780,7 +783,7 @@ export function mount(options = {}) {
       return;
     }
     setStatus("Only the top card or the whole pile can move.");
-    nudgeBoard();
+    nudgeBoard(loc);
   }
 
   function cardsFor(from) {
@@ -845,7 +848,7 @@ export function mount(options = {}) {
     if (!to) {
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
-      nudgeBoard();
+      nudgeBoard(drag.from);
       if (session.selected) highlightDrops(session.selected, true);
       return false;
     }

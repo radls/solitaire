@@ -446,6 +446,7 @@ export function mount(options = {}) {
     const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>FreeCell</h2>
+      <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <p>Microsoft deal numbers 1–32000. Eight cascades, all cards face up. Four free cells and four foundations.</p>
       <p>Build cascades down by alternating color. Any card or legal run may move to an empty cascade. Build foundations up by suit, ace through king. A free cell holds one card.</p>
@@ -458,7 +459,6 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
-      ${tipEntryHTML("help-tip")}
     </div>`;
     syncPlayClock();
   }
@@ -655,7 +655,14 @@ export function mount(options = {}) {
 
   function doDouble(from) {
     if (session.animating) return;
-    if ((from.count ?? 1) !== 1 || from.zone === "foundation") return;
+    if ((from.count ?? 1) !== 1 || from.zone === "foundation") {
+      if ((from.count ?? 1) !== 1 && from.zone !== "foundation") {
+        sounds.illegal(session.muted);
+        setStatus("That card cannot move there.");
+        nudgeBoard(from);
+      }
+      return;
+    }
     const single = { zone: from.zone, index: from.index, count: 1 };
     const toFoundation = moveCards(session.state, single, { zone: "foundation" });
     if (toFoundation.ok) {
@@ -794,6 +801,15 @@ export function mount(options = {}) {
       }
       if (canMove(session.selected, dest)) {
         tryMove(session.selected, dest);
+        return;
+      }
+      if (cardEl?.classList.contains("playable")) {
+        const from = { ...session.selected };
+        session.selected = loc;
+        render();
+        sounds.illegal(session.muted);
+        setStatus("That card cannot move there.");
+        nudgeBoard(from);
         return;
       }
     }

@@ -601,6 +601,7 @@ export function mount(options = {}) {
         <li>Double-tap a card to send it to a foundation</li>`;
     showOverlay(`<div class="modal" data-testid="help-modal">
       <h2>Klondike</h2>
+      <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
@@ -609,7 +610,6 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>
-      ${tipEntryHTML("help-tip")}
     </div>`, { modal: "help" });
   }
 
@@ -855,6 +855,11 @@ export function mount(options = {}) {
         return;
       }
       if (tryMove(session.selected, loc)) return;
+      if (cardEl?.classList.contains("playable")) {
+        session.selected = loc;
+        render();
+        return;
+      }
     }
     if (cardEl?.classList.contains("playable")) {
       session.selected = loc;

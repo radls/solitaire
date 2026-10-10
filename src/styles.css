@@ -9,16 +9,16 @@ html[data-theme="night"] {
   --gold-soft: rgba(156, 138, 92, 0.16);
   --outline: rgba(156, 138, 92, 0.7);
   --line: rgba(156, 138, 92, 0.28);
-  --ivory: #c9c2b2;
-  --ivory-top: #d0c9b9;
-  --ivory-edge: #a9a294;
-  --red: #9c3f3a;
+  --ivory: #bfb8a8;
+  --ivory-top: #c6bfaf;
+  --ivory-edge: #a39c8e;
+  --red: #7e2c29;
   --ink: #1d1d1d;
   --navy: #1a2e32;
   --text: #b9b2a3;
   --muted: #8d877c;
   --shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
-  --card-sheen: rgba(255, 255, 255, 0.05);
+  --card-sheen: rgba(255, 255, 255, 0.04);
   --btn-bg: #171e1c;
   --btn-hover: #222a27;
   --btn-border: rgba(156, 138, 92, 0.32);
@@ -1388,6 +1388,22 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   padding: 0.5rem 0.85rem;
 }
 
+.help-tip-row {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 0 0.45rem;
+}
+
+.modal h2:has(+ .help-tip-row) {
+  margin-bottom: 0.2rem;
+}
+
+.help-tip-row .tip-entry {
+  margin: 0;
+  justify-content: flex-start;
+}
+
 .tip-entry {
   appearance: none;
   display: inline-flex;
@@ -1763,9 +1779,13 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
 }
 
 .install-hint-share {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
   color: var(--gold);
   font-size: 0.88rem;
-  line-height: 1.3;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .install-hint-share[hidden] {

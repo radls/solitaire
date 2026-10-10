@@ -527,6 +527,7 @@ export function mount(options = {}) {
     const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li><li><kbd>Space</kbd> draw</li><li><kbd>R</kbd> replay</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>King's Corners</h2>
+      <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
@@ -544,7 +545,6 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
-      ${tipEntryHTML("help-tip")}
     </div>`;
     syncPlayClock();
   }
@@ -773,9 +773,17 @@ export function mount(options = {}) {
         render();
         return;
       }
+      const prev = session.selected ? { ...session.selected } : null;
+      const rejected = !!(prev && locKey(prev) !== locKey(src));
       session.selected = src;
       render();
-      setStatus("Choose a destination, or drag the card.");
+      if (rejected) {
+        sounds.illegal(session.muted);
+        setStatus("That card cannot move there.");
+        nudgeBoard(prev);
+      } else {
+        setStatus("Choose a destination, or drag the card.");
+      }
       return;
     }
     if (session.selected && (dest.zone === "side" || dest.zone === "corner")) {

@@ -46,12 +46,43 @@ function refit() {
   window.dispatchEvent(new Event("resize"));
 }
 
+const INSTALL_IOS_COPY = "Tap Share, then Add to Home Screen.";
+const INSTALL_OTHER_COPY = "Use your browser menu to add Solitaire to your home screen, or bookmark this page.";
+
+/**
+ * Fallback line when `beforeinstallprompt` was not captured.
+ * An install event shows the Install button instead, so this is empty.
+ * `ios` is iOS Safari; every other browser gets the neutral line.
+ */
+export function installFallbackCopy({ ios = false, hasInstallEvent = false } = {}) {
+  if (hasInstallEvent) return "";
+  return ios ? INSTALL_IOS_COPY : INSTALL_OTHER_COPY;
+}
+
+function isIosSafari() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua)) return false;
+  const iPhone = /iPhone|iPad|iPod/i.test(ua);
+  const iPadOs =
+    navigator.platform === "MacIntel" &&
+    (navigator.maxTouchPoints || 0) > 1 &&
+    /Safari/i.test(ua) &&
+    !/Chrome|Chromium|Android/i.test(ua);
+  if (!iPhone && !iPadOs) return false;
+  return /WebKit/i.test(ua);
+}
+
 function syncInstallActions() {
   const go = typeof document === "undefined" ? null : document.getElementById("install-go");
   const share = typeof document === "undefined" ? null : document.getElementById("install-share");
   const canInstall = !!deferredPrompt;
   if (go) go.hidden = !canInstall;
-  if (share) share.hidden = canInstall;
+  if (share) {
+    const copy = installFallbackCopy({ ios: isIosSafari(), hasInstallEvent: canInstall });
+    if (copy) share.textContent = copy;
+    share.hidden = canInstall;
+  }
 }
 
 export function hideInstallHint() {

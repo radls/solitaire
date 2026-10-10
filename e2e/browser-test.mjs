@@ -1,6 +1,6 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
-//   CRONLY=1 runs only the shell + daily/picker/timer/stuck/phone checks; B2ONLY=1 only the batch 2 checks.
+//   CRONLY=1 / B2ONLY=1 / B3ONLY=1 run only those groups.
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
@@ -1033,6 +1033,87 @@ async function batch2(vp) {
   await ctx.close();
 }
 
+// ---- Batch 3: help tip above fold, install copy, tap shake, tip parity, night card faces ----
+async function watchShake(page) { await H(page, () => { window.__shook = false; new MutationObserver(ms => { for (const m of ms) { const t = m.target; if (t.classList?.contains("shake") || t.querySelector?.(".shake")) window.__shook = true; for (const n of m.addedNodes || []) if (n.classList?.contains("shake") || n.querySelector?.(".shake")) window.__shook = true; } }).observe(document.getElementById("table"), { attributes: true, subtree: true, attributeFilter: ["class"], childList: true }); }); }
+async function batch3(vp) {
+  const B = "batch3", P = vp.P, touch = vp.touch;
+  const ctx = await browser.newContext(vp.opts);
+  const page = await ctx.newPage();
+  const errs = []; page.on("pageerror", e => errs.push(e.message));
+  await page.goto(BASE); await page.waitForTimeout(600);
+  // 1) Help tip above the fold
+  for (const g of ["klondike", "freecell", "golf", "kings"]) {
+    await pick(page, g); await closeModal(page); await openHelp(page);
+    const r = await H(page, () => { const t = document.querySelector('#overlay [data-testid="help-tip"]'); const m = document.querySelector("#overlay .modal"); if (!t) return null; const b = t.getBoundingClientRect(); return { bottom: Math.round(b.bottom), h: Math.round(b.height), vh: innerHeight, scrolled: m ? m.scrollTop : 0 }; });
+    ok(B, P, `${g}: Help tip visible without scrolling`, r && r.bottom <= r.vh && r.scrolled === 0 && r.h >= 43.5, JSON.stringify(r));
+    if (P === "mobile" && g === "kings") await page.screenshot({ path: `${SHOTS}/${P}-kings-help-tip.png` });
+    await closeModal(page);
+  }
+  // 3) illegal TAP shakes (Klondike + FreeCell), hint pulse in normal play
+  await pick(page, "klondike"); await closeModal(page);
+  await H(page, () => window.__solitaire.newGame({ seed: 4242 })); await page.waitForTimeout(400); await closeModal(page);
+  const st = await H(page, () => window.__solitaire.getState());
+  const legal = await H(page, () => window.__solitaire.listMoves());
+  let ill = null;
+  for (let a = 0; a < 7 && !ill; a++) for (let b = 0; b < 7 && !ill; b++) { if (a === b || !st.tableau[a].length || !st.tableau[b].length) continue; if (!legal.some(m => m.from.zone === "tableau" && m.from.index === a && m.to.zone === "tableau" && m.to.index === b)) ill = [a, b]; }
+  await page.waitForTimeout(600);
+  await watchShake(page);
+  await tapEl(page, page.locator(`.card[data-zone="tableau"][data-index="${ill[0]}"]`).last(), touch);
+  await tapEl(page, page.locator(`[data-drop="tableau:${ill[1]}"]`), touch);
+  await page.waitForTimeout(80);
+  ok(B, P, "Klondike: illegal tap move shakes the card", await H(page, () => window.__shook || !!document.querySelector(".shake")), `col${ill[0] + 1}->col${ill[1] + 1}`);
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(600);
+  await (await uiBtn(page, "hint", P)).click(); await page.waitForTimeout(200);
+  const pulse = await H(page, () => { const e = [...document.querySelectorAll(".hint-from, .hint-to")]; return { n: e.length, anim: e.map(x => getComputedStyle(x).animationName).join(","), stuck: !!document.querySelector('[data-testid="stuck-modal"]') }; });
+  ok(B, P, "Hint pulses source + target in normal play", pulse.n >= 1 && !pulse.stuck && /[a-z]/i.test(pulse.anim.replace(/none/g, "")), JSON.stringify(pulse));
+  await pick(page, "freecell"); await closeModal(page); await page.waitForTimeout(600);
+  const badF = await H(page, () => { const legal = window.__solitaire.listMoves(); for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) { if (a === b) continue; if (!legal.some(m => m.from?.index === a && m.to?.zone === "cascade" && m.to?.index === b)) return [a, b]; } return null; });
+  await watchShake(page);
+  await tapEl(page, page.locator(`.card[data-zone="cascade"][data-index="${badF[0]}"]`).last(), touch);
+  await tapEl(page, page.locator(`[data-drop="cascade:${badF[1]}"]`), touch);
+  await page.waitForTimeout(80);
+  ok(B, P, "FreeCell: illegal tap move shakes the card", await H(page, () => window.__shook || !!document.querySelector(".shake")), JSON.stringify(badF));
+  await page.keyboard.press("Escape").catch(() => {});
+  // 4) tip parity: stuck first today -> later win has no tip-cta
+  await H(page, () => { const d = new Date(Date.now() - 86400000); localStorage.setItem("grok-solitaire:tip", JSON.stringify({ ctaDay: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })); });
+  await page.goto(BASE + "?game=klondike&seed=22&draw=3"); await page.waitForTimeout(900);
+  const sc = await page.locator('[data-testid="stuck-modal"] [data-testid="tip-cta"]').boundingBox().catch(() => null);
+  ok(B, P, "stuck first today: tip block shown above the fold", !!sc && sc.y + sc.height <= (await H(page, () => innerHeight)), JSON.stringify(sc));
+  await page.locator('[data-testid="stuck-new"]').click().catch(() => {}); await page.waitForTimeout(300);
+  await pick(page, "golf"); await closeModal(page);
+  await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+  await golfQuickWin(page, touch);
+  ok(B, P, "then a win the same day: no second tip block (shared day key)", await winVisible(page) && !(await vis(page, '[data-testid="tip-cta"]')) && await vis(page, '[data-testid="win-modal"] [data-testid="btn-tip"]'));
+  await closeModal(page); await page.waitForTimeout(400);
+  // 2) install copy without beforeinstallprompt
+  const ih = await H(page, () => document.querySelector('[data-testid="install-hint"]')?.innerText || "");
+  ok(B, P, "install hint without install event uses menu/bookmark wording", /browser menu/i.test(ih) && /bookmark/i.test(ih) && !(/Install\b/.test(ih) && false), ih.replace(/\s+/g, " "));
+  ok(B, P, "no Install button without an install event", !(await vis(page, '[data-testid="install-go"]')));
+  await page.locator('[data-testid="install-dismiss"]').click().catch(() => {});
+  // 5) softer night card faces
+  const face = await H(page, () => {
+    const card = document.querySelector(".card.face-up.red") || document.querySelector(".card.face-up");
+    if (!card) return null;
+    const norm = (v) => { const t = document.createElement("span"); t.style.color = v; document.body.appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; };
+    const parse = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const cs = getComputedStyle(card);
+    const faces = [cs.getPropertyValue("--ivory-top").trim(), cs.getPropertyValue("--ivory").trim()].map(norm);
+    const reds = [norm(getComputedStyle(document.querySelector(".card.face-up.red .corner") || card).color)];
+    const blackCard = document.querySelector(".card.face-up:not(.red) .corner");
+    if (blackCard) reds.push(norm(getComputedStyle(blackCard).color));
+    const Lf = Math.max(...faces.map(f => lum(parse(f))));
+    const contrast = Math.min(...reds.map(c => { const L = lum(parse(c)); return (Math.max(Lf, L) + 0.05) / (Math.min(Lf, L) + 0.05); }));
+    return { faces, ink: reds, faceLum: +Lf.toFixed(3), contrast: +contrast.toFixed(2), theme: document.documentElement.dataset.theme };
+  });
+  ok(B, P, "night card face is softer than bright cream", face && face.theme === "night" && face.faceLum < 0.58, JSON.stringify(face));
+  ok(B, P, "card ranks stay readable (contrast >= 4.5)", face && face.contrast >= 4.5, JSON.stringify(face));
+  if (P === "mobile") await page.screenshot({ path: `${SHOTS}/${P}-night-cards.png` });
+  ok(B, P, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  await ctx.close();
+}
+
 const VPS = [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
@@ -1041,7 +1122,7 @@ for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
 ]) {
-  if (process.env.B2ONLY) continue;
+  if (process.env.B2ONLY || process.env.B3ONLY) continue;
   const ctx = await browser.newContext(vp.opts);
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
   const page = await ctx.newPage();
@@ -1070,9 +1151,10 @@ for (const vp of [
   ok("shell", vp.P, "no console errors", errs.length === 0, errs.slice(0, 3).join(" | "));
   await ctx.close();
 }
-for (const vp of VPS) { try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { try { await batch3(vp); } catch (e) { ok("batch3", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.B3ONLY) continue; try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2", "batch3"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

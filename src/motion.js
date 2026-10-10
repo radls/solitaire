@@ -21,9 +21,21 @@ function slotForMove(scope, from) {
   return scope.querySelector(`[data-drop="${drop}"]`);
 }
 
-/** Brief shake on the cards (or slot) from a rejected move. */
-export function shakeMoved(from, root) {
-  if (typeof document === "undefined") return;
+function prefersReducedMotion() {
+  try {
+    return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  } catch {
+    return false;
+  }
+}
+
+function snapshotFrom(from) {
+  if (!from || typeof from !== "object") return null;
+  return { zone: from.zone, index: from.index, count: from.count };
+}
+
+function paintShake(from, root) {
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   const scope = root || document.getElementById("table") || document;
   let nodes = cardsForMove(scope, from);
   if (!nodes.length && from?.zone) {
@@ -36,4 +48,18 @@ export function shakeMoved(from, root) {
     void el.offsetWidth;
     el.classList.add("shake");
   }
+}
+
+/**
+ * Brief shake on the cards (or slot) from a rejected move.
+ * Painted on a microtask so a same-turn re-render cannot drop the class.
+ * Reduced motion adds nothing. The CSS animation is 250ms.
+ */
+export function shakeMoved(from, root) {
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
+  const snapshot = snapshotFrom(from);
+  const scopeRoot = root || null;
+  const run = () => paintShake(snapshot, scopeRoot);
+  if (typeof queueMicrotask === "function") queueMicrotask(run);
+  else run();
 }

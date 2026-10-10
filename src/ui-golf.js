@@ -417,6 +417,7 @@ export function mount(options = {}) {
     const shortcuts = `<li><kbd>N</kbd> new deal</li><li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li><li><kbd>H</kbd> hint</li><li><kbd>Space</kbd> draw</li><li><kbd>R</kbd> replay</li>`;
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>Golf</h2>
+      <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
@@ -430,7 +431,6 @@ export function mount(options = {}) {
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
-      ${tipEntryHTML("help-tip")}
     </div>`;
     syncPlayClock();
   }
@@ -556,6 +556,7 @@ export function mount(options = {}) {
   function doApply(action) {
     const result = apply(session.state, action);
     if (!result.ok) {
+      sounds.illegal(session.muted);
       setStatus(statusFor(result));
       const from =
         action?.type === "play"

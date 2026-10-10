@@ -235,6 +235,11 @@ html[data-theme="classic"] #app {
   margin: 0;
 }
 
+.meters[hidden],
+body[data-game="picker"] .meters {
+  display: none;
+}
+
 .meters div {
   min-width: 4.2rem;
 }
@@ -722,7 +727,7 @@ html[data-theme="night"] .status {
 
 .picker {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
   width: min(44rem, 100%);
   min-width: 0;
@@ -733,19 +738,81 @@ html[data-theme="night"] .status {
   text-align: left;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.4rem;
+  align-items: stretch;
+  gap: 0;
   min-width: 0;
   max-width: 100%;
-  min-height: 9.5rem;
-  padding: 1rem 0.95rem;
+  min-height: 0;
+  padding: 0;
   border-radius: 1rem;
   background: var(--tile-bg);
   border: 1px solid var(--btn-border);
+  overflow: hidden;
 }
 
 .pick-tile:hover {
   background: var(--btn-hover);
+}
+
+.pick-open {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 0.9rem 0.9rem 0.45rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.pick-stats {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.daily-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  width: calc(100% - 1rem);
+  min-width: 0;
+  min-height: 44px;
+  margin: 0.15rem 0.5rem 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--btn-border);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.daily-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.today-badge {
+  color: var(--gold);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.08rem 0.38rem;
 }
 
 .pick-kicker {
@@ -760,6 +827,7 @@ html[data-theme="night"] .status {
   font-size: 1.7rem;
   line-height: 1.05;
   max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .pick-blurb {
@@ -767,18 +835,19 @@ html[data-theme="night"] .status {
   line-height: 1.35;
   font-size: 0.92rem;
   max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .pick-tile .resume {
   margin-top: auto;
-  background: var(--gold);
-  color: var(--btn-ink);
-  border-radius: 999px;
-  padding: 0.12rem 0.55rem;
-  font-size: 0.72rem;
+  color: var(--gold);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .seed-chip {
@@ -1186,6 +1255,29 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
     padding: 0.4rem 0.35rem 0.2rem;
   }
 
+  .picker {
+    gap: 0.45rem;
+  }
+
+  .pick-name {
+    font-size: 1.22rem;
+  }
+
+  .pick-blurb {
+    font-size: 0.8rem;
+  }
+
+  .pick-open {
+    padding: 0.75rem 0.65rem 0.35rem;
+  }
+
+  .daily-btn {
+    width: calc(100% - 0.7rem);
+    margin: 0.1rem 0.35rem 0.4rem;
+    font-size: 0.78rem;
+    padding: 0.3rem 0.4rem;
+  }
+
   .topbar {
     gap: 0.3rem 0.4rem;
     padding:
@@ -1233,7 +1325,8 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   margin: 0;
 }
 
-.modal .tip-streak {
+.modal .tip-streak,
+.daily-done {
   margin: 0.95rem 0 0;
   color: var(--muted);
   font-size: 0.8rem;

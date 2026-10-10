@@ -4,6 +4,7 @@ import { mount as mountFreeCell } from "./ui-freecell.js";
 import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
 import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
+import { canResume, pickerStatsText, resumeText, todayKey } from "./daily.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -51,24 +52,9 @@ document.getElementById("btn-theme")?.addEventListener("click", () => {
 let active = null;
 let mode = "picker";
 
-function hasKlondikeSave() {
-  const saved = load().saved;
-  return !!(saved?.state && !saved.state.won);
-}
-
-function hasFreeCellSave() {
-  const saved = loadFreeCell();
-  return !!(saved.state && !saved.state.won);
-}
-
-function hasGolfSave() {
-  const saved = loadGolf();
-  return !!(saved.state && !saved.state.over);
-}
-
-function hasKingsSave() {
-  const saved = loadKings();
-  return !!(saved.state && !saved.state.won);
+function showMeters(on) {
+  const meters = document.getElementById("meters");
+  if (meters) meters.hidden = !on;
 }
 
 function syncHooks() {
@@ -94,103 +80,152 @@ function unmountActive() {
   active = null;
 }
 
+function resumeMarkup(game, state, savedAt) {
+  if (!canResume(state)) return "";
+  return `<span class="resume" data-testid="resume-${game}">${resumeText(state, savedAt)}</span>`;
+}
+
+function dailyButton(game, stats) {
+  const done = stats?.dailyLast === todayKey();
+  const label = done ? "Done today ✓" : "Today's deal";
+  const badge = done ? "" : `<span class="today-badge">Today</span>`;
+  return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${label}</button>`;
+}
+
+function pickCard({ game, testid, kicker, name, blurb, stats, state, savedAt }) {
+  return `<article class="pick-tile">
+      <button type="button" class="pick-open" data-testid="${testid}" data-pick="${game}">
+        <span class="pick-kicker">${kicker}</span>
+        <span class="pick-name">${name}</span>
+        <span class="pick-blurb">${blurb}</span>
+        <span class="pick-stats" data-testid="pick-stats-${game}">${pickerStatsText(game, stats)}</span>
+        ${resumeMarkup(game, state, savedAt)}
+      </button>
+      ${dailyButton(game, stats)}
+    </article>`;
+}
+
 function showPicker() {
   unmountActive();
   mode = "picker";
   document.body.dataset.game = "picker";
   document.getElementById("game-kicker").textContent = "Games";
-  const scoreWrap = document.getElementById("meter-score-wrap");
-  if (scoreWrap) scoreWrap.hidden = false;
-  document.getElementById("meter-time").textContent = "—";
-  document.getElementById("meter-moves").textContent = "—";
-  document.getElementById("meter-score").textContent = "—";
+  showMeters(false);
   document.getElementById("status-text").textContent = "Choose a game.";
   document.getElementById("status-seed").textContent = "";
-  const klondike = hasKlondikeSave();
-  const freecell = hasFreeCellSave();
-  const golf = hasGolfSave();
-  const kings = hasKingsSave();
+  const klondike = load();
+  const freecell = loadFreeCell();
+  const golf = loadGolf();
+  const kings = loadKings();
   document.getElementById("table").innerHTML = `
     <div class="picker" data-testid="picker">
-      <button type="button" class="pick-tile" data-testid="pick-klondike" data-pick="klondike">
-        <span class="pick-kicker">Classic</span>
-        <span class="pick-name">Klondike</span>
-        <span class="pick-blurb">Build down by color. Draw from the stock.</span>
-        ${klondike ? '<span class="resume">Resume</span>' : ""}
-      </button>
-      <button type="button" class="pick-tile" data-testid="pick-freecell" data-pick="freecell">
-        <span class="pick-kicker">Microsoft deals</span>
-        <span class="pick-name">FreeCell</span>
-        <span class="pick-blurb">All cards face up. Four free cells.</span>
-        ${freecell ? '<span class="resume">Resume</span>' : ""}
-      </button>
-      <button type="button" class="pick-tile" data-testid="pick-golf" data-pick="golf">
-        <span class="pick-kicker">Calm & quick</span>
-        <span class="pick-name">Golf</span>
-        <span class="pick-blurb">Clear the columns one rank up or down.</span>
-        ${golf ? '<span class="resume">Resume</span>' : ""}
-      </button>
-      <button type="button" class="pick-tile" data-testid="pick-kings" data-pick="kings">
-        <span class="pick-kicker">Four kings</span>
-        <span class="pick-name">King's Corners</span>
-        <span class="pick-blurb">Kings in the corners. Build down by color.</span>
-        ${kings ? '<span class="resume">Resume</span>' : ""}
-      </button>
+      ${pickCard({
+        game: "klondike",
+        testid: "pick-klondike",
+        kicker: "Classic",
+        name: "Klondike",
+        blurb: "Build down by color. Draw from the stock.",
+        stats: klondike.stats,
+        state: klondike.saved?.state,
+        savedAt: klondike.saved?.savedAt,
+      })}
+      ${pickCard({
+        game: "freecell",
+        testid: "pick-freecell",
+        kicker: "Microsoft deals",
+        name: "FreeCell",
+        blurb: "All cards face up. Four free cells.",
+        stats: freecell.stats,
+        state: freecell.state,
+        savedAt: freecell.savedAt,
+      })}
+      ${pickCard({
+        game: "golf",
+        testid: "pick-golf",
+        kicker: "Calm & quick",
+        name: "Golf",
+        blurb: "Clear the columns one rank up or down.",
+        stats: golf.stats,
+        state: golf.state,
+        savedAt: golf.savedAt,
+      })}
+      ${pickCard({
+        game: "kings",
+        testid: "pick-kings",
+        kicker: "Four kings",
+        name: "King's Corners",
+        blurb: "Kings in the corners. Build down by color.",
+        stats: kings.stats,
+        state: kings.state,
+        savedAt: kings.savedAt,
+      })}
     </div>`;
   syncHooks();
 }
 
-function showKlondike() {
+function showKlondike(opts) {
   unmountActive();
   mode = "klondike";
   savePrefs({ lastGame: "klondike" });
-  active = mountKlondike();
+  showMeters(true);
+  active = mountKlondike(opts);
   syncHooks();
 }
 
-function showFreeCell() {
+function showFreeCell(opts) {
   unmountActive();
   mode = "freecell";
   savePrefs({ lastGame: "freecell" });
-  active = mountFreeCell();
+  showMeters(true);
+  active = mountFreeCell(opts);
   syncHooks();
 }
 
-function showGolf() {
+function showGolf(opts) {
   unmountActive();
   mode = "golf";
   savePrefs({ lastGame: "golf" });
-  active = mountGolf();
+  showMeters(true);
+  active = mountGolf(opts);
   syncHooks();
 }
 
-function showKings() {
+function showKings(opts) {
   unmountActive();
   mode = "kings";
   savePrefs({ lastGame: "kings" });
-  active = mountKings();
+  showMeters(true);
+  active = mountKings(opts);
   syncHooks();
 }
 
-function pick(id) {
-  if (id === "freecell") showFreeCell();
-  else if (id === "golf") showGolf();
-  else if (id === "kings") showKings();
-  else if (id === "klondike") showKlondike();
+function pick(id, opts) {
+  if (id === "freecell") showFreeCell(opts);
+  else if (id === "golf") showGolf(opts);
+  else if (id === "kings") showKings(opts);
+  else if (id === "klondike") showKlondike(opts);
   else showPicker();
 }
 
 document.getElementById("btn-home").addEventListener("click", () => showPicker());
 document.getElementById("table").addEventListener("click", (event) => {
+  if (mode !== "picker") return;
+  const dailyBtn = event.target.closest("[data-daily]");
+  if (dailyBtn) {
+    pick(dailyBtn.dataset.daily, { daily: true });
+    return;
+  }
   const tile = event.target.closest("[data-pick]");
-  if (!tile || mode !== "picker") return;
+  if (!tile) return;
   pick(tile.dataset.pick);
 });
 
 const params = new URLSearchParams(location.search);
 const requested = params.get("game");
-if (requested === "freecell" || requested === "klondike" || requested === "golf" || requested === "kings") pick(requested);
-else if (params.has("seed") || params.has("draw")) pick("klondike");
+const dailyQuery = params.get("daily") === "1";
+if (requested === "freecell" || requested === "klondike" || requested === "golf" || requested === "kings") {
+  pick(requested, { daily: dailyQuery });
+} else if (params.has("seed") || params.has("draw")) pick("klondike");
 else {
   const last = loadPrefs().lastGame;
   if (last === "freecell" || last === "klondike" || last === "golf" || last === "kings") pick(last);

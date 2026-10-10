@@ -14,6 +14,7 @@ import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, saveKings, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -27,7 +28,7 @@ const ICONS = {
   recycle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a8 8 0 0 1 13.2-6M20 16a8 8 0 0 1-13.2 6"/><path d="M17 3h4v4M7 21H3v-4"/></svg>`,
 };
 
-export function mount() {
+export function mount(options = {}) {
   const ac = new AbortController();
   const listen = (target, type, handler, options) => {
     if (!target) return;
@@ -83,7 +84,20 @@ export function mount() {
   const rawSeed = params.get("seed");
   const urlSeed = rawSeed == null || rawSeed === "" ? null : Number(rawSeed);
   const honorSeed = params.get("game") === "kings" && urlSeed != null && Number.isFinite(urlSeed);
-  const resume = !honorSeed && saved.state && !saved.state.won && !isWon(saved.state);
+  const wantDaily = options.daily === true || (params.get("daily") === "1" && params.get("game") === "kings");
+  const today = todayKey();
+  const plan = wantDaily
+    ? dailyOpenPlan(saved.state, today, {
+        isFinished: (state) => !!(state.won || isWon(state)),
+        needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state) && !state.stuck,
+      })
+    : null;
+  let bootDailyConfirm = false;
+  const resume =
+    plan === "resume" ||
+    plan === "confirm" ||
+    (!wantDaily && !honorSeed && saved.state && !saved.state.won && !isWon(saved.state));
+  if (plan === "confirm") bootDailyConfirm = true;
   if (resume) {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
@@ -390,7 +404,7 @@ export function mount() {
     root.table.replaceChildren(board);
     if (root.moves) root.moves.textContent = String(state.moves);
     if (root.home) root.home.textContent = String(cardsInCorners(state));
-    if (root.seed) root.seed.textContent = "";
+    if (root.seed) root.seed.textContent = seedStatusText(state);
     if (root.undo) root.undo.disabled = session.history.length === 0;
     updateMute();
     applyHintHighlight();
@@ -450,6 +464,7 @@ export function mount() {
       </ul>
       <p data-testid="win-count">Wins ${session.stats.won}</p>
       ${winTipHTML(session.stats.streak)}
+      ${dailyDoneHTML()}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay</button>
@@ -503,19 +518,21 @@ export function mount() {
     return session.state.moves > 0 && !session.state.won && !isWon(session.state) && !session.state.stuck;
   }
 
-  function confirmNewDeal() {
+  function confirmNewDeal(extra = {}) {
     if (!gameInProgress()) {
-      startDeal(undefined);
+      if (extra.daily) startDaily();
+      else startDeal(undefined);
       return;
     }
     session.modal = "confirm";
+    const dailyAttr = extra.daily ? ` data-daily="1"` : "";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
       <h2>Start a new deal?</h2>
       <p>The current deal will be abandoned.</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
-        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok">New deal</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dailyAttr}>New deal</button>
       </div>
     </div>`;
     syncPlayClock();
@@ -544,21 +561,41 @@ export function mount() {
     if (!session.countedWin) {
       session.stats.won += 1;
       session.stats.streak = (session.stats.streak || 0) + 1;
+      session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
       session.countedWin = true;
+      creditDaily();
       persist();
     }
     sounds.win(session.muted);
     showWin();
   }
 
-  function startDeal(seed) {
+  function creditDaily() {
+    const key = session.state?.daily;
+    if (!key || key !== todayKey()) return;
+    const next = nextDailyStreak(session.stats, key);
+    session.stats.dailyStreak = next.dailyStreak;
+    session.stats.dailyBest = next.dailyBest;
+    session.stats.dailyLast = next.dailyLast;
+  }
+
+  function dailyDoneHTML() {
+    const key = todayKey();
+    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+  }
+
+  function startDeal(seed, extra = {}) {
     hideOverlay();
+    const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
+    const resolved = extra.daily ? dailySeed("kings", dailyKey) : seed;
     session.history = [];
     session.selected = null;
     session.hintMove = null;
     session.drag = null;
     session.countedWin = false;
-    session.state = deal({ seed });
+    session.state = deal({ seed: resolved });
+    if (dailyKey) session.state.daily = dailyKey;
     session.stats.played += 1;
     persist();
     render();
@@ -566,8 +603,12 @@ export function mount() {
     setStatus("Build down by color. Kings belong in the corners.");
   }
 
+  function startDaily() {
+    startDeal(undefined, { daily: true });
+  }
+
   function replay() {
-    startDeal(session.state.seed);
+    startDeal(session.state.seed, { dailyKey: session.state.daily || null });
   }
 
   function doApply(action) {
@@ -915,7 +956,8 @@ export function mount() {
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
       if (gameInProgress()) session.stats.streak = 0;
-      startDeal(undefined);
+      if (btn.dataset.daily === "1") startDaily();
+      else startDeal(undefined);
     } else if (btn.dataset.act === "replay") {
       if (session.modal === "help") confirmReplay();
       else {
@@ -964,11 +1006,13 @@ export function mount() {
     persist();
     render();
     refreshMeters();
-    if (session.state.stuck) {
+    if (bootDailyConfirm) confirmNewDeal({ daily: true });
+    else if (session.state.stuck) {
       showStuck();
       setStatus("No more moves.");
     } else setStatus("Build down by color. Kings belong in the corners.");
-  } else startDeal(honorSeed ? urlSeed : undefined);
+  } else if (wantDaily) startDaily();
+  else startDeal(honorSeed ? urlSeed : undefined);
 
   return {
     getState: () => session.state,

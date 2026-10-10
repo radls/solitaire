@@ -14,6 +14,9 @@ const defaultData = () => ({
     bestStreak: 0,
     bestTimeMs: null,
     fewestMoves: null,
+    dailyStreak: 0,
+    dailyBest: 0,
+    dailyLast: null,
   },
   saved: null,
 });
@@ -44,7 +47,7 @@ export function save(data) {
 const defaultFreeCell = () => ({
   state: null,
   history: [],
-  stats: { played: 0, won: 0, streak: 0 },
+  stats: { played: 0, won: 0, streak: 0, bestStreak: 0, dailyStreak: 0, dailyBest: 0, dailyLast: null },
 });
 
 export function loadFreeCell() {
@@ -84,7 +87,7 @@ export function saveFreeCell(data) {
 const defaultGolf = () => ({
   state: null,
   history: [],
-  stats: { played: 0, cleared: 0, bestScore: null, streak: 0 },
+  stats: { played: 0, cleared: 0, bestScore: null, streak: 0, bestStreak: 0, dailyStreak: 0, dailyBest: 0, dailyLast: null },
 });
 
 export function loadGolf() {
@@ -124,7 +127,7 @@ export function saveGolf(data) {
 const defaultKings = () => ({
   state: null,
   history: [],
-  stats: { played: 0, won: 0, streak: 0 },
+  stats: { played: 0, won: 0, streak: 0, bestStreak: 0, dailyStreak: 0, dailyBest: 0, dailyLast: null },
 });
 
 export function loadKings() {

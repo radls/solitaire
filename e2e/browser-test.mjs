@@ -160,7 +160,7 @@ async function common(page, P) {
   ok("shell", P, "night theme is default", theme === "night", theme);
   const vp = await H(page, () => document.querySelector('meta[name=viewport]').content);
   ok("shell", P, "viewport blocks zoom", /user-scalable=no/.test(vp) && /maximum-scale=1/.test(vp), vp);
-  ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid^="pick-"]').count()) === 4);
+  ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid="pick-klondike"], [data-testid="pick-freecell"], [data-testid="pick-golf"], [data-testid="pick-kings"]').count()) === 4);
   const surprise = await H(page, () => /surprise/i.test(document.body.innerText));
   ok("shell", P, "no 'surprise' copy", !surprise);
 }

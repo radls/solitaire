@@ -16,6 +16,7 @@ import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, saveGolf, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 
 const DRAG_THRESHOLD = 7;
 const HISTORY_CAP = 200;
@@ -26,7 +27,7 @@ const ICONS = {
   unmute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5-4.5-1.4 1.4A6.5 6.5 0 0 1 18 12a6.5 6.5 0 0 1-3.9 5.9l1.4 1.4A8.5 8.5 0 0 0 20 12a8.5 8.5 0 0 0-4.5-7.5zM16 4.2 4.2 16l1.4 1.4L17.4 5.6 16 4.2z"/></svg>`,
 };
 
-export function mount() {
+export function mount(options = {}) {
   const ac = new AbortController();
   const listen = (target, type, handler, options) => {
     if (!target) return;
@@ -86,7 +87,18 @@ export function mount() {
   const rawSeed = params.get("seed");
   const urlSeed = rawSeed == null || rawSeed === "" ? null : Number(rawSeed);
   const honorSeed = params.get("game") === "golf" && urlSeed != null && Number.isFinite(urlSeed);
-  const resume = !honorSeed && saved.state && !saved.state.over;
+  const wantDaily = options.daily === true || (params.get("daily") === "1" && params.get("game") === "golf");
+  const today = todayKey();
+  const plan = wantDaily
+    ? dailyOpenPlan(saved.state, today, {
+        isFinished: (state) => !!state.over,
+        needsConfirm: (state) => state.moves > 0 && !state.over,
+      })
+    : null;
+  let bootDailyConfirm = false;
+  const resume =
+    plan === "resume" || plan === "confirm" || (!wantDaily && !honorSeed && saved.state && !saved.state.over);
+  if (plan === "confirm") bootDailyConfirm = true;
   if (resume) {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
@@ -274,7 +286,7 @@ export function mount() {
     root.table.replaceChildren(board);
     root.moves.textContent = String(state.moves);
     if (root.left) root.left.textContent = String(cardsLeft(state));
-    if (root.seed) root.seed.textContent = "";
+    if (root.seed) root.seed.textContent = seedStatusText(state);
     if (root.undo) root.undo.disabled = session.history.length === 0;
     applyHintHighlight();
     updateMute();
@@ -339,6 +351,7 @@ export function mount() {
       </ul>
       <p data-testid="win-count">Courses cleared ${session.stats.cleared}</p>
       ${winTipHTML(session.stats.streak)}
+      ${dailyDoneHTML()}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay this deal</button>
@@ -372,19 +385,21 @@ export function mount() {
     return session.state.moves > 0 && !session.state.over;
   }
 
-  function confirmNewDeal() {
+  function confirmNewDeal(extra = {}) {
     if (!gameInProgress()) {
-      startDeal(undefined);
+      if (extra.daily) startDaily();
+      else startDeal(undefined);
       return;
     }
     session.modal = "confirm";
+    const dailyAttr = extra.daily ? ` data-daily="1"` : "";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
       <h2>Start a new deal?</h2>
       <p>The current deal will be abandoned.</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
-        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok">New deal</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dailyAttr}>New deal</button>
       </div>
     </div>`;
     syncPlayClock();
@@ -416,6 +431,7 @@ export function mount() {
       session.stats.cleared += 1;
       session.countedClear = true;
       session.stats.streak = (session.stats.streak || 0) + 1;
+      session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
       session.missedRound = false;
     } else {
       session.streakBeforeMiss = session.stats.streak || 0;
@@ -429,11 +445,29 @@ export function mount() {
     } else {
       session.improvedBest = false;
     }
+    creditDaily();
     showEnd();
   }
 
-  function startDeal(seed) {
+  function creditDaily() {
+    const key = session.state?.daily;
+    if (!key || key !== todayKey()) return;
+    const next = nextDailyStreak(session.stats, key);
+    session.stats.dailyStreak = next.dailyStreak;
+    session.stats.dailyBest = next.dailyBest;
+    session.stats.dailyLast = next.dailyLast;
+  }
+
+  function dailyDoneHTML() {
+    const key = todayKey();
+    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+  }
+
+  function startDeal(seed, extra = {}) {
     hideOverlay();
+    const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
+    const resolved = extra.daily ? dailySeed("golf", dailyKey) : seed;
     session.history = [];
     session.drag = null;
     session.hintMove = null;
@@ -442,7 +476,8 @@ export function mount() {
     session.countedClear = false;
     session.improvedBest = false;
     session.missedRound = false;
-    session.state = deal({ seed });
+    session.state = deal({ seed: resolved });
+    if (dailyKey) session.state.daily = dailyKey;
     session.stats.played += 1;
     persist();
     render();
@@ -450,8 +485,12 @@ export function mount() {
     setStatus("Play a card one rank above or below the waste.");
   }
 
+  function startDaily() {
+    startDeal(undefined, { daily: true });
+  }
+
   function replay() {
-    startDeal(session.state.seed);
+    startDeal(session.state.seed, { dailyKey: session.state.daily || null });
   }
 
   function doApply(action) {
@@ -670,7 +709,8 @@ export function mount() {
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
       if (gameInProgress()) session.stats.streak = 0;
-      startDeal(undefined);
+      if (btn.dataset.daily === "1") startDaily();
+      else startDeal(undefined);
     } else if (btn.dataset.act === "replay") {
       if (session.modal === "help") confirmReplay();
       else {
@@ -716,6 +756,9 @@ export function mount() {
     render();
     refreshMeters();
     setStatus("Play a card one rank above or below the waste.");
+    if (bootDailyConfirm) confirmNewDeal({ daily: true });
+  } else if (wantDaily) {
+    startDaily();
   } else {
     startDeal(honorSeed ? urlSeed : undefined);
   }

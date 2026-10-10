@@ -19,6 +19,7 @@ import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, save, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
+import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -29,7 +30,7 @@ const ICONS = {
   recycle: `<svg viewBox="0 0 24 24"><path d="M4 8a8 8 0 0 1 13.2-6M20 16a8 8 0 0 1-13.2 6"/><path d="M17 3h4v4M7 21H3v-4"/></svg>`,
 };
 
-export function mount() {
+export function mount(options = {}) {
   const ac = new AbortController();
   const listen = (target, type, handler, options) => {
     if (!target) return;
@@ -91,12 +92,32 @@ export function mount() {
   const urlSeed = params.has("seed") ? Number(params.get("seed")) : undefined;
   const urlDraw = params.get("draw") === "3" ? 3 : params.get("draw") === "1" ? 1 : null;
   const initialDraw = urlDraw ?? stored.drawCount;
+  const wantDaily = options.daily === true || (params.get("daily") === "1" && params.get("game") === "klondike");
+  const savedState = stored.saved?.state && !stored.saved.state.won ? stored.saved.state : null;
+  const today = todayKey();
+  const plan = wantDaily
+    ? dailyOpenPlan(savedState, today, {
+        isFinished: (state) => !!state.won,
+        needsConfirm: (state) => state.moves > 0 && !state.won,
+      })
+    : null;
+  let bootDailyConfirm = false;
 
-  if (!params.has("seed") && stored.saved?.state && !stored.saved.state.won) {
-    session.state = stored.saved.state;
+  if (plan === "resume" || plan === "confirm") {
+    session.state = savedState;
+    session.history = stored.saved.history ?? [];
+    restoreClock(session.state, stored.saved.savedAt);
+    bootDailyConfirm = plan === "confirm";
+  } else if (plan === "deal") {
+    session.history = [];
+    session.state = deal({ seed: dailySeed("klondike", today), drawCount: initialDraw });
+    session.state.daily = today;
+  } else if (!params.has("seed") && savedState) {
+    session.state = savedState;
     session.history = stored.saved.history ?? [];
     restoreClock(session.state, stored.saved.savedAt);
   } else {
+    session.history = [];
     session.state = deal({
       seed: Number.isFinite(urlSeed) ? urlSeed : undefined,
       drawCount: initialDraw,
@@ -272,7 +293,7 @@ export function mount() {
     table.appendChild(board);
 
     root.moves.textContent = String(state.moves);
-    root.seed.textContent = `Seed ${state.seed}`;
+    root.seed.textContent = seedStatusText(state, `Seed ${state.seed}`);
     root.undo.disabled = session.history.length === 0;
     root.draw1.classList.toggle("active", state.drawCount === 1);
     root.draw3.classList.toggle("active", state.drawCount === 3);
@@ -406,6 +427,22 @@ export function mount() {
     if (stats.fewestMoves == null || session.state.moves < stats.fewestMoves) {
       stats.fewestMoves = session.state.moves;
     }
+    creditDaily();
+  }
+
+  function creditDaily() {
+    const key = session.state?.daily;
+    if (!key || key !== todayKey()) return;
+    const next = nextDailyStreak(session.stats, key);
+    session.stats.dailyStreak = next.dailyStreak;
+    session.stats.dailyBest = next.dailyBest;
+    session.stats.dailyLast = next.dailyLast;
+  }
+
+  function dailyDoneHTML() {
+    const key = todayKey();
+    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
   }
 
   function showOverlay(html, { win = false, modal = null } = {}) {
@@ -465,6 +502,7 @@ export function mount() {
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
         </ul>
         ${winTipHTML(stats.streak)}
+        ${dailyDoneHTML()}
         <div class="modal-actions">
           <button class="btn primary" data-act="again">Play again</button>
         </div>
@@ -493,22 +531,25 @@ export function mount() {
     </div>`, { modal: "help" });
   }
 
-  function confirmNew(drawCount) {
+  function confirmNew(drawCount, extra = {}) {
     if (session.state.moves > 0 && !session.state.won) {
+      const dailyAttr = extra.daily ? ` data-daily="1"` : "";
       showOverlay(`<div class="modal">
         <h2>Start a new game?</h2>
         <p>The current deal will be abandoned and your streak will reset.</p>
         <div class="modal-actions">
           <button class="btn" data-act="close">Keep playing</button>
-          <button class="btn primary" data-act="new" data-draw="${drawCount}">New game</button>
+          <button class="btn primary" data-act="new" data-draw="${drawCount}"${dailyAttr}>New game</button>
         </div>
       </div>`, { modal: "confirm" });
       return;
     }
-    startNewGame(drawCount);
+    if (extra.daily) startDaily(drawCount);
+    else startNewGame(drawCount);
   }
 
-  function startNewGame(drawCount = session.state.drawCount, seed) {
+  function startNewGame(drawCount = session.state.drawCount, seed, extra = {}) {
+    const previousDaily = session.state?.daily || null;
     if (session.state.moves > 0 && !session.state.won) session.stats.streak = 0;
     hideOverlay();
     session.history = [];
@@ -516,6 +557,8 @@ export function mount() {
     session.hintMove = null;
     session.countedPlay = false;
     session.state = deal({ drawCount, seed });
+    const dailyKey = extra.dailyKey || (extra.keepDaily ? previousDaily : null);
+    if (dailyKey) session.state.daily = dailyKey;
     persist();
     render();
     if (!showIfStuck()) {
@@ -523,8 +566,14 @@ export function mount() {
     }
   }
 
+  function startDaily(drawCount = session.state?.drawCount) {
+    const key = todayKey();
+    const draw = drawCount === 3 ? 3 : 1;
+    startNewGame(draw, dailySeed("klondike", key), { dailyKey: key });
+  }
+
   function replayDeal() {
-    startNewGame(session.state.drawCount, session.state.seed);
+    startNewGame(session.state.drawCount, session.state.seed, { keepDaily: true });
   }
 
   function countPlay() {
@@ -838,7 +887,11 @@ export function mount() {
     if (act === "close") hideOverlay();
     else if (act === "undo") doUndo();
     else if (act === "replay") replayDeal();
-    else if (act === "again" || act === "new") startNewGame(Number(btn.dataset.draw || session.state.drawCount));
+    else if (act === "again" || act === "new") {
+      const drawCount = Number(btn.dataset.draw || session.state.drawCount);
+      if (btn.dataset.daily === "1") startDaily(drawCount);
+      else startNewGame(drawCount);
+    }
   });
 
   listen(window, "keydown", (event) => {
@@ -876,7 +929,8 @@ export function mount() {
   });
   persist();
   render();
-  if (!showIfStuck()) setStatus("Move cards on the tableau, or draw from the stock.");
+  if (bootDailyConfirm) confirmNew(urlDraw ?? session.state.drawCount, { daily: true });
+  else if (!showIfStuck()) setStatus("Move cards on the tableau, or draw from the stock.");
 
   return {
     getState: () => session.state,

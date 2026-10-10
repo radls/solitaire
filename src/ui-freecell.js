@@ -16,6 +16,14 @@ import { restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
 import { toggleTipPanel, winTipHTML } from "./tip.js";
+import {
+  dailyDoneText,
+  dailyFreeCellDeal,
+  dailyOpenPlan,
+  nextDailyStreak,
+  seedStatusText,
+  todayKey,
+} from "./daily.js";
 
 const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
@@ -31,7 +39,7 @@ function randomDeal() {
   return 1 + Math.floor(Math.random() * 32000);
 }
 
-export function mount() {
+export function mount(options = {}) {
   const ac = new AbortController();
   const listen = (target, type, handler, options) => {
     if (!target) return;
@@ -87,13 +95,34 @@ export function mount() {
     landedId: null,
   };
 
-  if (saved.state && !saved.state.won) {
+  const params = new URLSearchParams(location.search);
+  const wantDaily = options.daily === true || (params.get("daily") === "1" && params.get("game") === "freecell");
+  const today = todayKey();
+  const plan = wantDaily
+    ? dailyOpenPlan(saved.state, today, {
+        isFinished: (state) => !!(state.won || isWon(state)),
+        needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state),
+      })
+    : null;
+  let bootDailyConfirm = false;
+
+  function resumeSaved() {
     session.state = saved.state;
     session.history = (saved.history ?? []).slice(-HISTORY_CAP);
     session.countedPlay = session.state.moves > 0;
     if (!session.state.startedAt || typeof saved.savedAt === "number") {
       restoreClock(session.state, saved.savedAt);
     }
+  }
+
+  if (plan === "resume" || plan === "confirm") {
+    resumeSaved();
+    bootDailyConfirm = plan === "confirm";
+  } else if (plan === "deal") {
+    session.state = deal(dailyFreeCellDeal(today));
+    session.state.daily = today;
+  } else if (saved.state && !saved.state.won) {
+    resumeSaved();
   } else {
     session.state = deal(randomDeal());
   }
@@ -298,7 +327,7 @@ export function mount() {
     root.table.replaceChildren(board);
     session.landedId = null;
     root.moves.textContent = String(state.moves);
-    root.seed.textContent = "";
+    root.seed.textContent = seedStatusText(state);
     root.undo.disabled = session.history.length === 0;
     if (root.finish) {
       const home = state.won || isWon(state);
@@ -349,6 +378,7 @@ export function mount() {
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
       <p data-testid="win-count">Wins ${session.stats.won} of ${session.stats.played}</p>
       ${winTipHTML(session.stats.streak)}
+      ${dailyDoneHTML()}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
@@ -380,19 +410,21 @@ export function mount() {
   }
 
   // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
-  function confirmNewDeal(dealNumber) {
+  function confirmNewDeal(dealNumber, extra = {}) {
     if (!gameInProgress()) {
-      startDeal(dealNumber ?? randomDeal());
+      if (extra.daily) startDaily();
+      else startDeal(dealNumber ?? randomDeal());
       return;
     }
     session.modal = "confirm";
+    const dailyAttr = extra.daily ? ` data-daily="1"` : "";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
       <h2>Start a new deal?</h2>
       <p>The current deal will be abandoned.</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
-        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dealNumber ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dailyAttr}${dealNumber && !extra.daily ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
       </div>
     </div>`;
     syncPlayClock();
@@ -404,9 +436,26 @@ export function mount() {
     session.animating = false;
   }
 
-  function startDeal(dealNumber) {
+  function creditDaily() {
+    const key = session.state?.daily;
+    if (!key || key !== todayKey()) return;
+    const next = nextDailyStreak(session.stats, key);
+    session.stats.dailyStreak = next.dailyStreak;
+    session.stats.dailyBest = next.dailyBest;
+    session.stats.dailyLast = next.dailyLast;
+  }
+
+  function dailyDoneHTML() {
+    const key = todayKey();
+    if (session.state?.daily !== key || session.stats.dailyLast !== key) return "";
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+  }
+
+  function startDeal(dealNumber, extra = {}) {
     stopAuto();
     hideOverlay();
+    const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
+    const number = extra.daily ? dailyFreeCellDeal(dailyKey) : dealNumber;
     session.history = [];
     session.selected = null;
     session.hintMove = null;
@@ -414,10 +463,15 @@ export function mount() {
     session.winShown = false;
     session.countedWin = false;
     session.countedPlay = false;
-    session.state = deal(dealNumber);
+    session.state = deal(number);
+    if (dailyKey) session.state.daily = dailyKey;
     persist();
     render();
-    setStatus(`Deal #${dealNumber}.`);
+    setStatus(`Deal #${session.state.dealNumber}.`);
+  }
+
+  function startDaily() {
+    startDeal(undefined, { daily: true });
   }
 
   function statusForSuccess(result, from, to) {
@@ -439,7 +493,9 @@ export function mount() {
     if (!session.countedWin) {
       session.stats.won += 1;
       session.stats.streak = (session.stats.streak || 0) + 1;
+      session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
       session.countedWin = true;
+      creditDaily();
     }
     persist();
     sounds.win(session.muted);
@@ -796,7 +852,8 @@ export function mount() {
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
       if (gameInProgress()) session.stats.streak = 0;
-      startDeal(Number(btn.dataset.deal) || randomDeal());
+      if (btn.dataset.daily === "1") startDaily();
+      else startDeal(Number(btn.dataset.deal) || randomDeal());
     }
   });
   listen(root.overlay, "submit", (event) => {
@@ -847,6 +904,7 @@ export function mount() {
   refreshMeters();
   setStatus("Move a card into a free cell, cascade, or foundation.");
   persist();
+  if (bootDailyConfirm) confirmNewDeal(undefined, { daily: true });
 
   return {
     getState: () => session.state,

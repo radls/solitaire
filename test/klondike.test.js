@@ -8,6 +8,7 @@ import {
   canStackTableau,
   continueClock,
   deal,
+  dealPlayable,
   draw,
   elapsedMs,
   emptyState,
@@ -78,6 +79,62 @@ describe("deal", () => {
       b.tableau.map((p) => p.map((c) => c.id)),
     );
     expect(a.stock.map((c) => c.id)).toEqual(b.stock.map((c) => c.id));
+  });
+});
+
+describe("dealPlayable", () => {
+  function layout(state) {
+    return {
+      seed: state.seed,
+      drawCount: state.drawCount,
+      tableau: state.tableau.map((pile) => pile.map((card) => card.id)),
+      stock: state.stock.map((card) => card.id),
+    };
+  }
+
+  function scripted(seeds) {
+    const used = [];
+    return {
+      used,
+      random() {
+        const seed = seeds[used.length];
+        if (seed == null) throw new Error(`random called ${used.length + 1} times`);
+        used.push(seed);
+        return seed / 0xffffffff;
+      },
+    };
+  }
+
+  it("keeps an explicit stuck seed on deal()", () => {
+    const state = deal({ seed: 22, drawCount: 3 });
+    expect(state.seed).toBe(22);
+    expect(isStuck(state)).toBe(true);
+  });
+
+  it("skips a stuck opening and keeps the next playable seed", () => {
+    const script = scripted([22, 1, 27]);
+    const state = dealPlayable({ drawCount: 3, random: script.random, tries: 3 });
+    expect(script.used).toEqual([22, 1]);
+    expect(isStuck(state)).toBe(false);
+    expect(layout(state)).toEqual(layout(deal({ seed: 1, drawCount: 3 })));
+  });
+
+  it("keeps the last deal when every try is stuck", () => {
+    const script = scripted([22, 22, 22, 27, 1]);
+    const state = dealPlayable({ drawCount: 3, random: script.random });
+    expect(script.used).toEqual([22, 22, 22, 27]);
+    expect(state.seed).toBe(27);
+    expect(isStuck(state)).toBe(true);
+    expect(layout(state)).toEqual(layout(deal({ seed: 27, drawCount: 3 })));
+  });
+
+  it("does not redraw a playable draw-1 of the same seed", () => {
+    const script = scripted([22, 1]);
+    const state = dealPlayable({ drawCount: 1, random: script.random, tries: 3 });
+    expect(script.used).toEqual([22]);
+    expect(state.drawCount).toBe(1);
+    expect(isStuck(state)).toBe(false);
+    expect(layout(state)).toEqual(layout(deal({ seed: 22, drawCount: 1 })));
   });
 });
 

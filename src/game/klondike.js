@@ -23,8 +23,12 @@ export function emptyState(overrides = {}) {
   };
 }
 
+function rollSeed(random) {
+  return (random() * 0xffffffff) >>> 0;
+}
+
 export function deal({ seed, drawCount = 1 } = {}) {
-  const resolvedSeed = seed == null ? (Math.random() * 0xffffffff) >>> 0 : seed >>> 0;
+  const resolvedSeed = seed == null ? rollSeed(Math.random) : seed >>> 0;
   const rng = mulberry32(resolvedSeed);
   const deck = shuffle(buildDeck(), rng);
   const tableau = Array.from({ length: TABLEAU_COUNT }, () => []);
@@ -43,6 +47,22 @@ export function deal({ seed, drawCount = 1 } = {}) {
     tableau,
     stock,
   });
+}
+
+/**
+ * Random deal that skips an opening position which is already stuck.
+ * `tries` is how many extra seeds to draw after a stuck opening. The first
+ * layout that is not stuck is returned; if every attempt is stuck, the last
+ * one is kept. Explicit seeds stay on deal() and are never redrawn here.
+ */
+export function dealPlayable({ drawCount = 1, random = Math.random, tries = 3 } = {}) {
+  const extra = Number.isFinite(tries) ? Math.max(0, Math.floor(tries)) : 3;
+  let state = null;
+  for (let attempt = 0; attempt <= extra; attempt++) {
+    state = deal({ seed: rollSeed(random), drawCount });
+    if (!isStuck(state)) return state;
+  }
+  return state;
 }
 
 export function cloneState(state) {

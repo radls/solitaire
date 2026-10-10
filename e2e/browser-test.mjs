@@ -1,6 +1,6 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
-//   CRONLY=1 / B2ONLY=1 / B3ONLY=1 run only those groups.
+//   CRONLY=1 / B2ONLY=1 / B3ONLY=1 / B4ONLY=1 run only those groups.
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
@@ -1114,6 +1114,59 @@ async function batch3(vp) {
   await ctx.close();
 }
 
+// ---- Batch 4: random deals never start stuck; shake in normal play; install copy ----
+async function batch4(vp) {
+  const B = "batch4", P = vp.P, touch = vp.touch;
+  const ctx = await browser.newContext(vp.opts);
+  const page = await ctx.newPage();
+  const errs = []; page.on("pageerror", e => errs.push(e.message));
+  // explicit seed keeps the stuck deal
+  await page.goto(BASE + "?game=klondike&seed=22&draw=3"); await page.waitForTimeout(900);
+  ok(B, P, "seed=22&draw=3 still opens the stuck panel at the deal", await vis(page, '[data-testid="stuck-modal"]'));
+  // random New deal whose first shuffle would be seed 22 -> reshuffled
+  await H(page, () => { const real = Math.random; let n = 0; Math.random = () => (n++ === 0 ? 22.5 / 0xffffffff : real()); });
+  await page.locator('[data-testid="stuck-new"]').click(); await page.waitForTimeout(600);
+  const r1 = await H(page, () => ({ seed: window.__solitaire.getState().seed, dc: window.__solitaire.getState().drawCount, moves: window.__solitaire.getState().moves }));
+  ok(B, P, "random New deal that would start stuck is reshuffled", r1.seed !== 22 && r1.dc === 3 && r1.moves === 0 && !(await vis(page, '[data-testid="stuck-modal"]')), JSON.stringify(r1));
+  // same via the toolbar/thumb New with 0 moves
+  await H(page, () => { const real = Math.random; let n = 0; Math.random = () => (n++ === 0 ? 22.5 / 0xffffffff : real()); });
+  await (await uiBtn(page, "new", P)).click(); await page.waitForTimeout(600);
+  const r2 = await H(page, () => window.__solitaire.getState().seed);
+  ok(B, P, "toolbar New also skips a stuck-at-start shuffle", r2 !== 22 && !(await vis(page, '[data-testid="stuck-modal"]')), String(r2));
+  // Replay of an explicit stuck seed keeps it
+  await page.goto(BASE + "?game=klondike&seed=22&draw=3"); await page.waitForTimeout(900);
+  await page.locator('[data-testid="stuck-replay"]').click(); await page.waitForTimeout(600);
+  ok(B, P, "Replay this deal keeps seed 22 (stuck again)", (await H(page, () => window.__solitaire.getState().seed)) === 22 && await vis(page, '[data-testid="stuck-modal"]'));
+  await page.locator('[data-testid="stuck-new"]').click(); await page.waitForTimeout(600);
+  // shake: Klondike drag + Golf tap, normal play
+  await closeModal(page);
+  const st = await H(page, () => window.__solitaire.getState());
+  const legal = await H(page, () => window.__solitaire.listMoves());
+  let ill = null;
+  for (let a = 0; a < 7 && !ill; a++) for (let b = 0; b < 7 && !ill; b++) { if (a === b || !st.tableau[a].length || !st.tableau[b].length) continue; if (!legal.some(m => m.from.zone === "tableau" && m.from.index === a && m.to.zone === "tableau" && m.to.index === b)) ill = [a, b]; }
+  await page.waitForTimeout(600); await watchShake(page);
+  await drag(page, ctx, page.locator(`.card[data-zone="tableau"][data-index="${ill[0]}"]`).last(), page.locator(`[data-drop="tableau:${ill[1]}"]`), touch);
+  await page.waitForTimeout(60);
+  ok(B, P, "Klondike: invalid drag shakes (no overlay)", (await H(page, () => window.__shook || !!document.querySelector(".shake"))) && !(await vis(page, "#overlay .modal")));
+  await pick(page, "golf"); await closeModal(page); await page.waitForTimeout(600);
+  const gi = await H(page, () => { const s = window.__solitaire.getState(); const w = s.waste[s.waste.length - 1]; for (let i = 0; i < s.columns.length; i++) { const c = s.columns[i][s.columns[i].length - 1]; if (c && Math.abs(c.rank - w.rank) !== 1) return i; } return -1; });
+  await watchShake(page);
+  if (gi >= 0) { await tapEl(page, page.locator(`.card[data-zone="column"][data-index="${gi}"]`).last(), touch); await page.waitForTimeout(60); }
+  ok(B, P, "Golf: illegal tap shakes", gi >= 0 && await H(page, () => window.__shook || !!document.querySelector(".shake")), `col ${gi}`);
+  await pick(page, "kings"); await closeModal(page); await page.waitForTimeout(600);
+  const kl = await H(page, () => { const legal = window.__solitaire.listMoves(); const s = window.__solitaire.getState(); return { legal: legal.length, keys: Object.keys(s).join(",") }; });
+  // first win -> install copy
+  await pick(page, "golf"); await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+  await golfQuickWin(page, touch); await closeModal(page); await page.waitForTimeout(500);
+  const ih = await H(page, () => document.querySelector('[data-testid="install-hint"]')?.innerText || "");
+  ok(B, P, "after first win: Add to Home / bookmark copy shown (no install event)", /home screen/i.test(ih) && /bookmark/i.test(ih), ih.replace(/\s+/g, " "));
+  await page.locator('[data-testid="install-dismiss"]').click().catch(() => {}); await page.waitForTimeout(200);
+  await page.reload(); await page.waitForTimeout(600);
+  ok(B, P, "install copy shown only once (dismissed stays hidden)", !(await vis(page, '[data-testid="install-hint"]')));
+  ok(B, P, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  await ctx.close();
+}
+
 const VPS = [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
@@ -1122,7 +1175,7 @@ for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
 ]) {
-  if (process.env.B2ONLY || process.env.B3ONLY) continue;
+  if (process.env.B2ONLY || process.env.B3ONLY || process.env.B4ONLY) continue;
   const ctx = await browser.newContext(vp.opts);
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
   const page = await ctx.newPage();
@@ -1151,10 +1204,11 @@ for (const vp of [
   ok("shell", vp.P, "no console errors", errs.length === 0, errs.slice(0, 3).join(" | "));
   await ctx.close();
 }
-for (const vp of VPS) { try { await batch3(vp); } catch (e) { ok("batch3", vp.P, "exception", false, e.message.split("\n")[0]); } }
-for (const vp of VPS) { if (process.env.B3ONLY) continue; try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { try { await batch4(vp); } catch (e) { ok("batch4", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.B4ONLY) continue; try { await batch3(vp); } catch (e) { ok("batch3", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.B3ONLY || process.env.B4ONLY) continue; try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2", "batch3"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2", "batch3", "batch4"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

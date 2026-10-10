@@ -7,6 +7,7 @@ import {
   cloneState,
   continueClock,
   deal,
+  dealPlayable,
   draw,
   elapsedMs,
   hint as findHint,
@@ -132,10 +133,9 @@ export function mount(options = {}) {
     restoreClock(session.state, stored.saved.savedAt);
   } else {
     session.history = [];
-    session.state = deal({
-      seed: Number.isFinite(urlSeed) ? urlSeed : undefined,
-      drawCount: initialDraw,
-    });
+    session.state = Number.isFinite(urlSeed)
+      ? deal({ seed: urlSeed, drawCount: initialDraw })
+      : dealPlayable({ drawCount: initialDraw });
   }
   session.countedPlay = session.state.moves > 0;
 
@@ -631,6 +631,11 @@ export function mount(options = {}) {
   }
 
   function startNewGame(drawCount = session.state.drawCount, seed, extra = {}) {
+    if (drawCount && typeof drawCount === "object") {
+      extra = drawCount;
+      seed = extra.seed;
+      drawCount = extra.drawCount ?? session.state.drawCount;
+    }
     const previousDaily = session.state?.daily || null;
     if (session.state.moves > 0 && !session.state.won) session.stats.streak = 0;
     hideOverlay();
@@ -639,7 +644,8 @@ export function mount(options = {}) {
     session.selected = null;
     session.hintMove = null;
     session.countedPlay = false;
-    session.state = deal({ drawCount, seed });
+    const explicitSeed = seed != null && seed !== "" && Number.isFinite(Number(seed));
+    session.state = explicitSeed ? deal({ drawCount, seed }) : dealPlayable({ drawCount });
     const dailyKey = extra.dailyKey || (extra.keepDaily ? previousDaily : null);
     if (dailyKey) session.state.daily = dailyKey;
     persist();

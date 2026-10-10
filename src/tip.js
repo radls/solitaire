@@ -1,6 +1,9 @@
 import { CONTACT_EMAIL, SITE_URL, TIP_BTC_ADDRESS, TIP_X_HANDLE } from "./config.js";
 import { todayKey } from "./daily.js";
 
+/** The one tip call to action, used on every tip button and the tip panel heading. */
+export const TIP_CTA = "Donate BTC for tokens for Grok Bot";
+
 /** Once-a-day tip reminder. `{ ctaDay: "YYYY-MM-DD" }` is the local day it was shown. */
 export const TIP_STORE_KEY = "grok-solitaire:tip";
 
@@ -75,7 +78,7 @@ function escapeHtml(value) {
 }
 
 export function tipButtonHTML() {
-  return `<button type="button" class="btn tip-btn" data-act="tip" data-testid="btn-tip">🪙 Buy me some tokens in BTC</button>`;
+  return `<button type="button" class="btn tip-btn" data-act="tip" data-testid="btn-tip">${TIP_CTA}</button>`;
 }
 
 /** Streak line (only at 3+) and the tip button, on their own rows under the win stats. */
@@ -88,7 +91,7 @@ export function winTipHTML(streak) {
 /** Soft entry that opens the tip panel. Picker and Help use this; it is not the once-a-day CTA. */
 export function tipEntryHTML(testId) {
   const id = escapeHtml(testId);
-  return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">🪙 Tip in BTC</button>`;
+  return `<button type="button" class="tip-entry" data-act="tip" data-testid="${id}">${TIP_CTA}</button>`;
 }
 
 function contactTestId(testId) {
@@ -187,7 +190,7 @@ export function stuckTipHTML(today, storage) {
 }
 
 function tipPanelMarkup(sections) {
-  const parts = [`<div class="tip-panel" data-testid="tip-panel">`, `<h3>Buy me some tokens in BTC</h3>`];
+  const parts = [`<div class="tip-panel" data-testid="tip-panel">`, `<h3>${TIP_CTA}</h3>`];
   if (sections.btc) {
     const address = escapeHtml(sections.address);
     const uri = escapeHtml(sections.uri);

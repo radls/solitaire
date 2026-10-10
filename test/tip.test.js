@@ -98,7 +98,7 @@ describe("winTipHTML", () => {
     const quiet = winTipHTML(2);
     expect(quiet).not.toContain("tip-streak");
     expect(quiet).toContain('data-testid="btn-tip"');
-    expect(quiet).toContain("🪙 Buy me some tokens in BTC");
+    expect(quiet).toContain("Donate BTC for tokens for Grok Bot");
     expect(quiet).toContain('class="tip-offer"');
 
     const loud = winTipHTML(3);
@@ -225,7 +225,7 @@ describe("tipSections", () => {
     expect(first).toContain('data-testid="tip-cta"');
     expect(first).toContain("Enjoying a quiet game? A small BTC tip keeps it going.");
     expect(first).toContain('data-testid="btn-tip"');
-    expect(first).toContain("🪙 Buy me some tokens in BTC");
+    expect(first).toContain("Donate BTC for tokens for Grok Bot");
     expect(first).not.toContain("tip-streak");
     expect(first).not.toMatch(/!/);
     expect(first).not.toMatch(/<a\b|https?:|x\.com|stripe/i);
@@ -246,7 +246,7 @@ describe("tipSections", () => {
     const entry = tipEntryHTML("help-tip");
     expect(entry).toContain('data-testid="help-tip"');
     expect(entry).toContain('data-act="tip"');
-    expect(entry).toContain("🪙 Tip in BTC");
+    expect(entry).toContain("Donate BTC for tokens for Grok Bot");
     expect(entry).not.toContain(TIP_BTC_ADDRESS);
     expect(entry).not.toMatch(/!/);
     const cta = tipCtaHTML();

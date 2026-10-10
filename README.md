@@ -47,7 +47,7 @@ King's Corners uses tap-then-tap and drag. Double-tap a card to send it to a cor
 
 ## Tip jar
 
-Every win screen has a Tip button. The first win, or the first time Klondike is stuck, on a local calendar day also shows a short reminder. Later wins that day keep the small Tip button. The Games picker and each Help panel have a quiet Tip in BTC entry. The panel shows the Bitcoin address with a copy button and a QR code. Edit `TIP_BTC_ADDRESS` and `TIP_X_HANDLE` in `src/config.js`. An empty value hides that part. The X Money line is a plain text note, with no link.
+Every win screen has a Tip button. The first win, or the first time Klondike is stuck, on a local calendar day also shows a short reminder. Later wins that day keep the small Tip button. The Games picker and each Help panel have a quiet "Donate BTC for tokens for Grok Bot" entry. Every tip button and the panel heading use that same phrase (`TIP_CTA` in `src/tip.js`). The panel shows the Bitcoin address with a copy button and a QR code. Edit `TIP_BTC_ADDRESS` and `TIP_X_HANDLE` in `src/config.js`. An empty value hides that part. The X Money line is a plain text note, with no link.
 
 ## Scripts
 

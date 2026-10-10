@@ -488,6 +488,7 @@ export function mount(options = {}) {
   }
 
   function recordWin() {
+    countPlay();
     const stats = session.stats;
     stats.won += 1;
     stats.streak += 1;
@@ -535,7 +536,7 @@ export function mount(options = {}) {
     root.overlay.innerHTML = "";
     syncPlayClock();
     if (wasStuck && session.state && !session.state.won && isStuck(session.state)) {
-      setStatus("No more moves.");
+      setStatus("No useful moves.");
     }
   }
 
@@ -543,8 +544,8 @@ export function mount(options = {}) {
     const undoDisabled = session.history.length ? "" : " disabled";
     showOverlay(
       `<div class="modal" data-testid="stuck-modal">
-        <h2>No more moves</h2>
-        <p>No card can move, and drawing will not open one.</p>
+        <h2>No useful moves</h2>
+        <p>Drawing and moving cards won't open anything new.</p>
         <div class="modal-actions">
           <button type="button" class="btn" data-act="undo" data-testid="stuck-undo"${undoDisabled}>Undo</button>
           <button type="button" class="btn" data-act="replay" data-testid="stuck-replay">Replay this deal</button>
@@ -559,19 +560,20 @@ export function mount(options = {}) {
     if (!session.state || session.state.won || !isStuck(session.state)) return false;
     session.hintMove = null;
     showStuck();
-    setStatus("No more moves.");
+    setStatus("No useful moves.");
     return true;
   }
 
   function showWin() {
     const s = session.state;
     const stats = session.stats;
+    const playedShown = Math.max(stats.played || 0, stats.won || 0);
     showOverlay(
       `<div class="modal win" data-testid="win-modal">
         <p class="big">You won</p>
         <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt)} points</p>
         <ul class="stats-line">
-          <li data-testid="win-count"><span>Wins</span>${stats.won} / ${stats.played}</li>
+          <li data-testid="win-count"><span>Wins</span>${stats.won} / ${playedShown}</li>
           <li><span>Streak</span>${stats.streak}</li>
           <li><span>Best time</span>${stats.bestTimeMs == null ? "—" : formatTime(stats.bestTimeMs)}</li>
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
@@ -588,6 +590,7 @@ export function mount(options = {}) {
 
   function showHelp() {
     const stats = session.stats;
+    const playedShown = Math.max(stats.played || 0, stats.won || 0);
     const gestures = `<p>Tap a card, then tap a column or foundation. Double-tap sends it to the best spot.</p><p>Drag a card to choose the spot. Tap the stock to draw.</p>`;
     const shortcuts = `<li><kbd>N</kbd> new game</li>
         <li><kbd>U</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</li>
@@ -599,8 +602,9 @@ export function mount(options = {}) {
       <h2>Klondike</h2>
       ${touchTipsHTML(gestures)}
       <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
+      <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
-      <p>Won ${stats.won} of ${stats.played} games. Streak ${stats.streak}.</p>
+      <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>

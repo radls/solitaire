@@ -89,8 +89,14 @@ function dailyButton(game, stats) {
   const key = todayKey();
   const done = stats?.dailyLast === key;
   const label = dailyButtonLabel(stats, key);
+  const dot = label.indexOf(" · ");
+  const lead = dot === -1 ? label : label.slice(0, dot);
+  const tail = dot === -1 ? "" : label.slice(dot + 3);
   const badge = done ? "" : `<span class="today-badge">Today</span>`;
-  return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${label}</button>`;
+  const copy = tail
+    ? `<span class="daily-copy"><span class="daily-lead">${lead} ·</span> <span class="daily-streak">${tail}</span></span>`
+    : `<span class="daily-copy">${label}</span>`;
+  return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${copy}</button>`;
 }
 
 function pickCard({ game, testid, kicker, name, blurb, stats, state, savedAt }) {
@@ -112,7 +118,7 @@ function showPicker() {
   document.body.dataset.game = "picker";
   document.getElementById("game-kicker").textContent = "Games";
   showMeters(false);
-  document.getElementById("status-text").textContent = "Choose a game.";
+  document.getElementById("status-text").textContent = "Choose a game. Progress is saved on this device.";
   document.getElementById("status-seed").textContent = "";
   const klondike = load();
   const freecell = loadFreeCell();

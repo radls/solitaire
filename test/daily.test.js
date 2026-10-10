@@ -145,12 +145,31 @@ describe("picker copy", () => {
     expect(pickerStatsText("kings", { played: 2, won: 1, streak: 1 })).toBe("Wins 1 · Streak 1");
   });
 
-  it("puts the daily streak on the deal button once it is at least 1", () => {
+  it("always shows the daily streak, including 0, and drops a lapsed streak", () => {
     const key = "2026-10-10";
-    expect(dailyButtonLabel({ dailyStreak: 0 }, key)).toBe("Today's deal");
-    expect(dailyButtonLabel({ dailyStreak: 2 }, key)).toBe("Today's deal · 2-day streak");
-    expect(dailyButtonLabel({ dailyStreak: 1, dailyLast: "2026-10-09" }, key)).toBe("Today's deal · 1-day streak");
-    expect(dailyButtonLabel({ dailyStreak: 3, dailyLast: key }, key)).toBe("Done today ✓ · 3-day streak");
+    expect(dailyButtonLabel({ dailyStreak: 0 }, key)).toBe("Today's deal · Streak 0");
+    expect(dailyButtonLabel({}, key)).toBe("Today's deal · Streak 0");
+    expect(dailyButtonLabel(null, key)).toBe("Today's deal · Streak 0");
+    expect(dailyButtonLabel({ dailyStreak: 2 }, key)).toBe("Today's deal · Streak 2");
+    expect(dailyButtonLabel({ dailyStreak: 1, dailyLast: "2026-10-09" }, key)).toBe("Today's deal · Streak 1");
+    expect(dailyButtonLabel({ dailyStreak: 3, dailyLast: key }, key)).toBe("Done today ✓ · Streak 3");
+    expect(dailyButtonLabel({ dailyStreak: 0, dailyLast: key }, key)).toBe("Done today ✓ · Streak 0");
+    expect(dailyButtonLabel({ dailyStreak: 4, dailyLast: "2026-10-08" }, key)).toBe("Today's deal · Streak 0");
+    expect(dailyButtonLabel({ dailyStreak: 6, dailyLast: "2026-09-30" }, "2026-10-01")).toBe(
+      "Today's deal · Streak 6",
+    );
+    expect(dailyButtonLabel({ dailyStreak: 6, dailyLast: "2026-09-29" }, "2026-10-01")).toBe(
+      "Today's deal · Streak 0",
+    );
+    expect(dailyButtonLabel({ dailyStreak: 8, dailyLast: "2025-12-31" }, "2026-01-01")).toBe(
+      "Today's deal · Streak 8",
+    );
+    expect(dailyButtonLabel({ dailyStreak: 8, dailyLast: "2025-12-30" }, "2026-01-01")).toBe(
+      "Today's deal · Streak 0",
+    );
+    expect(dailyButtonLabel({ dailyStreak: 5, dailyLast: "2026-01-01" }, "2026-01-01")).toBe(
+      "Done today ✓ · Streak 5",
+    );
   });
 
   it("shows resume only for an unfinished deal that has a move", () => {

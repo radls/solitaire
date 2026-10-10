@@ -126,13 +126,25 @@ export function frozenElapsedMs(state, savedAt, historyLength = 0) {
   return elapsed(state, at);
 }
 
-/** Picker daily button. The streak is shown once it is at least 1. */
+/**
+ * Streak shown on the Today button.
+ * 0 when there is none, or when `dailyLast` is older than yesterday (the streak has lapsed).
+ * A finish today or yesterday keeps the stored streak.
+ */
+function buttonStreak(stats, key) {
+  const streak = Number(stats?.dailyStreak) || 0;
+  if (streak < 1) return 0;
+  const last = stats?.dailyLast || null;
+  if (!last) return streak;
+  if (last === key || last === yesterdayKey(key)) return streak;
+  return 0;
+}
+
+/** Picker daily button. The streak is always shown, including 0. */
 export function dailyButtonLabel(stats, key) {
   const done = stats?.dailyLast === key;
   const base = done ? "Done today ✓" : "Today's deal";
-  const streak = Number(stats?.dailyStreak) || 0;
-  if (streak < 1) return base;
-  return `${base} · ${streak}-day streak`;
+  return `${base} · Streak ${buttonStreak(stats, key)}`;
 }
 
 export function resumeText(state, savedAt) {

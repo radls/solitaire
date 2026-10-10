@@ -77,6 +77,8 @@ async function helpDealText(page) {
 async function winCountOk(page, G, P) {
   const t = await page.locator('[data-testid="win-modal"] [data-testid="win-count"]').first().textContent().catch(() => "");
   ok(G, P, "win screen shows win count", /[1-9]/.test(t), t.trim());
+  const mOf = t.match(/(\d+) of (\d+)/);
+  if (mOf) ok(G, P, "win count is coherent (N of M, M >= N, never 'of 0')", Number(mOf[2]) >= Number(mOf[1]) && Number(mOf[2]) > 0, t.trim());
 }
 async function hintCheck(page, G, P) {
   await page.waitForTimeout(500);
@@ -164,6 +166,13 @@ async function common(page, P) {
   ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid^="pick-"][data-pick]').count()) === 4);
   const surprise = await H(page, () => /surprise/i.test(document.body.innerText));
   ok("shell", P, "no 'surprise' copy", !surprise);
+  for (const g of ["klondike", "freecell", "golf", "kings"]) {
+    const t = ((await page.locator(`[data-testid="daily-${g}"]`).innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
+    ok("shell", P, `fresh picker: ${g} Today button shows Streak 0`, /Today's deal\s*·\s*Streak 0/.test(t), t);
+  }
+  const wrap = await H(page, () => [...document.querySelectorAll('[data-testid^="daily-"]')].map(b => { const r = b.getBoundingClientRect(), tile = b.closest(".pick-tile")?.getBoundingClientRect(); return { over: b.scrollWidth > b.clientWidth + 1 || (tile && (r.right > tile.right + 1 || r.left < tile.left - 1)), h: r.height }; }));
+  ok("shell", P, "Today buttons fit their card (no overflow, >= 44px)", wrap.every(w => !w.over && w.h >= 43.5), JSON.stringify(wrap));
+  ok("shell", P, "picker says progress is saved on this device", /saved on this device/i.test(await page.locator("#status-text").textContent()));
 }
 
 async function klondike(page, ctx, P, touch) {
@@ -770,7 +779,7 @@ async function crChecks(page, ctx, P, touch) {
     for (const id of ["stuck-undo", "stuck-replay", "stuck-new"]) ok(C, P, `stuck modal has ${id}`, await vis(page, `[data-testid="${id}"]`));
     await page.screenshot({ path: `${SHOTS}/${P}-klondike-stuck.png` });
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-    ok(C, P, "stuck: status says No more moves", /no more moves/i.test(await statusText(page)));
+    ok(C, P, "stuck: status says No useful moves", /no useful moves/i.test(await statusText(page)));
     await (await uiBtn(page, "hint", P)).click(); await page.waitForTimeout(250);
     ok(C, P, "stuck: Hint re-opens the modal", await vis(page, '[data-testid="stuck-modal"]'));
     const h0 = await H(page, () => window.__solitaire.historyLength());
@@ -847,7 +856,7 @@ async function crChecks(page, ctx, P, touch) {
   await home(page);
   const db = (await page.locator('[data-testid="daily-golf"]').textContent().catch(() => "")).trim();
   ok(C, P, "picker marks today's Golf as done", /Done today/.test(db), db);
-  ok(C, P, "daily streak visible on the Today button", /\d+-day streak/.test(db), db);
+  ok(C, P, "daily streak visible on the Today button (Done today ✓ · Streak N)", /Done today ✓\s*·\s*Streak [1-9]\d*/.test(db.replace(/\s+/g, " ")), db);
   const gs = (await page.locator('[data-testid="pick-stats-golf"]').textContent().catch(() => "")).trim();
   ok(C, P, "picker shows daily streak", /Daily \d+ days?/.test(gs), gs);
   await layoutChecks(page, "shell", P, "picker after CR");
@@ -879,6 +888,19 @@ async function fixChecks(page, ctx, P, touch) {
     const rv = await vis(page, `[data-testid="resume-${g}"]`);
     ok(C, P, `${g}: no Resume for an untouched board`, !rv);
   }
+  // Known stuck deals for manual verification
+  await page.goto(BASE + "?game=klondike&seed=22&draw=3"); await page.waitForTimeout(800);
+  ok(C, P, "seed 22 draw 3: stuck modal opens on its own", await vis(page, '[data-testid="stuck-modal"]'));
+  const sm22 = await H(page, () => document.querySelector('[data-testid="stuck-modal"]')?.innerText || "");
+  ok(C, P, "stuck modal copy says No useful moves + 3 actions", /No useful moves/.test(sm22) && /Undo/.test(sm22) && /Replay this deal/.test(sm22) && /New deal/.test(sm22), sm22.replace(/\s+/g, " "));
+  await page.locator('[data-testid="stuck-new"]').click().catch(() => {}); await page.waitForTimeout(300);
+  await page.goto(BASE + "?game=klondike&seed=148&draw=3"); await page.waitForTimeout(800);
+  ok(C, P, "seed 148 draw 3: no modal at deal", !(await vis(page, '[data-testid="stuck-modal"]')));
+  await drag(page, ctx, page.locator('.card[data-zone="tableau"][data-index="4"]').last(), page.locator('[data-drop="tableau:2"]'), touch);
+  await page.waitForTimeout(500);
+  ok(C, P, "seed 148 draw 3: 8♠ onto 9♥ opens the stuck modal", await vis(page, '[data-testid="stuck-modal"]'), `moves ${await H(page, () => window.__solitaire.getState().moves)}`);
+  await page.locator('[data-testid="stuck-replay"]').click().catch(() => {}); await page.waitForTimeout(300);
+  await page.goto(BASE); await page.waitForTimeout(500);
   // Klondike: only a pointless shuffle left -> No more moves
   await pick(page, "klondike"); await closeModal(page);
   await H(page, () => {

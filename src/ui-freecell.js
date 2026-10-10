@@ -421,13 +421,15 @@ export function mount(options = {}) {
 
   function showWin() {
     const state = session.state;
+    const won = session.stats.won || 0;
+    const played = Math.max(session.stats.played || 0, won);
     session.winShown = true;
     session.modal = "win";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
       <p class="big">Well played</p>
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
-      <p data-testid="win-count">Wins ${session.stats.won} of ${session.stats.played}</p>
+      <p data-testid="win-count">Wins ${won} of ${played}</p>
       ${winTipHTML(session.stats.streak)}
       ${dailyDoneHTML()}
       <div class="modal-actions">
@@ -552,6 +554,10 @@ export function mount(options = {}) {
   function recordWin() {
     if (session.winShown) return;
     if (!session.countedWin) {
+      if (!session.countedPlay) {
+        session.stats.played = (Number(session.stats.played) || 0) + 1;
+        session.countedPlay = true;
+      }
       session.stats.won += 1;
       session.stats.streak = (session.stats.streak || 0) + 1;
       session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);

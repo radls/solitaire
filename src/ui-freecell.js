@@ -14,7 +14,7 @@ import {
 } from "./game/freecell.js";
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
-import { loadFreeCell, loadPrefs, saveFreeCell, savePrefs } from "./storage.js";
+import { loadFreeCell, loadPrefs, markPickDone, saveFreeCell, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
@@ -26,6 +26,7 @@ import {
   seedStatusText,
   todayKey,
 } from "./daily.js";
+import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
   fanPeek,
@@ -110,15 +111,21 @@ export function mount(options = {}) {
   };
 
   const params = new URLSearchParams(location.search);
-  const wantDaily = options.daily === true || (params.get("daily") === "1" && params.get("game") === "freecell");
   const today = todayKey();
-  const plan = wantDaily
-    ? dailyOpenPlan(saved.state, today, {
-        isFinished: (state) => !!(state.won || isWon(state)),
-        needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state),
-      })
-    : null;
+  const pickEntry = pickForDate(today);
+  const wantPick = pickEntry?.game === "freecell" && (options.pick === true || params.get("pick") === "1");
+  const wantDaily = !wantPick && (options.daily === true || (params.get("daily") === "1" && params.get("game") === "freecell"));
+  const openRules = {
+    isFinished: (state) => !!(state.won || isWon(state)),
+    needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state),
+  };
+  const plan = wantPick
+    ? pickOpenPlan(saved.state, today, openRules)
+    : wantDaily
+      ? dailyOpenPlan(saved.state, today, openRules)
+      : null;
   let bootDailyConfirm = false;
+  let bootPickConfirm = false;
 
   function resumeSaved() {
     session.state = saved.state;
@@ -131,7 +138,12 @@ export function mount(options = {}) {
 
   if (plan === "resume" || plan === "confirm") {
     resumeSaved();
-    bootDailyConfirm = plan === "confirm";
+    bootDailyConfirm = plan === "confirm" && wantDaily;
+    bootPickConfirm = plan === "confirm" && wantPick;
+  } else if (plan === "deal" && wantPick) {
+    session.state = deal(pickEntry.seed);
+    session.state.daily = today;
+    session.state.pick = today;
   } else if (plan === "deal") {
     session.state = deal(dailyFreeCellDeal(today));
     session.state.daily = today;
@@ -432,6 +444,7 @@ export function mount(options = {}) {
       <p data-testid="win-count">Wins ${won} of ${played}</p>
       ${winScreenTipHTML(session.stats.streak)}
       ${dailyDoneHTML()}
+      ${pickResultHTML()}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
@@ -471,19 +484,21 @@ export function mount(options = {}) {
   // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
   function confirmNewDeal(dealNumber, extra = {}) {
     if (!gameInProgress()) {
-      if (extra.daily) startDaily();
+      if (extra.pick) startPick();
+      else if (extra.daily) startDaily();
       else startDeal(dealNumber ?? randomDeal());
       return;
     }
     session.modal = "confirm";
     const dailyAttr = extra.daily ? ` data-daily="1"` : "";
+    const pickAttr = extra.pick ? ` data-pick="1"` : "";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="confirm-modal">
       <h2>Start a new deal?</h2>
       <p>The current deal will be abandoned.</p>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
-        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dailyAttr}${dealNumber && !extra.daily ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
+        <button type="button" class="btn primary" data-act="new" data-testid="confirm-ok"${dailyAttr}${pickAttr}${dealNumber && !extra.daily && !extra.pick ? ` data-deal="${dealNumber}"` : ""}>New deal</button>
       </div>
     </div>`;
     syncPlayClock();
@@ -515,11 +530,31 @@ export function mount(options = {}) {
     return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
   }
 
+  function pickResultHTML() {
+    const state = session.state;
+    if (!state?.pick) return "";
+    const entry = pickForDate(state.pick);
+    if (!entry) return "";
+    const view = formatPickResult(entry, {
+      won: true,
+      moves: state.moves || 0,
+      elapsedMs: elapsedMs(state, state.wonAt || Date.now()),
+      undoUsed: state.undoUsed === true,
+      cardsLeft: 0,
+    });
+    if (view.met) markPickDone(state.pick);
+    return view.html;
+  }
+
   function startDeal(dealNumber, extra = {}) {
     stopAuto();
     hideOverlay();
-    const dailyKey = extra.daily ? todayKey() : extra.dailyKey || null;
-    const number = extra.daily ? dailyFreeCellDeal(dailyKey) : dealNumber;
+    const todayNow = todayKey();
+    const entry = extra.pick ? pickForDate(todayNow) : null;
+    const pickEntryNow = entry?.game === "freecell" ? entry : null;
+    const dailyKey = extra.pick || extra.daily ? todayNow : extra.dailyKey || null;
+    const pickKey = extra.pick ? todayNow : extra.pickKey || null;
+    const number = pickEntryNow ? pickEntryNow.seed : extra.daily ? dailyFreeCellDeal(dailyKey) : dealNumber;
     session.history = [];
     session.clockPlayed = false;
     session.selected = null;
@@ -530,6 +565,7 @@ export function mount(options = {}) {
     session.countedPlay = false;
     session.state = deal(number);
     if (dailyKey) session.state.daily = dailyKey;
+    if (pickKey) session.state.pick = pickKey;
     persist();
     render();
     setStatus(`Deal #${session.state.dealNumber}.`);
@@ -537,6 +573,10 @@ export function mount(options = {}) {
 
   function startDaily() {
     startDeal(undefined, { daily: true });
+  }
+
+  function startPick() {
+    startDeal(undefined, { pick: true });
   }
 
   function statusForSuccess(result, from, to) {
@@ -710,6 +750,7 @@ export function mount(options = {}) {
     if (!session.history.length) return;
     const wasWin = session.countedWin && session.state.won;
     session.state = continueClock(session.state, session.history.pop());
+    session.state.undoUsed = true;
     session.selected = null;
     session.hintMove = null;
     session.winShown = false;
@@ -940,7 +981,8 @@ export function mount(options = {}) {
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
       if (gameInProgress()) session.stats.streak = 0;
-      if (btn.dataset.daily === "1") startDaily();
+      if (btn.dataset.pick === "1") startPick();
+      else if (btn.dataset.daily === "1") startDaily();
       else startDeal(Number(btn.dataset.deal) || randomDeal());
     }
   });
@@ -997,7 +1039,8 @@ export function mount(options = {}) {
   refreshMeters();
   setStatus("Move a card into a free cell, cascade, or foundation.");
   persist();
-  if (bootDailyConfirm) confirmNewDeal(undefined, { daily: true });
+  if (bootPickConfirm) confirmNewDeal(undefined, { pick: true });
+  else if (bootDailyConfirm) confirmNewDeal(undefined, { daily: true });
 
   return {
     getState: () => session.state,

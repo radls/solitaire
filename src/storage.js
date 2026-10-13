@@ -3,6 +3,7 @@ const FREECELL_KEY = "grok-solitaire:freecell";
 const GOLF_KEY = "grok-solitaire:golf";
 const KINGS_KEY = "grok-solitaire:kings";
 const PREFS_KEY = "grok-solitaire:prefs";
+const PICK_KEY = "grok-solitaire:groks-pick";
 
 const defaultData = () => ({
   drawCount: 1,
@@ -184,6 +185,38 @@ export function loadPrefs() {
     return { lastGame, theme, sound: parsed.sound === true, installHint: normalizeInstallHint(parsed.installHint) };
   } catch {
     return defaultPrefs();
+  }
+}
+
+function loadPickMap() {
+  try {
+    const raw = localStorage.getItem(PICK_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const done = {};
+    for (const [date, value] of Object.entries(parsed)) {
+      if (value === true) done[date] = true;
+    }
+    return done;
+  } catch {
+    return {};
+  }
+}
+
+export function isPickDone(date) {
+  if (!date) return false;
+  return loadPickMap()[date] === true;
+}
+
+export function markPickDone(date) {
+  if (!date) return;
+  const done = loadPickMap();
+  done[date] = true;
+  try {
+    localStorage.setItem(PICK_KEY, JSON.stringify(done));
+  } catch {
+    /* quota / private mode */
   }
 }
 

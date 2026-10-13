@@ -1,6 +1,6 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
-//   CRONLY=1 / B2ONLY=1 / B3ONLY=1 / B4ONLY=1 run only those groups.
+//   CRONLY=1 / B2ONLY=1 / B3ONLY=1 / B4ONLY=1 / PICKONLY=1 run only those groups.
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
@@ -9,7 +9,7 @@ const ok = (game, P, name, cond, note = "") => { results.push({ game, P, name, p
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 const H = (page, fn, arg) => page.evaluate(fn, arg);
 const S = (page) => H(page, () => JSON.stringify(window.__solitaire.getState()));
-const strip = (s) => { const o = JSON.parse(s); delete o.startedAt; delete o.pausedAt; delete o.savedAt; return JSON.stringify(o); };
+const strip = (s) => { const o = JSON.parse(s); delete o.startedAt; delete o.pausedAt; delete o.savedAt; delete o.undoUsed; return JSON.stringify(o); };
 
 async function tapEl(page, loc, touch) { try { if (touch) await loc.tap({ timeout: 4000 }); else await loc.click({ timeout: 4000 }); } catch (e) { console.log("  (tap failed: " + e.message.split("\n")[0] + ")"); } await page.waitForTimeout(150); }
 async function drag(page, ctx, srcLoc, dstLoc, touch) {
@@ -1176,6 +1176,66 @@ async function batch4(vp) {
   await ctx.close();
 }
 
+async function pickChecks(vp) {
+  const B = "pick", P = vp.P;
+  const ctx = await browser.newContext(vp.opts);
+  const page = await ctx.newPage();
+  const errs = []; page.on("pageerror", e => errs.push(e.message));
+  await page.goto(BASE); await page.waitForTimeout(700);
+  const entry = await H(page, () => window.__solitaire.pickToday());
+  ok(B, P, "pickToday returns today's entry", !!(entry && entry.date && entry.game && entry.seed != null && entry.text), JSON.stringify(entry && { date: entry.date, game: entry.game }));
+  const badge = ((await page.locator('[data-testid="groks-pick-badge"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "Grok's pick badge visible", badge === "Grok's pick" && await vis(page, '[data-testid="groks-pick"]'), badge);
+  const card = ((await page.locator('[data-testid="groks-pick"]').innerText().catch(() => "")) || "");
+  ok(B, P, "Made by Grok Bot visible on the pick card", card.includes("Made by Grok Bot"));
+  const goal = ((await page.locator('[data-testid="groks-pick-goal"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "goal shown", !!entry && goal === entry.text && goal.length > 0, goal);
+  const status0 = ((await page.locator('[data-testid="groks-pick-status"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "status starts Not done yet", status0 === "Not done yet", status0);
+  const play = await page.locator('[data-testid="groks-pick-play"]').boundingBox().catch(() => null);
+  ok(B, P, "Play button is at least 44px", !!play && play.height >= 43.5 && play.width >= 43.5, play ? `${Math.round(play.width)}x${Math.round(play.height)}` : "missing");
+  const fit = await H(page, () => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  ok(B, P, "no horizontal overflow", fit);
+  await page.locator('[data-testid="groks-pick-play"]').click(); await page.waitForTimeout(500);
+  if (await vis(page, '[data-testid="confirm-modal"]')) {
+    await page.locator('[data-testid="confirm-ok"]').click();
+    await page.waitForTimeout(400);
+  }
+  const opened = await H(page, () => {
+    const s = window.__solitaire.getState();
+    return { game: window.__solitaire.game(), seed: s?.seed ?? s?.dealNumber, pick: s?.pick, daily: s?.daily };
+  });
+  ok(B, P, "Play opens the pick seed with daily and pick set", !!entry && opened.game === entry.game && opened.seed === entry.seed && opened.pick === entry.date && opened.daily === entry.date, JSON.stringify(opened));
+  await H(page, () => {
+    const s = structuredClone(window.__solitaire.getState());
+    const now = Date.now();
+    s.won = true;
+    s.over = true;
+    s.moves = 3;
+    s.undoUsed = false;
+    s.wonAt = now;
+    s.startedAt = now - 4000;
+    s.pausedAt = 0;
+    if (Array.isArray(s.columns)) s.columns = s.columns.map(() => []);
+    window.__solitaire.setState(s);
+  });
+  await page.waitForTimeout(400);
+  const line = ((await page.locator('[data-testid="pick-result"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "win screen says Grok's pick done", line === "Grok's pick done ✓", line);
+  const stored = await H(page, () => JSON.parse(localStorage.getItem("grok-solitaire:groks-pick") || "{}"));
+  ok(B, P, "completion stored for the pick date", !!entry && stored[entry.date] === true, JSON.stringify(stored));
+  await home(page);
+  const status1 = ((await page.locator('[data-testid="groks-pick-status"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "picker status is Done after the win", status1 === "Done ✓", status1);
+  await page.reload(); await page.waitForTimeout(700);
+  const status2 = ((await page.locator('[data-testid="groks-pick-status"]').textContent().catch(() => "")) || "").trim();
+  ok(B, P, "Done ✓ persists across reload", status2 === "Done ✓" && (await H(page, () => window.__solitaire.game())) === null, status2);
+  const fit2 = await H(page, () => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  ok(B, P, "picker still has no horizontal overflow", fit2);
+  ok(B, P, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  await ctx.close();
+}
+
 const VPS = [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
@@ -1184,7 +1244,7 @@ for (const vp of [
   { P: "desktop", opts: { viewport: { width: 1280, height: 800 } }, touch: false },
   { P: "mobile", opts: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 }, touch: true },
 ]) {
-  if (process.env.B2ONLY || process.env.B3ONLY || process.env.B4ONLY) continue;
+  if (process.env.B2ONLY || process.env.B3ONLY || process.env.B4ONLY || process.env.PICKONLY) continue;
   const ctx = await browser.newContext(vp.opts);
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin }).catch(() => {});
   const page = await ctx.newPage();
@@ -1213,11 +1273,15 @@ for (const vp of [
   ok("shell", vp.P, "no console errors", errs.length === 0, errs.slice(0, 3).join(" | "));
   await ctx.close();
 }
-for (const vp of VPS) { try { await batch4(vp); } catch (e) { ok("batch4", vp.P, "exception", false, e.message.split("\n")[0]); } }
-for (const vp of VPS) { if (process.env.B4ONLY) continue; try { await batch3(vp); } catch (e) { ok("batch3", vp.P, "exception", false, e.message.split("\n")[0]); } }
-for (const vp of VPS) { if (process.env.B3ONLY || process.env.B4ONLY) continue; try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.PICKONLY) continue; try { await batch4(vp); } catch (e) { ok("batch4", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.B4ONLY || process.env.PICKONLY) continue; try { await batch3(vp); } catch (e) { ok("batch3", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) { if (process.env.B3ONLY || process.env.B4ONLY || process.env.PICKONLY) continue; try { await batch2(vp); } catch (e) { ok("batch2", vp.P, "exception", false, e.message.split("\n")[0]); } }
+for (const vp of VPS) {
+  if (process.env.B2ONLY || process.env.B3ONLY || process.env.B4ONLY) continue;
+  try { await pickChecks(vp); } catch (e) { ok("pick", vp.P, "exception", false, e.message.split("\n")[0]); }
+}
 await browser.close();
 const fails = results.filter(r => !r.pass);
 console.log(`\n${results.length - fails.length}/${results.length} passed`);
-for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2", "batch3", "batch4"]) { const rs = results.filter(r => r.game === g); console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
+for (const g of ["shell", "klondike", "freecell", "golf", "kings", "cr", "batch2", "batch3", "batch4", "pick"]) { const rs = results.filter(r => r.game === g); if (rs.length) console.log(`${g}: ${rs.filter(r => r.pass).length}/${rs.length}`); }
 process.exit(fails.length ? 1 : 0);

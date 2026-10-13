@@ -3,9 +3,10 @@ import { mount as mountKlondike } from "./ui.js";
 import { mount as mountFreeCell } from "./ui-freecell.js";
 import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
-import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
+import { isPickDone, load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
 import { bootInstallHint } from "./install-hint.js";
 import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey } from "./daily.js";
+import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
@@ -65,6 +66,7 @@ function syncHooks() {
   window.__solitaire = {
     game: () => (mode === "picker" ? null : mode),
     pick,
+    pickToday: () => pickForDate(todayKey()),
     getState: () => active?.getState?.() ?? null,
     setState: (state) => active?.setState?.(state),
     undo: () => active?.undo?.(),
@@ -103,6 +105,23 @@ function dailyButton(game, stats) {
   return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${copy}</button>`;
 }
 
+function groksPickCard() {
+  const entry = pickForDate(todayKey());
+  if (!entry) return "";
+  const name = PICK_GAME_NAMES[entry.game] || entry.game;
+  const status = isPickDone(entry.date) ? "Done ✓" : "Not done yet";
+  return `<article class="pick-tile groks-pick" data-testid="groks-pick">
+      <div class="groks-pick-copy">
+        <p class="groks-pick-badge" data-testid="groks-pick-badge">Grok's pick</p>
+        <p class="pick-name">${name}</p>
+        <p class="groks-pick-goal" data-testid="groks-pick-goal">${entry.text}</p>
+        <p class="groks-pick-status" data-testid="groks-pick-status">${status}</p>
+        <p class="groks-pick-byline">Made by Grok Bot</p>
+      </div>
+      <button type="button" class="btn primary groks-pick-play" data-testid="groks-pick-play">Play</button>
+    </article>`;
+}
+
 function pickCard({ game, testid, kicker, name, blurb, stats, state, savedAt }) {
   return `<article class="pick-tile">
       <button type="button" class="pick-open" data-testid="${testid}" data-pick="${game}">
@@ -131,6 +150,7 @@ function showPicker() {
   const kings = loadKings();
   document.getElementById("table").innerHTML = `
     <div class="picker" data-testid="picker">
+      ${groksPickCard()}
       ${pickCard({
         game: "klondike",
         testid: "pick-klondike",
@@ -257,6 +277,11 @@ document.getElementById("table").addEventListener("click", (event) => {
     openPickerTip();
     return;
   }
+  if (event.target.closest("[data-testid='groks-pick-play']")) {
+    const entry = pickForDate(todayKey());
+    if (entry) pick(entry.game, { pick: true });
+    return;
+  }
   const dailyBtn = event.target.closest("[data-daily]");
   if (dailyBtn) {
     pick(dailyBtn.dataset.daily, { daily: true });
@@ -292,9 +317,13 @@ function savedBoards() {
 
 const params = new URLSearchParams(location.search);
 const requested = params.get("game");
+const pickQuery = params.get("pick") === "1";
 const dailyQuery = params.get("daily") === "1";
-const bareLoad = !params.has("game") && !params.has("seed") && !params.has("draw") && !params.has("daily");
-if (requested === "freecell" || requested === "klondike" || requested === "golf" || requested === "kings") {
+const bareLoad = !params.has("game") && !params.has("seed") && !params.has("draw") && !params.has("daily") && !params.has("pick");
+const pickEntry = pickQuery ? pickForDate(todayKey()) : null;
+if (pickEntry) {
+  pick(pickEntry.game, { pick: true });
+} else if (requested === "freecell" || requested === "klondike" || requested === "golf" || requested === "kings") {
   pick(requested, { daily: dailyQuery });
 } else if (params.has("seed") || params.has("draw")) pick("klondike");
 else if (bareLoad) {

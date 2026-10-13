@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:pick": "node scripts/gen-groks-pick.mjs"
   },
   "devDependencies": {
     "vite": "^6.0.7",

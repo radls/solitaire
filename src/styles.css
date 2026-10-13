@@ -737,10 +737,17 @@ html[data-theme="night"] .status {
 .picker {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: min(44rem, 100%);
   min-width: 0;
-  margin: 0.6rem auto;
+  margin: 0.25rem auto 0.1rem;
+}
+
+@media (min-width: 641px) {
+  body[data-game="picker"] .table {
+    padding-top: 0.45rem;
+    padding-bottom: 0.15rem;
+  }
 }
 
 .pick-tile {
@@ -1284,11 +1291,15 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   }
 
   .picker {
-    gap: 0.45rem;
+    gap: 0.32rem;
   }
 
   .pick-name {
     font-size: 1.22rem;
+  }
+
+  .groks-pick-goal {
+    flex-basis: 100%;
   }
 
   .pick-blurb {
@@ -1446,6 +1457,82 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   grid-column: 1 / -1;
   justify-self: center;
   margin: 0 auto;
+}
+
+.picker > .groks-pick {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.2rem 0.65rem 0.2rem 0.75rem;
+  overflow: hidden;
+}
+
+.groks-pick-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.02rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.groks-pick-copy > p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.groks-pick-badge {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--gold);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.38rem;
+  line-height: 1.3;
+}
+
+.groks-pick .pick-name {
+  font-size: 1.15rem;
+  line-height: 1.05;
+}
+
+.groks-pick-goal,
+.groks-pick-status,
+.groks-pick-byline {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.groks-pick-byline {
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.groks-pick-play {
+  flex: 0 0 auto;
+  align-self: center;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 0.85rem;
+}
+
+.pick-result {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .modal > .credit {

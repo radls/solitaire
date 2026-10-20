@@ -118,6 +118,7 @@ export function mount(options = {}) {
   const rawDeal = Number(params.get("deal"));
   // Shared links open the same Microsoft deal: ?game=freecell&deal=N.
   const urlDeal = params.get("game") === "freecell" && Number.isInteger(rawDeal) && rawDeal >= 1 && rawDeal <= 32000 ? rawDeal : null;
+  const badDeal = params.get("game") === "freecell" && params.has("deal") && urlDeal == null;
   const today = todayKey();
   const pickEntry = pickForDate(today);
   const wantPick = pickEntry?.game === "freecell" && (options.pick === true || params.get("pick") === "1");
@@ -1062,7 +1063,7 @@ export function mount(options = {}) {
   });
   render();
   refreshMeters();
-  setStatus("Move a card into a free cell, cascade, or foundation.");
+  setStatus(badDeal ? "Link deal not found, dealt a random one." : "Move a card into a free cell, cascade, or foundation.");
   persist();
   if (bootPickConfirm) confirmNewDeal(undefined, { pick: true });
   else if (bootDailyConfirm) confirmNewDeal(undefined, { daily: true });

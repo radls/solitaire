@@ -93,6 +93,42 @@ for (const P of ["desktop","phone"]) {
   await p.locator('[data-testid="win-modal"] [data-act="again"]').click().catch(()=>{}); await p.waitForTimeout(500);
   ok(P,"#9 no install prompt without beforeinstallprompt", !(await p.locator('[data-testid="install-hint"]').isVisible())); await ctx.close();
 }
+// ---- be8b44d QA fixes ----
+const IOS_UA="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+const AF=process.env.AF_BASE||"http://127.0.0.1:4174/solitaire/";
+const fakeBip=(p)=>p.evaluate(()=>{const e=new Event("beforeinstallprompt",{cancelable:true});e.prompt=()=>{};e.userChoice=Promise.resolve({outcome:"dismissed"});window.dispatchEvent(e);});
+async function winAndClose(p){ await winKlondike(p); await p.locator('[data-testid="win-modal"] [data-act="again"]').click().catch(()=>{}); await p.waitForTimeout(500); }
+for (const P of ["desktop","phone"]) {
+  // W1: shown once, reload, win again -> no prompt
+  let [ctx,p]=await newPage(P); await p.goto(BASE+"?game=klondike"); await p.waitForTimeout(600); await fakeBip(p); await winAndClose(p);
+  ok(P,"W1 prompt shows on first win", await p.locator('[data-testid="install-hint"]').isVisible());
+  await p.reload(); await p.waitForTimeout(700); await fakeBip(p); await winAndClose(p);
+  ok(P,"W1 after reload + second win: no prompt", !(await p.locator('[data-testid="install-hint"]').isVisible()), JSON.stringify(await p.evaluate(()=>JSON.parse(localStorage.getItem("grok-solitaire:prefs")).installHint)));
+  await ctx.close();
+  // W2: iOS Safari UA, no beforeinstallprompt: compare with af06660
+  const ios={};
+  for (const [tag,base] of [["af06660",AF],["new",BASE]]) {
+    [ctx,p]=await newPage(P,{userAgent:IOS_UA}); await p.goto(base+"?game=klondike"); await p.waitForTimeout(600); await winAndClose(p);
+    const vis=await p.locator('[data-testid="install-hint"]').isVisible();
+    ios[tag]={vis, share: vis?(await p.textContent("#install-share")).trim():"", go: await p.locator("#install-go").isVisible()};
+    if(tag==="new"){ await p.screenshot({path:`${SH}/${P}-09-ios-hint.png`});
+      if(vis){ await p.click('[data-testid="install-dismiss"]'); await p.waitForTimeout(200); }
+      ok(P,"W2 iOS hint dismissible", !(await p.locator('[data-testid="install-hint"]').isVisible()));
+      await p.reload(); await p.waitForTimeout(700); await winAndClose(p);
+      ok(P,"W2 iOS hint not again after dismiss + reload", !(await p.locator('[data-testid="install-hint"]').isVisible())); }
+    await ctx.close();
+  }
+  ok(P,"W2 iOS no-event hint matches af06660 (text shown, Install hidden)", ios.new.vis && ios.new.share==="Tap Share, then Add to Home Screen." && !ios.new.go && JSON.stringify(ios.new)===JSON.stringify(ios.af06660), JSON.stringify(ios));
+  // non-iOS, no event -> still nothing
+  [ctx,p]=await newPage(P); await p.goto(BASE+"?game=klondike"); await p.waitForTimeout(600); await winAndClose(p);
+  ok(P,"W2 non-iOS without event: no hint", !(await p.locator('[data-testid="install-hint"]').isVisible())); await ctx.close();
+  // nit: bad deal link
+  [ctx,p]=await newPage(P); await p.goto(BASE+"?game=freecell&deal=abc"); await p.waitForTimeout(700);
+  ok(P,"nit bad deal link shows note", (await p.textContent("#status-text")).includes("Link deal not found"));
+  await p.goto(BASE+"?game=freecell&deal=617"); await p.waitForTimeout(700);
+  ok(P,"good deal link opens deal 617, no note", (await p.evaluate(()=>window.__solitaire.getState().dealNumber))===617 && !(await p.textContent("#status-text")).includes("not found"));
+  ok(P,"no console errors (fix checks)", !p.errs.length, p.errs.join("|")); await ctx.close();
+}
 const f=R.filter(r=>!r.pass); console.log(`\n${R.length-f.length}/${R.length} pass`); 
 (await import("node:fs")).writeFileSync(`${SH}/results.json`,JSON.stringify(R,null,1));
 await b.close(); process.exit(f.length?1:0);

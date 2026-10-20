@@ -172,7 +172,7 @@ function defaultPrefs() {
 }
 
 function normalizeInstallHint(value) {
-  return value === "dismissed" || value === "installed" ? value : null;
+  return value === "dismissed" || value === "installed" || value === "shown" ? value : null;
 }
 
 export function loadPrefs() {

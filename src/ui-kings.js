@@ -544,13 +544,13 @@ export function mount(options = {}) {
         <li>Side piles build down in alternating colors; an empty side takes any card or a whole pile.</li>
         <li>Draw from the stock when stuck. Win by moving all 52 cards into the corners.</li>
       </ul>
-      <details class="help-more" data-testid="kings-help-more">
-        <summary>More</summary>
-      ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
         <button type="button" class="btn" data-act="replay" data-testid="btn-replay">Replay this deal</button>
       </div>
+      <details class="help-more" data-testid="kings-help-more">
+        <summary>More</summary>
+      ${touchTipsHTML(gestures)}
       <p>One deck. Four side piles sit north, east, south, and west around the stock and waste. Four corner piles sit on the diagonals.</p>
       <p>Each side starts with one face-up card. A king dealt there goes to the next empty corner, and that side is dealt again. The rest of the deck is the face-down stock.</p>
       <p>Tap the stock to turn one card onto the waste. When the stock is empty, tap it to turn the waste back over. You may do that as often as you like.</p>

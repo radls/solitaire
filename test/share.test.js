@@ -27,3 +27,14 @@ describe("install hint once", () => {
     expect(shouldShowInstallHint({}, { totalWins: 1 })).toBe(true);
   });
 });
+
+describe("installHint pref survives a reload", () => {
+  it("loadPrefs keeps 'shown'", async () => {
+    const store = {};
+    globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+    const { loadPrefs, savePrefs } = await import("../src/storage.js");
+    savePrefs({ installHint: "shown" });
+    expect(loadPrefs().installHint).toBe("shown");
+    expect(shouldShowInstallHint(loadPrefs(), { totalWins: 2 })).toBe(false);
+  });
+});

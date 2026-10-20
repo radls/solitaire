@@ -989,6 +989,8 @@ async function batch2(vp) {
   await H(page, () => localStorage.removeItem("grok-solitaire:tip"));
   await pick(page, "golf"); await closeModal(page);
   await H(page, () => window.__solitaire.newGame()); await page.waitForTimeout(300); await closeModal(page);
+  // Batch 5 #9: the hint needs a real install prompt (or iOS Safari). Simulate the Chrome event.
+  await H(page, () => { const e = new Event("beforeinstallprompt", { cancelable: true }); e.prompt = () => {}; e.userChoice = Promise.resolve({ outcome: "dismissed" }); window.dispatchEvent(e); });
   await golfQuickWin(page, touch);
   const cta = page.locator('[data-testid="win-modal"] [data-testid="tip-cta"]');
   const ctaBox = await cta.boundingBox().catch(() => null);

@@ -136,8 +136,9 @@ export function offerInstallHint() {
   if (!el) return;
   const prefs = loadPrefs();
   if (!shouldShowInstallHint(prefs, { standalone: isStandaloneDisplay(), totalWins: recordedWins() })) return;
-  // Only where the browser offers a real install prompt (beforeinstallprompt).
-  if (!deferredPrompt) return;
+  // A real install prompt (beforeinstallprompt), or iOS Safari's Share-menu text.
+  // Other browsers without the event get nothing.
+  if (!deferredPrompt && !isIosSafari()) return;
   syncInstallActions();
   if (!el.hidden) return;
   el.hidden = false;

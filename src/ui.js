@@ -1,3 +1,5 @@
+import { shareCardHTML } from "./share.js";
+import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { makeCardElement } from "./card-view.js";
 import {
@@ -321,7 +323,7 @@ export function mount(options = {}) {
     table.appendChild(board);
 
     root.moves.textContent = String(state.moves);
-    root.seed.textContent = seedStatusText(state, `Seed ${state.seed}`);
+    root.seed.textContent = seedStatusText(state);
     root.undo.disabled = session.history.length === 0;
     syncThumbDisabled();
     root.draw1.classList.toggle("active", state.drawCount === 1);
@@ -529,7 +531,15 @@ export function mount(options = {}) {
       persist();
     }
     if (session.stats.dailyLast !== key) return "";
-    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>${shareCardHTML({
+      game: "klondike",
+      dateLabel: formatDailyLabel(key).replace("Daily · ", ""),
+      time: formatTime(elapsedMs(session.state, session.state.wonAt || Date.now())),
+      moves: session.state.moves,
+      streak: session.stats.dailyStreak,
+      seed: session.state.seed,
+      drawCount: session.state.drawCount,
+    })}`;
   }
 
   function pickResultHTML() {

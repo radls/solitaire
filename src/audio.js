@@ -15,7 +15,9 @@ function tone(freq, duration, { type = "sine", gain = 0.02, slide = 0 } = {}) {
   const osc = ac.createOscillator();
   const g = ac.createGain();
   const wave = type === "triangle" ? "triangle" : "sine";
-  const level = Math.min(0.025, gain);
+  const bedtime = typeof document !== "undefined" && document.documentElement.dataset.theme !== "classic";
+  // Bedtime mode keeps the optional sound soft: half volume.
+  const level = Math.min(0.025, gain) * (bedtime ? 0.5 : 1);
   osc.type = wave;
   osc.frequency.setValueAtTime(freq, ac.currentTime);
   if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), ac.currentTime + duration);

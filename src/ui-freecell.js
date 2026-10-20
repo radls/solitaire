@@ -1,3 +1,5 @@
+import { shareCardHTML } from "./share.js";
+import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { makeCardElement } from "./card-view.js";
 import {
@@ -43,6 +45,8 @@ const DRAG_THRESHOLD = 7;
 const DOUBLE_MS = 420;
 const HISTORY_CAP = 200;
 const GAP = 4;
+const PHONE_GAP = 2;
+const PHONE_RATIO = 1.5;
 
 const ICONS = {
   mute: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>`,
@@ -111,6 +115,9 @@ export function mount(options = {}) {
   };
 
   const params = new URLSearchParams(location.search);
+  const rawDeal = Number(params.get("deal"));
+  // Shared links open the same Microsoft deal: ?game=freecell&deal=N.
+  const urlDeal = params.get("game") === "freecell" && Number.isInteger(rawDeal) && rawDeal >= 1 && rawDeal <= 32000 ? rawDeal : null;
   const today = todayKey();
   const pickEntry = pickForDate(today);
   const wantPick = pickEntry?.game === "freecell" && (options.pick === true || params.get("pick") === "1");
@@ -147,6 +154,8 @@ export function mount(options = {}) {
   } else if (plan === "deal") {
     session.state = deal(dailyFreeCellDeal(today));
     session.state.daily = today;
+  } else if (urlDeal != null) {
+    session.state = deal(urlDeal);
   } else if (saved.state && !saved.state.won) {
     resumeSaved();
   } else {
@@ -257,12 +266,12 @@ export function mount(options = {}) {
     }
   }
 
-  function applyFreeCellFit(cardW, cardH, peek) {
+  function applyFreeCellFit(cardW, cardH, peek, gap = GAP) {
     const style = document.body.style;
     style.setProperty("--card-w", `${cardW}px`);
     style.setProperty("--card-h", `${cardH}px`);
     style.setProperty("--fc-peek", `${peek}px`);
-    style.setProperty("--col-gap", `${GAP}px`);
+    style.setProperty("--col-gap", `${gap}px`);
   }
 
   function fit() {
@@ -270,8 +279,12 @@ export function mount(options = {}) {
     if (!board) return;
     const width = board.clientWidth;
     if (!width) return;
-    let cardW = Math.max(30, Math.min(110, Math.floor((width - GAP * 7) / 8)));
-    let cardH = Math.round(cardW * 1.42);
+    const phone = window.innerWidth <= 600;
+    // Phones: tighter gaps so the eight columns get wider cards, and a taller card face.
+    const gapPx = phone ? PHONE_GAP : GAP;
+    const ratio = phone ? PHONE_RATIO : 1.42;
+    let cardW = Math.max(30, Math.min(110, Math.floor((width - gapPx * 7) / 8)));
+    let cardH = Math.round(cardW * ratio);
     const longest = Math.max(1, ...session.state.cascades.map((pile) => pile.length));
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
@@ -286,15 +299,19 @@ export function mount(options = {}) {
       const contentSpace = Math.floor(window.innerHeight - layoutBottomInset() - headerH - statusH - padY - gap - 4);
       const steps = Math.max(0, longest - 1);
       const fitsWidth = (w) => {
-        const ch = Math.round(w * 1.42);
+        const ch = Math.round(w * ratio);
         return ch + ch + steps <= contentSpace;
       };
       if (!fitsWidth(cardW)) cardW = shrinkToFit(cardW, 24, fitsWidth);
-      cardH = Math.round(cardW * 1.42);
-      peek = Math.round(cardW * 0.34);
+      cardH = Math.round(cardW * ratio);
+      peek = Math.round(cardW * 0.5);
       const availH = contentSpace - cardH;
       if (steps > 0) {
-        if (isPhonePortrait()) peek = fanPeek(peek, cardH, availH, steps);
+        if (isPhonePortrait()) {
+          // FreeCell is face-up: let the overlap open up to 60% of a card so ranks and pips read clearly.
+          const fill = Math.floor((availH - cardH) / steps);
+          peek = fill >= peek ? Math.min(fill, Math.round(cardH * 0.6)) : fanPeek(peek, cardH, availH, steps);
+        }
         else {
           const room = Math.floor((availH - cardH) / steps);
           const natural = peek;
@@ -302,7 +319,7 @@ export function mount(options = {}) {
           else peek = Math.max(1, Math.min(natural, room));
         }
       }
-      applyFreeCellFit(cardW, cardH, peek);
+      applyFreeCellFit(cardW, cardH, peek, gapPx);
       return;
     }
 
@@ -527,7 +544,15 @@ export function mount(options = {}) {
       persist();
     }
     if (session.stats.dailyLast !== key) return "";
-    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>${shareCardHTML({
+      game: "freecell",
+      dateLabel: formatDailyLabel(key).replace("Daily · ", ""),
+      time: formatTime(elapsedMs(session.state, session.state.wonAt || Date.now())),
+      moves: session.state.moves,
+      streak: session.stats.dailyStreak,
+      seed: session.state.dealNumber,
+      drawCount: undefined,
+    })}`;
   }
 
   function pickResultHTML() {

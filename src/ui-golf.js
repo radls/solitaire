@@ -1,3 +1,5 @@
+import { shareCardHTML } from "./share.js";
+import { formatDailyLabel } from "./daily.js";
 import { makeCardElement } from "./card-view.js";
 import {
   apply,
@@ -534,7 +536,15 @@ export function mount(options = {}) {
       persist();
     }
     if (session.stats.dailyLast !== key) return "";
-    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>${shareCardHTML({
+      game: "golf",
+      dateLabel: formatDailyLabel(key).replace("Daily · ", ""),
+      time: formatTime(elapsedMs(session.state, session.state.wonAt || Date.now())),
+      moves: session.state.moves,
+      streak: session.stats.dailyStreak,
+      seed: session.state.seed,
+      drawCount: undefined,
+    })}`;
   }
 
   function pickResultHTML() {

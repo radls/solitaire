@@ -17,6 +17,7 @@ html[data-theme="night"] {
   --navy: #1a2e32;
   --text: #b9b2a3;
   --muted: #8d877c;
+  --status-ink: #b3ac9d;
   --shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
   --card-sheen: rgba(255, 255, 255, 0.04);
   --btn-bg: #171e1c;
@@ -69,6 +70,7 @@ html[data-theme="classic"] {
   --navy: #162445;
   --text: #f3ead7;
   --muted: #c5bba4;
+  --status-ink: #c5bba4;
   --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   --card-sheen: rgba(255, 255, 255, 0.4);
   --btn-bg: rgba(255, 255, 255, 0.06);
@@ -593,7 +595,18 @@ html[data-theme="night"] .status {
 
 #status-seed {
   font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+}
+
+#status-seed:empty {
+  display: none;
+}
+
+.status {
+  color: var(--status-ink, var(--muted));
+}
+
+html[data-theme="night"] #meter-time-wrap {
+  display: none;
 }
 
 #drag-layer {
@@ -713,15 +726,24 @@ html[data-theme="night"] .status {
 
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-4px); }
-  40% { transform: translateX(4px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(2px); }
+  15% { transform: translateX(-7px); }
+  35% { transform: translateX(7px); }
+  55% { transform: translateX(-5px); }
+  75% { transform: translateX(3px); }
 }
 
 .card.shake,
 .slot.shake {
-  animation: shake 250ms linear;
+  animation: shake 380ms ease-in-out;
+  outline: 2px solid var(--reject, #d0645a);
+  outline-offset: 1px;
+  z-index: 7;
+}
+
+.card.reject-flash,
+.slot.reject-flash {
+  outline: 3px solid var(--reject, #d0645a);
+  outline-offset: 1px;
   z-index: 7;
 }
 
@@ -1958,4 +1980,61 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
 
 .install-hint .btn[hidden] {
   display: none;
+}
+
+/* Batch 5 */
+.picker-promise,
+.picker-bedtime {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--status-ink, var(--muted));
+}
+
+.share-card {
+  margin: 0.8rem 0 0;
+  text-align: center;
+}
+
+.share-copy {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+}
+
+.share-note {
+  min-height: 1em;
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
+
+.help-short {
+  margin: 0.4rem 0 0.6rem;
+  padding-left: 1.1rem;
+}
+
+.help-short li + li {
+  margin-top: 0.3rem;
+}
+
+.help-more summary {
+  cursor: pointer;
+  color: var(--gold);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  body[data-game="freecell"] .corner {
+    font-size: max(15px, calc(var(--card-w) * 0.3));
+  }
+}
+
+.picker-changelog {
+  grid-column: 1 / -1;
+  justify-self: center;
+  padding: 0.6rem 0.4rem;
+  font-size: 0.8rem;
+  color: var(--status-ink, var(--muted));
 }

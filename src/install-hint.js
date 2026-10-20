@@ -9,7 +9,7 @@ import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from ".
 export function shouldShowInstallHint(prefs, { standalone, totalWins } = {}) {
   if (standalone) return false;
   const hint = prefs && typeof prefs === "object" ? prefs.installHint : null;
-  if (hint === "dismissed" || hint === "installed") return false;
+  if (hint === "dismissed" || hint === "installed" || hint === "shown") return false;
   const wins = Number(totalWins);
   return Number.isFinite(wins) && wins >= 1;
 }
@@ -136,8 +136,12 @@ export function offerInstallHint() {
   if (!el) return;
   const prefs = loadPrefs();
   if (!shouldShowInstallHint(prefs, { standalone: isStandaloneDisplay(), totalWins: recordedWins() })) return;
+  // Only where the browser offers a real install prompt (beforeinstallprompt).
+  if (!deferredPrompt) return;
   syncInstallActions();
   if (!el.hidden) return;
   el.hidden = false;
+  // Once: a shown prompt is remembered even if the player never taps it.
+  savePrefs({ installHint: "shown" });
   refit();
 }

@@ -1,3 +1,5 @@
+import { shareCardHTML } from "./share.js";
+import { formatDailyLabel } from "./daily.js";
 import { makeCardElement } from "./card-view.js";
 import {
   apply,
@@ -537,6 +539,13 @@ export function mount(options = {}) {
     root.overlay.innerHTML = `<div class="modal" data-testid="help-modal">
       <h2>King's Corners</h2>
       <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
+      <ul class="help-short" data-testid="kings-help-short">
+        <li>Kings go in the four corners; build each corner down to the ace in alternating colors.</li>
+        <li>Side piles build down in alternating colors; an empty side takes any card or a whole pile.</li>
+        <li>Draw from the stock when stuck. Win by moving all 52 cards into the corners.</li>
+      </ul>
+      <details class="help-more" data-testid="kings-help-more">
+        <summary>More</summary>
       ${touchTipsHTML(gestures)}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
@@ -551,6 +560,7 @@ export function mount(options = {}) {
       <p>The deal is won when all 52 cards are in the corners. If you turn the stock over twice without another move, there is nothing left to try.</p>
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
       ${kbdTipsHTML(shortcuts)}
+      </details>
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -634,7 +644,15 @@ export function mount(options = {}) {
       persist();
     }
     if (session.stats.dailyLast !== key) return "";
-    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>`;
+    return `<p class="daily-done" data-testid="daily-done">${dailyDoneText(session.stats.dailyStreak)}</p>${shareCardHTML({
+      game: "kings",
+      dateLabel: formatDailyLabel(key).replace("Daily · ", ""),
+      time: formatTime(elapsedMs(session.state, session.state.wonAt || Date.now())),
+      moves: session.state.moves,
+      streak: session.stats.dailyStreak,
+      seed: session.state.seed,
+      drawCount: undefined,
+    })}`;
   }
 
   function pickResultHTML() {

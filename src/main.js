@@ -5,6 +5,7 @@ import { mount as mountGolf } from "./ui-golf.js";
 import { mount as mountKings } from "./ui-kings.js";
 import { isPickDone, load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
 import { bootInstallHint } from "./install-hint.js";
+import { wireShare } from "./share.js";
 import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey } from "./daily.js";
 import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
@@ -21,16 +22,26 @@ function applyTheme(theme) {
   const btn = document.getElementById("btn-theme");
   if (!btn) return;
   btn.innerHTML = next === "night" ? MOON : SUN;
-  btn.setAttribute("aria-label", next === "night" ? "Switch to classic theme" : "Switch to night theme");
+  const label = next === "night" ? "Bedtime mode on: timer hidden. Switch to classic theme" : "Switch to bedtime mode";
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("title", next === "night" ? "Bedtime mode" : "Bedtime mode off");
+  btn.setAttribute("aria-pressed", next === "night" ? "true" : "false");
+}
+
+function bedtimeLine() {
+  return document.documentElement.dataset.theme === "classic" ? "" : "Bedtime mode · timer hidden, sound off unless you turn it on.";
 }
 
 bootInstallHint();
+wireShare();
 
 applyTheme(loadPrefs().theme);
 document.getElementById("btn-theme")?.addEventListener("click", () => {
   const next = document.documentElement.dataset.theme === "classic" ? "night" : "classic";
   savePrefs({ theme: next });
   applyTheme(next);
+  const status = document.getElementById("status-text");
+  if (status) status.textContent = next === "night" ? bedtimeLine() : "Classic theme · timer shown.";
 });
 
 // On touch screens the click that follows the move's pointerup lands on the
@@ -143,6 +154,7 @@ function showPicker() {
   document.getElementById("game-kicker").textContent = "Games";
   showMeters(false);
   document.getElementById("status-text").textContent = "Choose a game. Progress is saved on this device.";
+  const bedtime = bedtimeLine();
   document.getElementById("status-seed").textContent = "";
   const klondike = load();
   const freecell = loadFreeCell();
@@ -150,6 +162,8 @@ function showPicker() {
   const kings = loadKings();
   document.getElementById("table").innerHTML = `
     <div class="picker" data-testid="picker">
+      <p class="picker-promise" data-testid="no-dead-deals">No dead deals: every random deal starts with a legal move.</p>
+      ${bedtime ? `<p class="picker-bedtime" data-testid="bedtime-note">${bedtime}</p>` : ""}
       ${groksPickCard()}
       ${pickCard({
         game: "klondike",
@@ -193,6 +207,7 @@ function showPicker() {
       })}
       ${tipEntryHTML("picker-tip")}
       ${creditHTML("credit")}
+      <a class="picker-changelog" href="changelog.html" data-testid="changelog-link">Changelog: reviews, fixes and QA passes</a>
     </div>`;
   syncHooks();
 }

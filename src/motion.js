@@ -34,8 +34,13 @@ function snapshotFrom(from) {
   return { zone: from.zone, index: from.index, count: from.count };
 }
 
+const REJECT_MS = 420;
+
 function paintShake(from, root) {
-  if (typeof document === "undefined" || prefersReducedMotion()) return;
+  if (typeof document === "undefined") return;
+  // Reduced motion gets a still red outline instead of the shake, so a
+  // rejected move is never silent.
+  const cls = prefersReducedMotion() ? "reject-flash" : "shake";
   const scope = root || document.getElementById("table") || document;
   let nodes = cardsForMove(scope, from);
   if (!nodes.length && from?.zone) {
@@ -44,19 +49,20 @@ function paintShake(from, root) {
   }
   if (!nodes.length) nodes = [...scope.querySelectorAll(".card.selected")].filter((el) => !el.closest("#drag-layer"));
   for (const el of nodes) {
-    el.classList.remove("shake");
+    el.classList.remove("shake", "reject-flash");
     void el.offsetWidth;
-    el.classList.add("shake");
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), REJECT_MS);
   }
 }
 
 /**
  * Brief shake on the cards (or slot) from a rejected move.
  * Painted on a microtask so a same-turn re-render cannot drop the class.
- * Reduced motion adds nothing. The CSS animation is 250ms.
+ * Reduced motion gets a still outline flash instead. The CSS animation is 380ms.
  */
 export function shakeMoved(from, root) {
-  if (typeof document === "undefined" || prefersReducedMotion()) return;
+  if (typeof document === "undefined") return;
   const snapshot = snapshotFrom(from);
   const scopeRoot = root || null;
   const run = () => paintShake(snapshot, scopeRoot);

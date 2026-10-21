@@ -337,6 +337,7 @@ body[data-game="picker"] .meters {
 }
 
 .table {
+  position: relative;
   flex: 1;
   min-width: 0;
   max-width: 100%;
@@ -775,9 +776,20 @@ html[data-theme="night"] #meter-time-wrap {
 }
 
 .draw-choice {
-  width: min(24rem, 100%);
-  margin: 0 auto 0.75rem;
+  /* Overlay: out of the board's layout flow so the fit matches the board without it. */
+  position: absolute;
+  left: 50%;
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
+  width: max-content;
+  max-width: calc(100% - 1rem);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: rgba(10, 20, 16, 0.86);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   text-align: center;
+  pointer-events: auto;
 }
 
 .draw-choice p {

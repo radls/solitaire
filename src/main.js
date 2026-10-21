@@ -6,8 +6,9 @@ import { mount as mountKings } from "./ui-kings.js";
 import { isPickDone, load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
 import { bootInstallHint } from "./install-hint.js";
 import { wireShare } from "./share.js";
-import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey } from "./daily.js";
+import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey, tomorrowDealHTML } from "./daily.js";
 import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
+import { takeSlots } from "./slots.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
@@ -102,6 +103,16 @@ function resumeMarkup(game, state, savedAt) {
   return `<span class="resume" data-testid="resume-${game}">${resumeText(state, savedAt)}</span>`;
 }
 
+function casualPack(record, nested) {
+  return takeSlots(record, { nested }).casual;
+}
+
+function activeState(record, nested) {
+  const slots = takeSlots(record, { nested });
+  const pack = slots.active === "daily" ? slots.daily : slots.casual;
+  return pack?.state ?? null;
+}
+
 function dailyButton(game, stats) {
   const key = todayKey();
   const done = stats?.dailyLast === key;
@@ -160,9 +171,16 @@ function showPicker() {
   const freecell = loadFreeCell();
   const golf = loadGolf();
   const kings = loadKings();
+  const key = todayKey();
+  const dailyDone = [klondike, freecell, golf, kings].some((game) => game.stats?.dailyLast === key);
+  const klondikeCasual = casualPack(klondike, true);
+  const freecellCasual = casualPack(freecell, false);
+  const golfCasual = casualPack(golf, false);
+  const kingsCasual = casualPack(kings, false);
   document.getElementById("table").innerHTML = `
     <div class="picker" data-testid="picker">
-      <p class="picker-promise" data-testid="no-dead-deals">No dead deals: every random deal starts with a legal move.</p>
+      <p class="picker-promise" data-testid="no-dead-deals">Each new deal is checked so the stock can come into play. A game can still run out of moves later.</p>
+      ${dailyDone ? tomorrowDealHTML() : ""}
       ${bedtime ? `<p class="picker-bedtime" data-testid="bedtime-note">${bedtime}</p>` : ""}
       ${groksPickCard()}
       ${pickCard({
@@ -172,8 +190,8 @@ function showPicker() {
         name: "Klondike",
         blurb: "Build down by color. Draw from the stock.",
         stats: klondike.stats,
-        state: klondike.saved?.state,
-        savedAt: klondike.saved?.savedAt,
+        state: klondikeCasual?.state,
+        savedAt: klondikeCasual?.savedAt,
       })}
       ${pickCard({
         game: "freecell",
@@ -182,8 +200,8 @@ function showPicker() {
         name: "FreeCell",
         blurb: "All cards face up. Four free cells.",
         stats: freecell.stats,
-        state: freecell.state,
-        savedAt: freecell.savedAt,
+        state: freecellCasual?.state,
+        savedAt: freecellCasual?.savedAt,
       })}
       ${pickCard({
         game: "golf",
@@ -192,8 +210,8 @@ function showPicker() {
         name: "Golf",
         blurb: "Clear the columns one rank up or down.",
         stats: golf.stats,
-        state: golf.state,
-        savedAt: golf.savedAt,
+        state: golfCasual?.state,
+        savedAt: golfCasual?.savedAt,
       })}
       ${pickCard({
         game: "kings",
@@ -202,8 +220,8 @@ function showPicker() {
         name: "King's Corners",
         blurb: "Kings in the corners. Build down by color.",
         stats: kings.stats,
-        state: kings.state,
-        savedAt: kings.savedAt,
+        state: kingsCasual?.state,
+        savedAt: kingsCasual?.savedAt,
       })}
       ${tipEntryHTML("picker-tip")}
       ${creditHTML("credit")}
@@ -304,7 +322,7 @@ document.getElementById("table").addEventListener("click", (event) => {
   }
   const tile = event.target.closest("[data-pick]");
   if (!tile) return;
-  pick(tile.dataset.pick);
+  pick(tile.dataset.pick, { casual: true });
 });
 
 document.getElementById("overlay")?.addEventListener("click", (event) => {
@@ -323,10 +341,10 @@ document.addEventListener("keydown", (event) => {
 
 function savedBoards() {
   return {
-    klondike: load().saved?.state ?? null,
-    freecell: loadFreeCell().state ?? null,
-    golf: loadGolf().state ?? null,
-    kings: loadKings().state ?? null,
+    klondike: activeState(load(), true),
+    freecell: activeState(loadFreeCell(), false),
+    golf: activeState(loadGolf(), false),
+    kings: activeState(loadKings(), false),
   };
 }
 

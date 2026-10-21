@@ -77,6 +77,22 @@ export function isWon(state) {
   return state.foundations.every((pile) => pile.length === 13);
 }
 
+/** Glanceable foundation progress, for example `7/13`. */
+export function foundationCountLabel(pile) {
+  return `${pile?.length || 0}/13`;
+}
+
+/** Foundation piles that just reached a king. */
+export function completedFoundationIndexes(before, after) {
+  const found = [];
+  const next = after?.foundations || [];
+  const prev = before?.foundations || [];
+  for (let i = 0; i < next.length; i++) {
+    if ((next[i]?.length || 0) === 13 && (prev[i]?.length || 0) < 13) found.push(i);
+  }
+  return found;
+}
+
 export function elapsedMs(state, now = Date.now()) {
   return elapsed(state, now);
 }

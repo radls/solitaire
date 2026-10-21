@@ -85,6 +85,17 @@ export function seedStatusText(state, fallback = "") {
   return fallback;
 }
 
+/** Hours until local midnight, rounded up, at least 1. */
+export function tomorrowDealText(now = new Date()) {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  const hours = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / 3_600_000));
+  return `Tomorrow's deal in ${hours}h`;
+}
+
+export function tomorrowDealHTML(now = new Date()) {
+  return `<p class="tomorrow-deal" data-testid="tomorrow-deal">${tomorrowDealText(now)}</p>`;
+}
+
 export function dailyDoneText(streak) {
   const n = Number(streak) || 0;
   const unit = n === 1 ? "day" : "days";

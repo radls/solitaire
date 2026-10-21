@@ -7,11 +7,15 @@ import {
   cardsInCorners,
   cloneState,
   continueClock,
+  cornerProgressLabel,
   deal,
   drawStock,
   elapsedMs,
+  filledCorners,
+  followHints,
   hint,
   isWon,
+  layoutKey,
   listLegalMoves,
   moveCards,
 } from "../src/game/kings.js";
@@ -277,8 +281,10 @@ describe("moves", () => {
       { zone: "side", index: 0, count: 2 },
       { zone: "side", index: 3 },
     );
-    expect(ontoEmptySide.ok).toBe(true);
-    expect(ontoEmptySide.state.sides[3]).toHaveLength(2);
+    expect(ontoEmptySide.ok).toBe(false);
+    expect(ontoEmptySide.reason).toBe("that move goes nowhere");
+    expect(ontoEmptySide.state.sides[0]).toHaveLength(2);
+    expect(ontoEmptySide.state.sides[3]).toHaveLength(0);
 
     const self = moveCards(
       blank({ sides: [[C("hearts", 4), C("spades", 3)], [], [], []] }),
@@ -437,9 +443,14 @@ describe("draw, stuck, and win", () => {
       from: { zone: "waste" },
       to: { zone: "corner", index: 0 },
     });
-    expect(moves).toContainEqual({
+    expect(moves).not.toContainEqual({
       kind: "move",
       from: { zone: "side", index: 0, count: 2 },
+      to: { zone: "side", index: 1 },
+    });
+    expect(moves).toContainEqual({
+      kind: "move",
+      from: { zone: "side", index: 0, count: 1 },
       to: { zone: "side", index: 1 },
     });
     expect(moves).toContainEqual({
@@ -509,7 +520,7 @@ describe("hint", () => {
       sides: [[C("spades", 5)], [C("hearts", 5)], [C("clubs", 5)], [C("diamonds", 5)]],
       corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
       waste: [],
-      stock: [C("clubs", 2, false)],
+      stock: [C("clubs", 4, false)],
     });
     expect(hint(draw)).toEqual({ kind: "draw" });
 
@@ -519,7 +530,15 @@ describe("hint", () => {
       waste: [C("hearts", 9)],
       stock: [],
     });
-    expect(hint(recycle)).toEqual({ kind: "draw" });
+    expect(hint(recycle)).toBeNull();
+
+    const buried = blank({
+      sides: [[C("spades", 5)], [C("hearts", 5)], [C("clubs", 5)], [C("diamonds", 5)]],
+      corners: [[C("spades", 13)], [C("hearts", 13)], [C("clubs", 13)], [C("diamonds", 13)]],
+      waste: [C("hearts", 12), C("clubs", 9)],
+      stock: [],
+    });
+    expect(hint(buried)).toEqual({ kind: "draw" });
   });
 
   it("returns null when the deal is won or nothing is left to try", () => {
@@ -531,6 +550,48 @@ describe("hint", () => {
     });
     expect(hint(empty)).toBeNull();
     expect(hint(blank({ won: true, waste: [C("hearts", 5)] }))).toBeNull();
+  });
+});
+
+describe("hint progress", () => {
+  it("labels filled corners as N/4", () => {
+    const state = blank({
+      corners: [[C("spades", 13)], [], [C("hearts", 13), C("clubs", 12)], []],
+    });
+    expect(filledCorners(state)).toBe(2);
+    expect(cornerProgressLabel(state)).toBe("2/4");
+    expect(cardsInCorners(state)).toBe(3);
+  });
+
+  it("follows hints across seeds with no repeated layout and real progress", () => {
+    let progressed = 0;
+    let cornersGrew = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const opened = deal({ seed });
+      const run = followHints(opened, 60);
+      expect(run.repeated, `seed ${seed} repeated`).toBe(false);
+      expect(run.noProgress, `seed ${seed} stalled`).toBe(false);
+      const keys = new Set();
+      let cursor = opened;
+      for (let step = 0; step < run.steps; step++) {
+        const key = layoutKey(cursor);
+        expect(keys.has(key), `seed ${seed} key`).toBe(false);
+        keys.add(key);
+        const suggested = hint(cursor);
+        expect(suggested, `seed ${seed} hint`).toBeTruthy();
+        const action =
+          suggested.kind === "draw"
+            ? { type: "draw" }
+            : { type: "move", from: suggested.from, to: suggested.to };
+        cursor = apply(cursor, action).state;
+      }
+      if (cursor.stock.length < opened.stock.length || cardsInCorners(cursor) > cardsInCorners(opened)) {
+        progressed += 1;
+      }
+      if (cardsInCorners(cursor) > cardsInCorners(opened)) cornersGrew += 1;
+    }
+    expect(progressed).toBe(20);
+    expect(cornersGrew).toBeGreaterThanOrEqual(10);
   });
 });
 

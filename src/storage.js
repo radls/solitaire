@@ -48,7 +48,17 @@ export function save(data) {
 const defaultFreeCell = () => ({
   state: null,
   history: [],
-  stats: { played: 0, won: 0, streak: 0, bestStreak: 0, dailyStreak: 0, dailyBest: 0, dailyLast: null },
+  stats: {
+    played: 0,
+    won: 0,
+    streak: 0,
+    bestStreak: 0,
+    bestTimeMs: null,
+    fewestMoves: null,
+    dailyStreak: 0,
+    dailyBest: 0,
+    dailyLast: null,
+  },
 });
 
 export function loadFreeCell() {
@@ -62,6 +72,8 @@ export function loadFreeCell() {
       history,
       stats: { ...defaultFreeCell().stats, ...(parsed.stats ?? {}) },
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
+      dailySaved: parsed.dailySaved ?? null,
+      active: parsed.active === "daily" ? "daily" : "casual",
     };
   } catch {
     return defaultFreeCell();
@@ -78,6 +90,8 @@ export function saveFreeCell(data) {
         history,
         stats: data.stats ?? defaultFreeCell().stats,
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
+        dailySaved: data.dailySaved ?? null,
+        active: data.active === "daily" ? "daily" : "casual",
       }),
     );
   } catch {
@@ -102,6 +116,8 @@ export function loadGolf() {
       history,
       stats: { ...defaultGolf().stats, ...(parsed.stats ?? {}) },
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
+      dailySaved: parsed.dailySaved ?? null,
+      active: parsed.active === "daily" ? "daily" : "casual",
     };
   } catch {
     return defaultGolf();
@@ -118,6 +134,8 @@ export function saveGolf(data) {
         history,
         stats: { ...defaultGolf().stats, ...(data.stats ?? {}) },
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
+        dailySaved: data.dailySaved ?? null,
+        active: data.active === "daily" ? "daily" : "casual",
       }),
     );
   } catch {
@@ -128,7 +146,17 @@ export function saveGolf(data) {
 const defaultKings = () => ({
   state: null,
   history: [],
-  stats: { played: 0, won: 0, streak: 0, bestStreak: 0, dailyStreak: 0, dailyBest: 0, dailyLast: null },
+  stats: {
+    played: 0,
+    won: 0,
+    streak: 0,
+    bestStreak: 0,
+    bestTimeMs: null,
+    fewestMoves: null,
+    dailyStreak: 0,
+    dailyBest: 0,
+    dailyLast: null,
+  },
 });
 
 export function loadKings() {
@@ -142,6 +170,8 @@ export function loadKings() {
       history,
       stats: { ...defaultKings().stats, ...(parsed.stats ?? {}) },
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
+      dailySaved: parsed.dailySaved ?? null,
+      active: parsed.active === "daily" ? "daily" : "casual",
     };
   } catch {
     return defaultKings();
@@ -158,6 +188,8 @@ export function saveKings(data) {
         history,
         stats: data.stats ?? defaultKings().stats,
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
+        dailySaved: data.dailySaved ?? null,
+        active: data.active === "daily" ? "daily" : "casual",
       }),
     );
   } catch {

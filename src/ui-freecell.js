@@ -7,6 +7,8 @@ import {
   continueClock,
   deal,
   elapsedMs,
+  completedFoundationIndexes,
+  foundationCountLabel,
   foundationStep,
   hint as findHint,
   isTriviallySolvable,
@@ -23,11 +25,14 @@ import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./ti
 import {
   dailyDoneText,
   dailyFreeCellDeal,
-  dailyOpenPlan,
   nextDailyStreak,
   seedStatusText,
   todayKey,
+  tomorrowDealHTML,
 } from "./daily.js";
+import { winCelebrateHTML } from "./celebrate.js";
+import { notePersonalBest, personalBestHTML } from "./records.js";
+import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
@@ -95,10 +100,15 @@ export function mount(options = {}) {
   };
 
   const saved = loadFreeCell();
+  const slots0 = takeSlots(saved, { nested: false });
   const session = {
     state: null,
     history: [],
+    slots: slots0,
     stats: saved.stats,
+    bestNote: "",
+    glow: { foundations: [] },
+    glowTimer: 0,
     selected: null,
     hintMove: null,
     drag: null,
@@ -123,42 +133,45 @@ export function mount(options = {}) {
   const pickEntry = pickForDate(today);
   const wantPick = pickEntry?.game === "freecell" && (options.pick === true || params.get("pick") === "1");
   const wantDaily = !wantPick && (options.daily === true || (params.get("daily") === "1" && params.get("game") === "freecell"));
+  const wantCasual = options.casual === true;
   const openRules = {
     isFinished: (state) => !!(state.won || isWon(state)),
     needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state),
   };
-  const plan = wantPick
-    ? pickOpenPlan(saved.state, today, openRules)
-    : wantDaily
-      ? dailyOpenPlan(saved.state, today, openRules)
-      : null;
-  let bootDailyConfirm = false;
   let bootPickConfirm = false;
+  const doneFree = (state) => !!(state?.won || isWon(state));
 
-  function resumeSaved() {
-    session.state = saved.state;
-    session.history = (saved.history ?? []).slice(-HISTORY_CAP);
+  function adopt(pack) {
+    session.state = structuredClone(pack.state);
+    session.history = structuredClone(pack.history ?? []).slice(-HISTORY_CAP);
     session.countedPlay = session.state.moves > 0;
-    if (!session.state.startedAt || typeof saved.savedAt === "number") {
-      restoreClock(session.state, saved.savedAt);
-    }
+    if (!session.state.startedAt || typeof pack.savedAt === "number") restoreClock(session.state, pack.savedAt);
   }
 
-  if (plan === "resume" || plan === "confirm") {
-    resumeSaved();
-    bootDailyConfirm = plan === "confirm" && wantDaily;
-    bootPickConfirm = plan === "confirm" && wantPick;
-  } else if (plan === "deal" && wantPick) {
-    session.state = deal(pickEntry.seed);
-    session.state.daily = today;
-    session.state.pick = today;
-  } else if (plan === "deal") {
-    session.state = deal(dailyFreeCellDeal(today));
-    session.state.daily = today;
+  if (wantPick) {
+    const casual = slots0.casual?.state && !doneFree(slots0.casual.state) ? slots0.casual : null;
+    const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    if ((plan === "resume" || plan === "confirm") && casual) {
+      adopt(casual);
+      bootPickConfirm = plan === "confirm";
+    } else {
+      session.state = deal(pickEntry.seed);
+      session.state.daily = today;
+      session.state.pick = today;
+    }
+  } else if (wantDaily) {
+    const plan = dailyAlongsidePlan(slots0.daily?.state, today, doneFree);
+    if ((plan === "resume" || plan === "done") && slots0.daily?.state) adopt(slots0.daily);
+    else {
+      session.state = deal(dailyFreeCellDeal(today));
+      session.state.daily = today;
+    }
   } else if (urlDeal != null) {
     session.state = deal(urlDeal);
-  } else if (saved.state && !saved.state.won) {
-    resumeSaved();
+  } else if (!wantCasual && slots0.active === "daily" && slots0.daily?.state && !doneFree(slots0.daily.state)) {
+    adopt(slots0.daily);
+  } else if (slots0.casual?.state && !doneFree(slots0.casual.state)) {
+    adopt(slots0.casual);
   } else {
     session.state = deal(randomDeal());
   }
@@ -166,12 +179,8 @@ export function mount(options = {}) {
   let alive = true;
 
   function persist() {
-    saveFreeCell({
-      state: session.state,
-      history: session.history.slice(-HISTORY_CAP),
-      stats: session.stats,
-      savedAt: Date.now(),
-    });
+    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now());
+    saveFreeCell(flattenSlots(session.slots, { stats: session.stats }));
   }
 
   function setStatus(text) {
@@ -365,6 +374,12 @@ export function mount(options = {}) {
         renderSlot("foundation", index, (slot) => {
           const glyph = pile.length ? SUIT_GLYPH[pile[pile.length - 1].suit] : "A";
           slot.appendChild(well(glyph));
+          if (session.glow.foundations.includes(index)) slot.classList.add("pile-glow");
+          const count = document.createElement("span");
+          count.className = "badge foundation-count";
+          count.dataset.testid = "foundation-count";
+          count.textContent = foundationCountLabel(pile);
+          slot.appendChild(count);
           if (pile.length) {
             const card = pile[pile.length - 1];
             slot.appendChild(makeCard(card, { zone: "foundation", index }, 1, false));
@@ -458,11 +473,14 @@ export function mount(options = {}) {
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
       <p class="big">Well played</p>
+      ${winCelebrateHTML()}
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
       <p data-testid="win-count">Wins ${won} of ${played}</p>
-      ${winScreenTipHTML(session.stats.streak)}
+      ${personalBestHTML(session.bestNote)}
       ${dailyDoneHTML()}
+      ${state.daily === todayKey() ? tomorrowDealHTML() : ""}
       ${pickResultHTML()}
+      ${winScreenTipHTML(session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="new">New deal</button>
       </div>
@@ -501,6 +519,12 @@ export function mount(options = {}) {
 
   // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
   function confirmNewDeal(dealNumber, extra = {}) {
+    if (extra.daily || (isDailyBoard(session.state) && !extra.pick)) {
+      if (extra.pick) startPick();
+      else if (extra.daily) startDaily();
+      else startDeal(dealNumber ?? randomDeal());
+      return;
+    }
     if (!gameInProgress()) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -572,7 +596,22 @@ export function mount(options = {}) {
     return view.html;
   }
 
+  function markFoundationGlow(before, after) {
+    session.glow = { foundations: completedFoundationIndexes(before, after) };
+    if (session.glowTimer) window.clearTimeout(session.glowTimer);
+    if (session.glow.foundations.length) {
+      session.glowTimer = window.setTimeout(() => {
+        session.glow = { foundations: [] };
+        session.glowTimer = 0;
+        if (alive) render();
+      }, 1800);
+    }
+  }
+
   function startDeal(dealNumber, extra = {}) {
+    const startingDaily = !!(extra.daily || extra.dailyKey) && !extra.pick;
+    if (abandonsStreak(session.state, { toDaily: startingDaily })) session.stats.streak = 0;
+    session.slots = placeBoard(session.slots, session.state, session.history, Date.now());
     stopAuto();
     hideOverlay();
     const todayNow = todayKey();
@@ -629,6 +668,13 @@ export function mount(options = {}) {
       session.stats.won += 1;
       session.stats.streak = (session.stats.streak || 0) + 1;
       session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
+      const judged = notePersonalBest(session.stats, {
+        timeMs: elapsedMs(session.state, session.state.wonAt || Date.now()),
+        moves: session.state.moves,
+      });
+      session.stats.bestTimeMs = judged.stats.bestTimeMs;
+      session.stats.fewestMoves = judged.stats.fewestMoves;
+      session.bestNote = judged.note;
       session.countedWin = true;
       creditDaily();
     }
@@ -657,6 +703,7 @@ export function mount(options = {}) {
       return;
     }
     session.landedId = foundationLandedId(before, result.state);
+    markFoundationGlow(before, result.state);
     session.state = result.state;
     session.selected = null;
     session.hintMove = null;
@@ -699,6 +746,7 @@ export function mount(options = {}) {
     session.history.push(cloneState(before));
     if (session.history.length > HISTORY_CAP) session.history.shift();
     session.landedId = foundationLandedId(before, result.state);
+    markFoundationGlow(before, result.state);
     session.state = result.state;
     session.selected = null;
     session.hintMove = null;
@@ -1006,7 +1054,6 @@ export function mount(options = {}) {
     }
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
-      if (gameInProgress()) session.stats.streak = 0;
       if (btn.dataset.pick === "1") startPick();
       else if (btn.dataset.daily === "1") startDaily();
       else startDeal(Number(btn.dataset.deal) || randomDeal());
@@ -1066,7 +1113,7 @@ export function mount(options = {}) {
   setStatus(badDeal ? "Link deal not found, dealt a random one." : "Move a card into a free cell, cascade, or foundation.");
   persist();
   if (bootPickConfirm) confirmNewDeal(undefined, { pick: true });
-  else if (bootDailyConfirm) confirmNewDeal(undefined, { daily: true });
+  else if (session.state && (session.state.won || isWon(session.state))) showWin();
 
   return {
     getState: () => session.state,

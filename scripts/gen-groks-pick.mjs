@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dailyFreeCellDeal, dailySeed } from "../src/daily.js";
 import { deal as dealFreeCell, listLegalMoves as listFreeCell } from "../src/game/freecell.js";
 import { deal as dealGolf, listLegalMoves as listGolf } from "../src/game/golf.js";
-import { deal as dealKings, listLegalMoves as listKings } from "../src/game/kings.js";
+import { MOVE_GOAL, deal as dealKings, listLegalMoves as listKings } from "../src/game/kings.js";
 import { deal as dealKlondike, isStuck, listLegalMoves as listKlondike } from "../src/game/klondike.js";
 
 const START = "2026-10-13";
@@ -55,7 +55,10 @@ export function goalFor(game, occurrence) {
     return { type: "noUndo" };
   }
   if (slot === 0) return { type: "noUndo" };
-  if (slot === 1) return { type: "maxMoves", n: game === "klondike" ? 160 : 120 };
+  if (slot === 1) {
+    const n = game === "klondike" ? 160 : game === "kings" ? MOVE_GOAL : 120;
+    return { type: "maxMoves", n };
+  }
   return { type: "maxMinutes", n: MINUTES[occurrence % MINUTES.length] };
 }
 

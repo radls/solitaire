@@ -53,6 +53,22 @@ export function cardsInCorners(state) {
   return state.corners.reduce((n, pile) => n + pile.length, 0);
 }
 
+/** Corners that hold at least one card, not the total number of cards. */
+export function filledCorners(state) {
+  if (!state?.corners) return 0;
+  return state.corners.reduce((n, pile) => n + (pile.length > 0 ? 1 : 0), 0);
+}
+
+export function cornerProgressLabel(state) {
+  return `${filledCorners(state)}/${CORNER_COUNT}`;
+}
+
+/**
+ * Move target for a decent hint-following run. Filled in after the
+ * measurement in docs/batch6-spec.md. FreeCell's 120 is a different game.
+ */
+export const MOVE_GOAL = 150;
+
 export function isWon(state) {
   return cardsInCorners(state) === 52;
 }
@@ -138,6 +154,15 @@ function readDest(state, to) {
   return { ok: true, pile: piles[to.index] };
 }
 
+/** A whole side pile moved onto an empty side. The piles are the same set. */
+function isPointlessSideMove(state, from, to) {
+  if (from?.zone !== "side" || to?.zone !== "side") return false;
+  const pile = state.sides?.[from.index];
+  const dest = state.sides?.[to.index];
+  if (!pile?.length || dest?.length) return false;
+  return Number(from.count) === pile.length;
+}
+
 function sourceCards(state, from) {
   if (from.zone === "waste") return [state.waste[state.waste.length - 1]];
   const pile = state.sides[from.index];
@@ -150,6 +175,7 @@ export function moveCards(state, from, to) {
   if (state.won || isWon(state)) return fail(state, "game already won");
   if (!from || !to) return fail(state, "missing location");
   if (sameSide(from, to)) return fail(state, "same pile");
+  if (isPointlessSideMove(state, from, to)) return fail(state, "that move goes nowhere");
   const src = readSource(state, from);
   if (!src.ok) return fail(state, src.reason);
   const dest = readDest(state, to);
@@ -237,34 +263,154 @@ export function listLegalMoves(state) {
   return moves;
 }
 
+/** Layout only. Moves and idle passes are left out so a rising potential cannot cycle. */
+export function layoutKey(state) {
+  const ids = (pile) => (pile || []).map((card) => card.id).join(".");
+  return [
+    (state?.sides || []).map(ids).join("/"),
+    (state?.corners || []).map(ids).join("/"),
+    ids(state?.stock),
+    ids(state?.waste),
+  ].join("|");
+}
+
+function sideRunScore(pile) {
+  if (!pile || pile.length <= 1) return 0;
+  for (let i = 1; i < pile.length; i++) {
+    if (!canBuild(pile[i], pile[i - 1])) return 0;
+  }
+  return pile.length * pile.length;
+}
+
+/** A waste top that builds on a corner or a non-empty side. An empty side does not count. */
+function wasteTopPlays(state) {
+  const card = top(state.waste);
+  if (!card) return false;
+  for (let i = 0; i < (state.corners?.length || 0); i++) {
+    const pile = state.corners[i];
+    const onto = pile.length ? top(pile) : { zone: "corner" };
+    if (canBuild(card, onto)) return true;
+  }
+  for (let i = 0; i < (state.sides?.length || 0); i++) {
+    const pile = state.sides[i];
+    if (!pile.length) continue;
+    if (canBuild(card, top(pile))) return true;
+  }
+  return false;
+}
+
+const DRAW_HORIZON = 48;
+
+function stepsToUsefulDraw(state) {
+  let sim = cloneState(state);
+  const seen = new Set();
+  for (let n = 0; n < DRAW_HORIZON; n++) {
+    const key = layoutKey(sim);
+    if (seen.has(key)) return DRAW_HORIZON;
+    seen.add(key);
+    if (wasteTopPlays(sim)) return n;
+    if (!sim.stock.length && !sim.waste.length) return DRAW_HORIZON;
+    const drawn = drawStock(sim);
+    if (!drawn.ok) return DRAW_HORIZON;
+    sim = drawn.state;
+  }
+  return DRAW_HORIZON;
+}
+
+function cornerReady(state) {
+  const ids = new Set();
+  const consider = (card, cards) => {
+    if (!card) return;
+    for (let i = 0; i < (state.corners?.length || 0); i++) {
+      const dest = state.corners[i];
+      const onto = dest.length ? top(dest) : { zone: "corner" };
+      if (!canBuild(card, onto)) continue;
+      for (const entry of cards) ids.add(entry.id);
+      return;
+    }
+  };
+  if (state.waste?.length) consider(top(state.waste), [top(state.waste)]);
+  for (const pile of state.sides || []) {
+    if (!pile.length) continue;
+    consider(top(pile), [top(pile)]);
+    consider(pile[0], pile);
+  }
+  return ids.size;
+}
+
+const potCache = new Map();
+
+/** Higher is better. Depends only on the layout, so a strict increase cannot repeat a key. */
+export function potential(state) {
+  const key = layoutKey(state);
+  if (potCache.has(key)) return potCache.get(key);
+  let builds = 0;
+  for (const pile of state?.sides || []) builds += sideRunScore(pile);
+  const value =
+    cardsInCorners(state) * 1_000_000 +
+    cornerReady(state) * 1_000 +
+    builds * 20 +
+    (DRAW_HORIZON - stepsToUsefulDraw(state));
+  if (potCache.size > 6000) potCache.clear();
+  potCache.set(key, value);
+  return value;
+}
+
 /**
- * Prefer a move to a corner, then a side-to-side move that empties a side or
- * builds, then waste→side, else `{ kind: "draw" }` if the stock or waste has
- * cards, else null.
+ * The legal move or draw that most raises `potential`.
+ * A recycle that only restores the same pass does not raise it, so it is not hinted.
+ * Returns null when nothing increases the potential.
  */
 export function hint(state) {
   if (!state || state.won || isWon(state)) return null;
-  const moves = listLegalMoves(state);
-  const first = (pred) => {
-    for (const move of moves) {
-      if (pred(move)) return move.kind === "draw" ? { kind: "draw" } : move;
+  const base = potential(state);
+  let best = null;
+  let bestPot = base;
+  for (const move of listLegalMoves(state)) {
+    const action =
+      move.kind === "draw" ? { type: "draw" } : { type: "move", from: move.from, to: move.to };
+    const next = apply(state, action);
+    if (!next.ok) continue;
+    const pot = potential(next.state);
+    if (pot > bestPot) {
+      bestPot = pot;
+      best = move.kind === "draw" ? { kind: "draw" } : move;
     }
-    return null;
+  }
+  return best;
+}
+
+/** Follow hints until they stop. `repeated` is a layout seen twice. `noProgress` is a hint that did not rise. */
+export function followHints(state, limit = 80) {
+  const seen = [];
+  let current = state;
+  for (let step = 0; step < limit; step++) {
+    const key = layoutKey(current);
+    if (seen.includes(key)) return { repeated: true, noProgress: false, steps: step, state: current };
+    seen.push(key);
+    const suggested = hint(current);
+    if (!suggested) return { repeated: false, noProgress: false, steps: step, state: current, stopped: true };
+    const before = potential(current);
+    const action =
+      suggested.kind === "draw"
+        ? { type: "draw" }
+        : { type: "move", from: suggested.from, to: suggested.to };
+    const next = apply(current, action);
+    if (!next.ok || potential(next.state) <= before) {
+      return { repeated: false, noProgress: true, steps: step, state: current };
+    }
+    current = next.state;
+    if (current.won || isWon(current)) {
+      return { repeated: false, noProgress: false, steps: step + 1, state: current, won: true };
+    }
+  }
+  return {
+    repeated: seen.includes(layoutKey(current)),
+    noProgress: false,
+    steps: limit,
+    state: current,
+    capped: true,
   };
-  return (
-    first((move) => move.kind === "move" && move.to.zone === "corner") ||
-    first((move) => {
-      if (move.kind !== "move" || move.from.zone !== "side" || move.to.zone !== "side") return false;
-      const pile = state.sides[move.from.index];
-      const dest = state.sides[move.to.index];
-      const empties = !!pile && (move.from.count ?? 1) === pile.length;
-      const builds = !!dest && dest.length > 0;
-      return empties || builds;
-    }) ||
-    first((move) => move.kind === "move" && move.from.zone === "waste" && move.to.zone === "side") ||
-    first((move) => move.kind === "draw") ||
-    null
-  );
 }
 
 export function apply(state, action) {

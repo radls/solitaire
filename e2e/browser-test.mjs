@@ -1,9 +1,11 @@
 // Browser test (not part of npm test). Needs playwright-core + Chrome, e.g.:
 //   cd /workspace/pwtools && npm i playwright-core && BASE=http://127.0.0.1:4173/solitaire/ node e2e.mjs
 //   CRONLY=1 / B2ONLY=1 / B3ONLY=1 / B4ONLY=1 / PICKONLY=1 run only those groups.
+import { mkdirSync } from "node:fs";
 import { chromium } from "playwright-core";
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
-const SHOTS = "/workspace/GrokBuildApps/solitaire/shots";
+const SHOTS = process.env.SHOTS_DIR || "/workspace/qa-shots/solitaire-batch6";
+mkdirSync(SHOTS, { recursive: true });
 const results = [];
 const ok = (game, P, name, cond, note = "") => { results.push({ game, P, name, pass: !!cond, note }); console.log(`${cond ? "PASS" : "FAIL"} [${P}] ${game}: ${name}${note ? " — " + note : ""}`); };
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });

@@ -1,6 +1,8 @@
 // Batch 5 browser check. Needs playwright-core (see browser-test.mjs) and `GITHUB_PAGES=true npm run build && GITHUB_PAGES=true npx vite preview --port 4173`.
+import { mkdirSync } from "node:fs";
 import { chromium } from "playwright-core";
-const BASE="http://127.0.0.1:4173/solitaire/", SH="/workspace/qa-shots/solitaire-batch5";
+const BASE="http://127.0.0.1:4173/solitaire/", SH=process.env.SHOTS_DIR || "/workspace/qa-shots/solitaire-batch6";
+mkdirSync(SH, { recursive: true });
 const b = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 const R=[]; const ok=(P,n,c,note="")=>{R.push({P,n,pass:!!c,note});console.log(`${c?"PASS":"FAIL"} [${P}] ${n}${note?" — "+note:""}`);};
 const VPS={desktop:{viewport:{width:1280,height:800}}, phone:{viewport:{width:390,height:844},hasTouch:true,isMobile:true,deviceScaleFactor:3}};

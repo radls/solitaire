@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { dailyFreeCellDeal, dailySeed } from "../src/daily.js";
 import { deal as dealFreeCell, listLegalMoves as listFreeCell } from "../src/game/freecell.js";
 import { deal as dealGolf, listLegalMoves as listGolf } from "../src/game/golf.js";
-import { deal as dealKings, listLegalMoves as listKings } from "../src/game/kings.js";
+import { MOVE_GOAL, deal as dealKings, listLegalMoves as listKings } from "../src/game/kings.js";
 import { deal as dealKlondike, isStuck, listLegalMoves as listKlondike } from "../src/game/klondike.js";
 import { GROKS_PICK } from "../src/groks-pick-data.js";
 import { evaluateGoal, pickForDate, pickOpenPlan } from "../src/groks-pick.js";
@@ -69,7 +69,7 @@ describe("GROKS_PICK", () => {
         expect(entry.goal.n).toBeLessThanOrEqual(8);
       }
       if (entry.goal.type === "maxMoves") {
-        const n = entry.game === "klondike" ? 160 : 120;
+        const n = entry.game === "klondike" ? 160 : entry.game === "kings" ? MOVE_GOAL : 120;
         expect(entry.goal.n).toBe(n);
         expect(entry.game).not.toBe("golf");
       }

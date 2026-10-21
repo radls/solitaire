@@ -5,12 +5,14 @@ import {
   apply,
   cardsInCorners,
   cloneState,
+  cornerProgressLabel,
   continueClock,
   deal,
   elapsedMs,
   hint as findHint,
   isWon,
   listLegalMoves,
+  MOVE_GOAL,
 } from "./game/kings.js";
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
@@ -18,7 +20,11 @@ import { loadKings, loadPrefs, markPickDone, saveKings, savePrefs } from "./stor
 import { offerInstallHint } from "./install-hint.js";
 import { shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
+import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { winCelebrateHTML } from "./celebrate.js";
+import { hintFromSelector } from "./hint-target.js";
+import { notePersonalBest, personalBestHTML } from "./records.js";
+import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
@@ -82,10 +88,13 @@ export function mount(options = {}) {
   };
 
   const saved = loadKings();
+  const slots0 = takeSlots(saved, { nested: false });
   const session = {
     state: null,
     history: [],
+    slots: slots0,
     stats: saved.stats,
+    bestNote: "",
     selected: null,
     hintMove: null,
     drag: null,
@@ -104,41 +113,44 @@ export function mount(options = {}) {
   const pickEntry = pickForDate(today);
   const wantPick = pickEntry?.game === "kings" && (options.pick === true || params.get("pick") === "1");
   const wantDaily = !wantPick && (options.daily === true || (params.get("daily") === "1" && params.get("game") === "kings"));
+  const wantCasual = options.casual === true;
   const openRules = {
     isFinished: (state) => !!(state.won || isWon(state)),
     needsConfirm: (state) => state.moves > 0 && !state.won && !isWon(state) && !state.stuck,
   };
-  const plan = wantPick
-    ? pickOpenPlan(saved.state, today, openRules)
-    : wantDaily
-      ? dailyOpenPlan(saved.state, today, openRules)
-      : null;
-  let bootDailyConfirm = false;
   let bootPickConfirm = false;
-  const resume =
-    plan === "resume" ||
-    plan === "confirm" ||
-    (!wantDaily && !wantPick && !honorSeed && saved.state && !saved.state.won && !isWon(saved.state));
-  if (plan === "confirm" && wantDaily) bootDailyConfirm = true;
-  if (plan === "confirm" && wantPick) bootPickConfirm = true;
-  if (resume) {
-    session.state = saved.state;
-    session.history = (saved.history ?? []).slice(-HISTORY_CAP);
-    if (!session.state.startedAt || typeof saved.savedAt === "number") {
-      restoreClock(session.state, saved.savedAt);
+  let resume = false;
+  const doneKings = (state) => !!(state?.won || (state && isWon(state)));
+
+  function adopt(pack) {
+    session.state = structuredClone(pack.state);
+    session.history = structuredClone(pack.history ?? []).slice(-HISTORY_CAP);
+    if (!session.state.startedAt || typeof pack.savedAt === "number") restoreClock(session.state, pack.savedAt);
+    resume = true;
+  }
+
+  if (wantPick) {
+    const casual = slots0.casual?.state && !doneKings(slots0.casual.state) ? slots0.casual : null;
+    const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    if ((plan === "resume" || plan === "confirm") && casual) {
+      adopt(casual);
+      bootPickConfirm = plan === "confirm";
     }
+  } else if (wantDaily) {
+    const plan = dailyAlongsidePlan(slots0.daily?.state, today, doneKings);
+    if ((plan === "resume" || plan === "done") && slots0.daily?.state) adopt(slots0.daily);
+  } else if (!honorSeed && !wantCasual && slots0.active === "daily" && slots0.daily?.state && !doneKings(slots0.daily.state)) {
+    adopt(slots0.daily);
+  } else if (!honorSeed && slots0.casual?.state && !doneKings(slots0.casual.state)) {
+    adopt(slots0.casual);
   }
 
   let alive = true;
   let observer = null;
 
   function persist() {
-    saveKings({
-      state: session.state,
-      history: session.history.slice(-HISTORY_CAP),
-      stats: session.stats,
-      savedAt: Date.now(),
-    });
+    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now());
+    saveKings(flattenSlots(session.slots, { stats: session.stats }));
   }
 
   function setStatus(text) {
@@ -390,6 +402,7 @@ export function mount(options = {}) {
         if (state.waste.length) {
           const card = state.waste[state.waste.length - 1];
           const el = makeCardElement(card, { zone: "waste" }, 1, true, session.selected?.zone === "waste");
+          el.dataset.wasteTop = "1";
           slot.appendChild(el);
         }
       }),
@@ -429,7 +442,7 @@ export function mount(options = {}) {
     board.appendChild(grid);
     root.table.replaceChildren(board);
     if (root.moves) root.moves.textContent = String(state.moves);
-    if (root.home) root.home.textContent = String(cardsInCorners(state));
+    if (root.home) root.home.textContent = cornerProgressLabel(state);
     if (root.seed) root.seed.textContent = seedStatusText(state);
     if (root.undo) root.undo.disabled = session.history.length === 0;
     syncThumbDisabled();
@@ -461,7 +474,7 @@ export function mount(options = {}) {
     syncPlayClock();
     if (root.time) root.time.textContent = formatTime(readMeter());
     if (root.moves) root.moves.textContent = String(session.state.moves);
-    if (root.home) root.home.textContent = String(cardsInCorners(session.state));
+    if (root.home) root.home.textContent = cornerProgressLabel(session.state);
   }
 
   function hideOverlay() {
@@ -484,11 +497,7 @@ export function mount(options = {}) {
       document.querySelector('[data-drop="stock"]')?.classList.add("hint-to");
       return;
     }
-    const fromSel =
-      move.from.zone === "waste"
-        ? `.card[data-zone="waste"]`
-        : `.card[data-zone="${move.from.zone}"][data-index="${move.from.index}"][data-count="${move.from.count ?? 1}"]`;
-    document.querySelector(fromSel)?.classList.add("hint-from");
+    document.querySelector(hintFromSelector(move))?.classList.add("hint-from");
     document.querySelector(`[data-drop="${move.to.zone}:${move.to.index}"]`)?.classList.add("hint-to");
   }
 
@@ -498,14 +507,17 @@ export function mount(options = {}) {
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
       <h2>Four kings home</h2>
+      ${winCelebrateHTML()}
       <ul class="stats-line">
         <li><span>Time</span>${formatTime(elapsedMs(state))}</li>
         <li><span>Moves</span>${state.moves}</li>
       </ul>
       <p data-testid="win-count">Wins ${session.stats.won}</p>
-      ${winScreenTipHTML(session.stats.streak)}
+      ${personalBestHTML(session.bestNote)}
       ${dailyDoneHTML()}
+      ${state.daily === todayKey() ? tomorrowDealHTML() : ""}
       ${pickResultHTML()}
+      ${winScreenTipHTML(session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay</button>
@@ -541,7 +553,7 @@ export function mount(options = {}) {
       <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       <ul class="help-short" data-testid="kings-help-short">
         <li>Kings go in the four corners; build each corner down to the ace in alternating colors.</li>
-        <li>Side piles build down in alternating colors; an empty side takes any card or a whole pile.</li>
+        <li>Side piles build down in alternating colors; an empty side takes one card, not a whole pile.</li>
         <li>Draw from the stock when stuck. Win by moving all 52 cards into the corners.</li>
       </ul>
       <div class="modal-actions help-deal">
@@ -555,7 +567,8 @@ export function mount(options = {}) {
       <p>Each side starts with one face-up card. A king dealt there goes to the next empty corner, and that side is dealt again. The rest of the deck is the face-down stock.</p>
       <p>Tap the stock to turn one card onto the waste. When the stock is empty, tap it to turn the waste back over. You may do that as often as you like.</p>
       <p>An empty corner takes only a king. Corners build down in alternating colors from king to ace. Cards placed in a corner stay there.</p>
-      <p>Side piles build down in alternating colors. An empty side takes any card, or a whole side pile.</p>
+      <p>Side piles build down in alternating colors. An empty side takes one card. Moving a whole pile onto an empty side changes nothing, so that move is not allowed. A whole pile still moves onto a card it builds on, or into a corner when its bottom card is a king.</p>
+      <p>A fair target is under ${MOVE_GOAL} moves.</p>
       <p>Move the top waste card, the top card of a side, or a whole side pile. A whole pile moves when its bottom card fits. A king-led pile may fill an empty corner. Partial runs stay put.</p>
       <p>The deal is won when all 52 cards are in the corners. If you turn the stock over twice without another move, there is nothing left to try.</p>
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
@@ -574,6 +587,12 @@ export function mount(options = {}) {
   }
 
   function confirmNewDeal(extra = {}) {
+    if (extra.daily || (session.state && isDailyBoard(session.state) && !extra.pick)) {
+      if (extra.pick) startPick();
+      else if (extra.daily) startDaily();
+      else startDeal(undefined);
+      return;
+    }
     if (!gameInProgress()) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -619,6 +638,13 @@ export function mount(options = {}) {
       session.stats.won += 1;
       session.stats.streak = (session.stats.streak || 0) + 1;
       session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
+      const judged = notePersonalBest(session.stats, {
+        timeMs: elapsedMs(session.state, session.state.wonAt || Date.now()),
+        moves: session.state.moves,
+      });
+      session.stats.bestTimeMs = judged.stats.bestTimeMs;
+      session.stats.fewestMoves = judged.stats.fewestMoves;
+      session.bestNote = judged.note;
       session.countedWin = true;
       creditDaily();
       persist();
@@ -672,6 +698,9 @@ export function mount(options = {}) {
   }
 
   function startDeal(seed, extra = {}) {
+    const startingDaily = !!(extra.daily || extra.dailyKey) && !extra.pick;
+    if (session.state && abandonsStreak(session.state, { toDaily: startingDaily })) session.stats.streak = 0;
+    if (session.state) session.slots = placeBoard(session.slots, session.state, session.history, Date.now());
     hideOverlay();
     const todayNow = todayKey();
     const entry = extra.pick ? pickForDate(todayNow) : null;
@@ -1063,14 +1092,13 @@ export function mount(options = {}) {
     }
     if (btn.dataset.act === "close") hideOverlay();
     else if (btn.dataset.act === "new") {
-      if (gameInProgress()) session.stats.streak = 0;
       if (btn.dataset.pick === "1") startPick();
       else if (btn.dataset.daily === "1") startDaily();
       else startDeal(undefined);
     } else if (btn.dataset.act === "replay") {
       if (session.modal === "help") confirmReplay();
       else {
-        if (gameInProgress()) session.stats.streak = 0;
+        if (gameInProgress() && !isDailyBoard(session.state)) session.stats.streak = 0;
         replay();
       }
     } else if (btn.dataset.act === "undo") doUndo();
@@ -1121,7 +1149,9 @@ export function mount(options = {}) {
     render();
     refreshMeters();
     if (bootPickConfirm) confirmNewDeal({ pick: true });
-    else if (bootDailyConfirm) confirmNewDeal({ daily: true });
+    else if (session.state?.won || (session.state && isWon(session.state))) {
+      showWin();
+    }
     else if (session.state.stuck) {
       showStuck();
       setStatus("No more moves.");

@@ -50,17 +50,17 @@ export function deal({ seed, drawCount = 1 } = {}) {
 }
 
 /**
- * Random deal that skips an opening position which is already stuck.
- * `tries` is how many extra seeds to draw after a stuck opening. The first
- * layout that is not stuck is returned; if every attempt is stuck, the last
- * one is kept. Explicit seeds stay on deal() and are never redrawn here.
+ * Random deal that skips an opening which is already stuck, or whose hint
+ * line dies before the stock can be played. `tries` is how many extra seeds
+ * to draw. The first layout that passes is returned; if every attempt fails,
+ * the last one is kept. Explicit seeds stay on deal() and are never redrawn.
  */
 export function dealPlayable({ drawCount = 1, random = Math.random, tries = 3 } = {}) {
   const extra = Number.isFinite(tries) ? Math.max(0, Math.floor(tries)) : 3;
   let state = null;
   for (let attempt = 0; attempt <= extra; attempt++) {
     state = deal({ seed: rollSeed(random), drawCount });
-    if (!isStuck(state)) return state;
+    if (!isStuck(state) && stockCanEnter(state)) return state;
   }
   return state;
 }
@@ -101,9 +101,42 @@ export function canAutoComplete(state) {
   );
 }
 
+/** Draw 3 costs 20 on a recycle. Draw 1 costs 100. The move count also rises. */
+export function recyclePenalty(drawCount) {
+  return drawCount === 3 ? 20 : 100;
+}
+
+/**
+ * The meter shows `display`, which is the move score minus 2 points per 10 seconds.
+ * `raw` is `state.score` (recycles already subtracted). `timePenalty` is not stored,
+ * so the move count can stay still while the meter falls.
+ */
+export function scoreParts(state, now = Date.now()) {
+  const safe = state || emptyState();
+  const timePenalty = Math.floor(elapsedMs(safe, now) / 10000) * 2;
+  const recycleEach = recyclePenalty(safe.drawCount);
+  const recycleTotal = (safe.recycled || 0) * recycleEach;
+  const raw = safe.score || 0;
+  return {
+    raw,
+    timePenalty,
+    recycleEach,
+    recycleTotal,
+    display: Math.max(0, raw - timePenalty),
+  };
+}
+
 export function timedScore(state, now = Date.now()) {
-  const penalty = Math.floor(elapsedMs(state, now) / 10000) * 2;
-  return Math.max(0, state.score - penalty);
+  return scoreParts(state, now).display;
+}
+
+export function timePenaltyNote(parts) {
+  if (!parts?.timePenalty) return "";
+  return `−${parts.timePenalty} time`;
+}
+
+export function recycleNote(drawCount) {
+  return `−${recyclePenalty(drawCount)} recycle`;
 }
 
 export function elapsedMs(state, now = Date.now()) {
@@ -111,16 +144,20 @@ export function elapsedMs(state, now = Date.now()) {
 }
 
 function flipExposed(state) {
-  let flipped = false;
-  for (const pile of state.tableau) {
+  const revealed = [];
+  let any = false;
+  for (let index = 0; index < state.tableau.length; index++) {
+    const pile = state.tableau[index];
     const card = top(pile);
     if (card && !card.faceUp) {
+      const faceDown = pile.reduce((n, entry) => n + (entry.faceUp ? 0 : 1), 0);
       card.faceUp = true;
       state.score += 5;
-      flipped = true;
+      any = true;
+      if (faceDown === 1) revealed.push(index);
     }
   }
-  return flipped;
+  return { any, revealed };
 }
 
 function finish(state) {
@@ -279,10 +316,16 @@ export function moveCards(state, from, to) {
   startClock(next);
   const flipped = flipExposed(next);
   finish(next);
+  const completedFoundations = [];
+  if (placed.index != null && next.foundations[placed.index]?.length === 13) {
+    completedFoundations.push(placed.index);
+  }
   return {
     ok: true,
     state: next,
-    flipped,
+    flipped: flipped.any,
+    revealedColumns: flipped.revealed,
+    completedFoundations,
     foundationIndex: placed.index,
   };
 }
@@ -393,10 +436,61 @@ function canPlaceCard(state, card) {
   return false;
 }
 
+/** A card the player could move from the waste or onto a foundation or column. */
+function cardPlays(state, card) {
+  return canPlaceCard(state, card);
+}
+
+/**
+ * True when a card that can become the waste top, under this draw count,
+ * plays on the tableau or a foundation as it stands. Buried Draw 3 cards
+ * count only if a later draw or one recycle would uncover them as the top.
+ * A full stock is not enough.
+ */
+function drawWouldPlay(state) {
+  if (!state) return false;
+  let sim = forkState(state);
+  const seen = new Set();
+  const limit = (sim.stock?.length || 0) + (sim.waste?.length || 0) + 2;
+  for (let i = 0; i < limit; i++) {
+    const key = layoutKey(sim);
+    if (seen.has(key)) break;
+    seen.add(key);
+    const showing = top(sim.waste);
+    if (showing && cardPlays(sim, showing)) return true;
+    const next = applyDraw(sim);
+    if (!next) break;
+    sim = next;
+  }
+  return false;
+}
+
 function isUsefulDraw(state) {
-  if (state.stock.length > 0) return true;
-  if (state.waste.length <= 1) return false;
-  return state.waste.some((card) => canPlaceCard(state, card));
+  return drawWouldPlay(state);
+}
+
+/**
+ * True when the hint line can play a stock or waste card before it dies.
+ * An opening uncover that leads straight into a dead stock does not count.
+ * The search is capped at 16 hinted moves. Past that the deal is kept.
+ */
+export function stockCanEnter(state) {
+  if (!state || state.won || isWon(state)) return true;
+  let current = state;
+  const seen = new Set();
+  for (let step = 0; step < 16; step++) {
+    const key = layoutKey(current);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (current.won || isWon(current)) return true;
+    const suggested = hint(current);
+    if (!suggested) return false;
+    if (suggested.kind === "draw") return drawWouldPlay(current);
+    const next = apply(current, { type: "move", from: suggested.from, to: suggested.to });
+    if (!next.ok) return false;
+    current = next.state;
+  }
+  return true;
 }
 
 /** Tableau transfers that uncover, open a column, or free a foundation card. */

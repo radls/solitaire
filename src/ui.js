@@ -16,6 +16,9 @@ import {
   isStuck,
   listLegalMoves,
   moveCards,
+  recycleNote,
+  scoreParts,
+  timePenaltyNote,
   timedScore,
 } from "./game/klondike.js";
 import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
@@ -24,7 +27,11 @@ import { load, loadPrefs, markPickDone, save, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { shakeMoved } from "./motion.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { dailyDoneText, dailyOpenPlan, dailySeed, nextDailyStreak, seedStatusText, todayKey } from "./daily.js";
+import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { winCelebrateHTML } from "./celebrate.js";
+import { hintFromSelector } from "./hint-target.js";
+import { notePersonalBest, personalBestHTML } from "./records.js";
+import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
@@ -92,9 +99,11 @@ export function mount(options = {}) {
   };
 
   const stored = load();
+  const slots0 = takeSlots(stored, { nested: true });
   const session = {
     state: null,
     history: [],
+    slots: slots0,
     selected: null,
     hintMove: null,
     drag: null,
@@ -104,6 +113,9 @@ export function mount(options = {}) {
     autoTimer: 0,
     modal: null,
     clockPlayed: false,
+    bestNote: "",
+    glow: { columns: [], foundations: [] },
+    glowTimer: 0,
   };
 
   const params = new URLSearchParams(location.search);
@@ -114,55 +126,63 @@ export function mount(options = {}) {
   const pickEntry = pickForDate(today);
   const wantPick = pickEntry?.game === "klondike" && (options.pick === true || params.get("pick") === "1");
   const wantDaily = !wantPick && (options.daily === true || (params.get("daily") === "1" && params.get("game") === "klondike"));
-  const savedState = stored.saved?.state && !stored.saved.state.won ? stored.saved.state : null;
+  const wantCasual = options.casual === true;
   const openRules = {
     isFinished: (state) => !!state.won,
     needsConfirm: (state) => state.moves > 0 && !state.won,
   };
-  const plan = wantPick
-    ? pickOpenPlan(savedState, today, openRules)
-    : wantDaily
-      ? dailyOpenPlan(savedState, today, openRules)
-      : null;
-  let bootDailyConfirm = false;
   let bootPickConfirm = false;
 
-  if (plan === "resume" || plan === "confirm") {
-    session.state = savedState;
-    session.history = stored.saved.history ?? [];
-    restoreClock(session.state, stored.saved.savedAt);
-    bootDailyConfirm = plan === "confirm" && wantDaily;
-    bootPickConfirm = plan === "confirm" && wantPick;
-  } else if (plan === "deal" && wantPick) {
+  function adopt(pack) {
+    session.state = structuredClone(pack.state);
+    session.history = structuredClone(pack.history ?? []);
+    restoreClock(session.state, pack.savedAt);
+  }
+
+  if (wantPick) {
+    const casual = slots0.casual?.state && !slots0.casual.state.won ? slots0.casual : null;
+    const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    if ((plan === "resume" || plan === "confirm") && casual) {
+      adopt(casual);
+      bootPickConfirm = plan === "confirm";
+    } else {
+      session.history = [];
+      session.state = deal({ seed: pickEntry.seed, drawCount: 1 });
+      session.state.daily = today;
+      session.state.pick = today;
+    }
+  } else if (wantDaily) {
+    const plan = dailyAlongsidePlan(slots0.daily?.state, today, (state) => !!state.won);
+    if ((plan === "resume" || plan === "done") && slots0.daily?.state) adopt(slots0.daily);
+    else {
+      session.history = [];
+      session.state = deal({ seed: dailySeed("klondike", today), drawCount: initialDraw });
+      session.state.daily = today;
+    }
+  } else if (Number.isFinite(urlSeed)) {
     session.history = [];
-    session.state = deal({ seed: pickEntry.seed, drawCount: 1 });
-    session.state.daily = today;
-    session.state.pick = today;
-  } else if (plan === "deal") {
-    session.history = [];
-    session.state = deal({ seed: dailySeed("klondike", today), drawCount: initialDraw });
-    session.state.daily = today;
-  } else if (!params.has("seed") && savedState) {
-    session.state = savedState;
-    session.history = stored.saved.history ?? [];
-    restoreClock(session.state, stored.saved.savedAt);
+    session.state = deal({ seed: urlSeed, drawCount: initialDraw });
+  } else if (!wantCasual && slots0.active === "daily" && slots0.daily?.state && !slots0.daily.state.won) {
+    adopt(slots0.daily);
+  } else if (slots0.casual?.state && !slots0.casual.state.won) {
+    adopt(slots0.casual);
   } else {
     session.history = [];
-    session.state = Number.isFinite(urlSeed)
-      ? deal({ seed: urlSeed, drawCount: initialDraw })
-      : dealPlayable({ drawCount: initialDraw });
+    session.state = dealPlayable({ drawCount: initialDraw });
   }
   session.countedPlay = session.state.moves > 0;
 
   function persist() {
-    save({
-      drawCount: session.state.drawCount,
-      muted: session.muted,
-      stats: session.stats,
-      saved: session.state.won
-        ? null
-        : { state: session.state, history: session.history, savedAt: Date.now() },
+    session.slots = placeBoard(session.slots, session.state, session.history, Date.now(), {
+      dropCasual: (state) => !!state?.won,
     });
+    save(
+      flattenSlots(session.slots, {
+        nested: true,
+        stats: session.stats,
+        extra: { drawCount: session.state?.drawCount ?? stored.drawCount, muted: session.muted },
+      }),
+    );
   }
 
   function setStatus(text) {
@@ -275,6 +295,7 @@ export function mount(options = {}) {
         shown.forEach((card, i) => {
           const playable = i === shown.length - 1;
           const el = makeCardEl(card, { zone: "waste" }, 1, playable);
+          if (playable) el.dataset.wasteTop = "1";
           el.style.left = `calc(${i} * var(--waste-spread, 20px))`;
           if (!playable) el.style.pointerEvents = "none";
           slot.appendChild(el);
@@ -287,6 +308,7 @@ export function mount(options = {}) {
     state.foundations.forEach((pile, index) => {
       foundations.appendChild(
         renderSlot("foundation", index, (slot) => {
+          if (session.glow.foundations.includes(index)) slot.classList.add("pile-glow");
           const glyph = pile.length ? SUIT_GLYPH[pile[0].suit] : "A";
           slot.appendChild(well(glyph));
           if (pile.length) {
@@ -304,6 +326,7 @@ export function mount(options = {}) {
     state.tableau.forEach((pile, index) => {
       tableau.appendChild(
         renderSlot("tableau", index, (slot) => {
+          if (session.glow.columns.includes(index)) slot.classList.add("pile-glow");
           slot.appendChild(well(pile.length ? "" : "K"));
           const stack = document.createElement("div");
           stack.className = "pile";
@@ -320,6 +343,17 @@ export function mount(options = {}) {
     });
 
     board.append(topRow, tableau);
+    if (state.moves === 0 && !state.won) {
+      const choice = document.createElement("div");
+      choice.className = "draw-choice";
+      choice.dataset.testid = "draw-choice";
+      choice.innerHTML = `<p>Draw from the stock</p>
+        <div class="draw-choice-row">
+          <button type="button" class="btn${state.drawCount === 1 ? " primary" : ""}" data-draw="1">Draw 1</button>
+          <button type="button" class="btn${state.drawCount === 3 ? " primary" : ""}" data-draw="3">Draw 3</button>
+        </div>`;
+      table.appendChild(choice);
+    }
     table.appendChild(board);
 
     root.moves.textContent = String(state.moves);
@@ -472,7 +506,21 @@ export function mount(options = {}) {
     syncPlayClock();
     const now = Date.now();
     root.time.textContent = formatTime(readMeter(now));
-    root.score.textContent = String(timedScore(session.state, now));
+    const parts = scoreParts(session.state, now);
+    root.score.textContent = String(parts.display);
+    let note = document.getElementById("score-note");
+    if (!note && root.score) {
+      note = document.createElement("span");
+      note.id = "score-note";
+      note.dataset.testid = "score-note";
+      note.className = "score-note";
+      root.score.insertAdjacentElement("afterend", note);
+    }
+    if (note) {
+      const text = timePenaltyNote(parts);
+      note.textContent = text;
+      note.hidden = !text;
+    }
   }
 
   function updateMuteButton() {
@@ -488,11 +536,7 @@ export function mount(options = {}) {
       document.querySelector('[data-drop="stock"]')?.classList.add("hint-to");
       return;
     }
-    const fromSel =
-      move.from.zone === "waste"
-        ? `.card[data-zone="waste"]`
-        : `.card[data-zone="${move.from.zone}"][data-index="${move.from.index}"][data-count="${move.from.count ?? 1}"]`;
-    document.querySelector(fromSel)?.classList.add("hint-from");
+    document.querySelector(hintFromSelector(move))?.classList.add("hint-from");
     const toSel =
       move.to.index == null
         ? `[data-drop="${move.to.zone}"]`
@@ -507,10 +551,10 @@ export function mount(options = {}) {
     stats.streak += 1;
     stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
     const time = elapsedMs(session.state, session.state.wonAt);
-    if (stats.bestTimeMs == null || time < stats.bestTimeMs) stats.bestTimeMs = time;
-    if (stats.fewestMoves == null || session.state.moves < stats.fewestMoves) {
-      stats.fewestMoves = session.state.moves;
-    }
+    const judged = notePersonalBest(stats, { timeMs: time, moves: session.state.moves });
+    stats.bestTimeMs = judged.stats.bestTimeMs;
+    stats.fewestMoves = judged.stats.fewestMoves;
+    session.bestNote = judged.note;
     creditDaily();
   }
 
@@ -611,6 +655,7 @@ export function mount(options = {}) {
     showOverlay(
       `<div class="modal win" data-testid="win-modal">
         <p class="big">You won</p>
+        ${winCelebrateHTML()}
         <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt)} points</p>
         <ul class="stats-line">
           <li data-testid="win-count"><span>Wins</span>${stats.won} / ${playedShown}</li>
@@ -618,9 +663,11 @@ export function mount(options = {}) {
           <li><span>Best time</span>${stats.bestTimeMs == null ? "—" : formatTime(stats.bestTimeMs)}</li>
           <li><span>Fewest moves</span>${stats.fewestMoves ?? "—"}</li>
         </ul>
-        ${winScreenTipHTML(stats.streak)}
+        ${personalBestHTML(session.bestNote)}
         ${dailyDoneHTML()}
+        ${s.daily === todayKey() ? tomorrowDealHTML() : ""}
         ${pickResultHTML()}
+        ${winScreenTipHTML(stats.streak)}
         <div class="modal-actions">
           <button class="btn primary" data-act="again">Play again</button>
         </div>
@@ -644,6 +691,7 @@ export function mount(options = {}) {
       <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
+      <p>The score on the board is the move score minus 2 points for every 10 seconds. That time cost shows beside the score. Turning the waste over costs 20 points in Draw 3 and 100 in Draw 1. The cost is already in the move score, and the status line names it.</p>
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
       <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
@@ -655,6 +703,14 @@ export function mount(options = {}) {
   }
 
   function confirmNew(drawCount, extra = {}) {
+    if (extra.daily) {
+      startDaily(drawCount);
+      return;
+    }
+    if (isDailyBoard(session.state) && !extra.pick) {
+      startNewGame(drawCount);
+      return;
+    }
     if (session.state.moves > 0 && !session.state.won) {
       const dailyAttr = extra.daily ? ` data-daily="1"` : "";
       const pickAttr = extra.pick ? ` data-pick="1"` : "";
@@ -679,9 +735,14 @@ export function mount(options = {}) {
       seed = extra.seed;
       drawCount = extra.drawCount ?? session.state.drawCount;
     }
-    const previousDaily = session.state?.daily || null;
-    const previousPick = session.state?.pick || null;
-    if (session.state.moves > 0 && !session.state.won) session.stats.streak = 0;
+    const previous = session.state;
+    const previousDaily = previous?.daily || null;
+    const previousPick = previous?.pick || null;
+    const startingDaily = !!(extra.dailyKey && !extra.pickKey);
+    if (abandonsStreak(previous, { toDaily: startingDaily })) session.stats.streak = 0;
+    session.slots = placeBoard(session.slots, previous, session.history, Date.now(), {
+      dropCasual: (state) => !!state?.won,
+    });
     hideOverlay();
     session.history = [];
     session.clockPlayed = false;
@@ -725,7 +786,7 @@ export function mount(options = {}) {
   }
 
   function statusForSuccess(result, to) {
-    if (result.recycled) return "Recycled the waste.";
+    if (result.recycled) return `Recycled the waste. ${recycleNote(session.state.drawCount)}`;
     if (result.drawn != null) return "Drew from the stock.";
     if (result.flipped) return "Card turned over.";
     if (to?.zone === "foundation" || result.foundationIndex != null) return "Moved to the foundation.";
@@ -746,6 +807,7 @@ export function mount(options = {}) {
     session.state = result.state;
     session.selected = null;
     session.hintMove = null;
+    markGlow(result);
     if (session.state.won) recordWin();
     persist();
     render();
@@ -787,18 +849,38 @@ export function mount(options = {}) {
     }
   }
 
+  function markGlow(result) {
+    session.glow = {
+      columns: result?.revealedColumns || [],
+      foundations: result?.completedFoundations || [],
+    };
+    if (session.glowTimer) window.clearTimeout(session.glowTimer);
+    if (session.glow.columns.length || session.glow.foundations.length) {
+      session.glowTimer = window.setTimeout(() => {
+        session.glow = { columns: [], foundations: [] };
+        session.glowTimer = 0;
+        render();
+      }, 1800);
+    }
+  }
+
   function doHint() {
+    const move = findHint(session.state);
+    if (move) {
+      session.hintMove = move;
+      render();
+      if (move.kind === "draw") setStatus("Draw from the stock.");
+      else setStatus("A legal move is highlighted.");
+      return move;
+    }
+    session.hintMove = null;
     if (showIfStuck()) {
       render();
       return null;
     }
-    const move = findHint(session.state);
-    session.hintMove = move;
     render();
-    if (!move) setStatus("No useful moves — try undo or a new game.");
-    else if (move.kind === "draw") setStatus("Draw from the stock.");
-    else setStatus("A legal move is highlighted.");
-    return move;
+    setStatus("No useful moves — try undo or a new game.");
+    return null;
   }
 
   function doAuto(from) {
@@ -930,6 +1012,7 @@ export function mount(options = {}) {
   function onPointerDown(event) {
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;
+    if (event.target.closest("[data-testid='draw-choice']")) return;
     resumeAudio();
     const cardEl = event.target.closest(".card");
     const slot = event.target.closest("[data-drop]");
@@ -996,6 +1079,12 @@ export function mount(options = {}) {
   }
 
   listen(root.table, "pointerdown", onPointerDown);
+  listen(root.table, "click", (event) => {
+    const btn = event.target.closest("[data-testid='draw-choice'] [data-draw]");
+    if (!btn) return;
+    event.preventDefault();
+    confirmNew(Number(btn.dataset.draw));
+  });
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
   listen(window, "pointercancel", () => {
@@ -1085,7 +1174,7 @@ export function mount(options = {}) {
   persist();
   render();
   if (bootPickConfirm) confirmNew(1, { pick: true });
-  else if (bootDailyConfirm) confirmNew(urlDraw ?? session.state.drawCount, { daily: true });
+  else if (session.state?.won) showWin();
   else if (!showIfStuck()) setStatus("Move cards on the tableau, or draw from the stock.");
 
   return {

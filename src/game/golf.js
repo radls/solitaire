@@ -60,6 +60,15 @@ export function score(state) {
   return cardsLeft(state);
 }
 
+/** Copy for a loss that left 1–3 column cards. A cleared board is a win, not a near miss. */
+export function nearMissLine(state) {
+  if (!isRoundOver(state) || isCleared(state)) return "";
+  const left = cardsLeft(state);
+  if (left < 1 || left > 3) return "";
+  const word = left === 1 ? "card" : "cards";
+  return `So close — ${left} ${word} left`;
+}
+
 export function elapsedMs(state, now = Date.now()) {
   return elapsed(state, now);
 }

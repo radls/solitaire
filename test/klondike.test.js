@@ -18,6 +18,10 @@ import {
   isWon,
   listLegalMoves,
   moveCards,
+  recycleNote,
+  scoreParts,
+  stockCanEnter,
+  timePenaltyNote,
   timedScore,
   top,
 } from "../src/game/klondike.js";
@@ -126,6 +130,18 @@ describe("dealPlayable", () => {
     expect(state.seed).toBe(27);
     expect(isStuck(state)).toBe(true);
     expect(layout(state)).toEqual(layout(deal({ seed: 27, drawCount: 3 })));
+  });
+
+  it("skips a draw-3 deal whose stock never comes into play", () => {
+    const dead = deal({ seed: 318285880, drawCount: 3 });
+    expect(dead.stock).toHaveLength(24);
+    expect(isStuck(dead)).toBe(false);
+    expect(stockCanEnter(dead)).toBe(false);
+    const script = scripted([318285880, 1]);
+    const state = dealPlayable({ drawCount: 3, random: script.random, tries: 3 });
+    expect(script.used).toEqual([318285880, 1]);
+    expect(stockCanEnter(state)).toBe(true);
+    expect(state.seed).toBe(1);
   });
 
   it("does not redraw a playable draw-1 of the same seed", () => {

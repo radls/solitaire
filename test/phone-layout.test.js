@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  canShrinkFan,
   fanPeek,
   growKlondikePeeks,
   kbdTipsHTML,
-  klondikeLayoutKey,
-  measureBoardSiblings,
   shrinkToFit,
   tightenUntilFit,
   touchTipsHTML,
@@ -79,66 +76,6 @@ describe("growKlondikePeeks", () => {
       piles: faceUp(20),
     });
     expect(grown).toEqual({ peekUp: 15, peekDown: 8 });
-  });
-});
-
-describe("sibling measurement", () => {
-  it("counts the draw choice and not the empty stretch under the board", () => {
-    const board = {
-      getBoundingClientRect: () => ({ top: 200, bottom: 500, height: 300 }),
-    };
-    const choice = {
-      getBoundingClientRect: () => ({ top: 100, bottom: 168, height: 68 }),
-    };
-    const table = {
-      children: [choice, board],
-      getBoundingClientRect: () => ({ top: 80, bottom: 900, height: 820 }),
-    };
-    const previous = globalThis.getComputedStyle;
-    globalThis.getComputedStyle = (el) => {
-      if (el === table) {
-        return { paddingTop: "16px", paddingBottom: "8px", borderTopWidth: "0px", borderBottomWidth: "0px" };
-      }
-      if (el === choice) return { marginTop: "0px", marginBottom: "12px" };
-      return { marginTop: "0px", marginBottom: "0px" };
-    };
-    try {
-      // Geometric slack would be (200-80-16) + (900-8-500) = 496.
-      // The choice's margin box is 68 + 12. The stretched table's empty
-      // region is not a sibling and must not be reserved.
-      expect(measureBoardSiblings(table, board)).toBe(80);
-    } finally {
-      globalThis.getComputedStyle = previous;
-    }
-  });
-});
-
-describe("fan shrink", () => {
-  it("shrinks only when the free column can hold one card", () => {
-    expect(canShrinkFan(170, 170)).toBe(true);
-    expect(canShrinkFan(171, 170)).toBe(true);
-    expect(canShrinkFan(169, 170)).toBe(false);
-    expect(canShrinkFan(1, 170)).toBe(false);
-    expect(canShrinkFan(0, 170)).toBe(false);
-    expect(canShrinkFan(-40, 170)).toBe(false);
-  });
-});
-
-describe("klondike layout key", () => {
-  const columns = [[{ faceUp: true }], [{ faceUp: false }, { faceUp: true }]];
-
-  it("stays the same when a card is only selected", () => {
-    const key = klondikeLayoutKey({ width: 1280, height: 800, choiceVisible: true, columns });
-    expect(klondikeLayoutKey({ width: 1280, height: 800, choiceVisible: true, columns })).toBe(key);
-  });
-
-  it("changes on resize, a new deal, or the draw choice showing or hiding", () => {
-    const base = { width: 1280, height: 800, choiceVisible: true, columns };
-    const key = klondikeLayoutKey(base);
-    expect(klondikeLayoutKey({ ...base, width: 390, height: 844 })).not.toBe(key);
-    expect(klondikeLayoutKey({ ...base, choiceVisible: false })).not.toBe(key);
-    const dealt = [[{ faceUp: false }, { faceUp: false }, { faceUp: true }]];
-    expect(klondikeLayoutKey({ ...base, columns: dealt })).not.toBe(key);
   });
 });
 

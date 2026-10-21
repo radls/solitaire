@@ -51,53 +51,6 @@ export function fanPeek(natural, cardH, avail, steps) {
   return Math.max(1, fill);
 }
 
-/**
- * Shrink the fan only when the free column can still hold one card.
- * Less space than that cannot fit a pile, so shrinking only collapses the hit area.
- */
-export function canShrinkFan(avail, cardH) {
-  const space = Number(avail);
-  const card = Number(cardH);
-  return Number.isFinite(space) && Number.isFinite(card) && card > 0 && space >= card;
-}
-
-/**
- * Fit inputs for Klondike. Selecting a card is not one of them.
- * A resize, a new deal (the column stacks change), or the draw-choice row
- * showing or hiding is.
- */
-export function klondikeLayoutKey({ width, height, choiceVisible, columns } = {}) {
-  const piles = (columns || []).map((pile) => {
-    const cards = Array.isArray(pile) ? pile : [];
-    let up = 0;
-    for (const card of cards) if (card?.faceUp) up += 1;
-    return `${cards.length}:${up}`;
-  }).join(",");
-  return `${Number(width) || 0}x${Number(height) || 0}|${choiceVisible ? 1 : 0}|${piles}`;
-}
-
-/**
- * Height of in-flow siblings around the board.
- * The draw choice sits here and is not part of the card stack.
- * Empty space inside the stretched table is not a sibling: reserving it
- * makes the next fit shrink the columns, which creates more empty space.
- */
-export function measureBoardSiblings(table, board) {
-  if (!table || !board || typeof getComputedStyle !== "function") return 0;
-  let total = 0;
-  const children = table.children ? [...table.children] : [];
-  for (const child of children) {
-    if (child === board) continue;
-    const style = getComputedStyle(child);
-    const rect = typeof child.getBoundingClientRect === "function" ? child.getBoundingClientRect() : null;
-    const height = Number(rect?.height) || 0;
-    const marginTop = parseFloat(style?.marginTop) || 0;
-    const marginBottom = parseFloat(style?.marginBottom) || 0;
-    total += Math.max(0, height) + Math.max(0, marginTop) + Math.max(0, marginBottom);
-  }
-  return total;
-}
-
 /** First step for which `fits` is true. The last step if none are. */
 export function tightenUntilFit(steps, fits) {
   let last = steps?.[0];

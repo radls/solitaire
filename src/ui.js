@@ -355,7 +355,7 @@ export function mount(options = {}) {
           <button type="button" class="btn${state.drawCount === 1 ? " primary" : ""}" data-draw="1">Draw 1</button>
           <button type="button" class="btn${state.drawCount === 3 ? " primary" : ""}" data-draw="3">Draw 3</button>
         </div>`;
-      table.appendChild(choice);
+      topRow.appendChild(choice);
     }
     table.appendChild(board);
 

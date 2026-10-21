@@ -6,7 +6,7 @@ import { cardsLeft, deal as dealGolf, nearMissLine } from "../src/game/golf.js";
 import { makeCard } from "../src/game/cards.js";
 import { emptyState, moveCards, scoreParts } from "../src/game/klondike.js";
 import { hintFromSelector } from "../src/hint-target.js";
-import { notePersonalBest, personalBestHTML } from "../src/records.js";
+import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "../src/records.js";
 import { abandonsStreak, dailyAlongsidePlan, isDailyBoard, placeBoard, takeSlots } from "../src/slots.js";
 
 function C(suit, rank, faceUp = true) {
@@ -175,6 +175,39 @@ describe("personal bests", () => {
     expect(worse.stats.bestScore).toBe(2);
     expect(personalBestHTML("New best")).toContain('data-testid="new-best"');
     expect(personalBestHTML("")).toBe("");
+  });
+
+  it("treats a negative move count or time as missing so a real win can be the best", () => {
+    const judged = notePersonalBest({ fewestMoves: -1, bestTimeMs: -5 }, { moves: 40, timeMs: 12_000 });
+    expect(judged.stats.fewestMoves).toBe(40);
+    expect(judged.stats.bestTimeMs).toBe(12_000);
+    expect(judged.note).toBe("New best");
+    const ignored = notePersonalBest({ fewestMoves: 30 }, { moves: -1 });
+    expect(ignored.stats.fewestMoves).toBe(30);
+    expect(ignored.note).toBe("");
+  });
+
+  it("keeps a negative or zero golf score as a real best", () => {
+    const first = notePersonalBest({}, { score: -2 });
+    expect(first.stats.bestScore).toBe(-2);
+    expect(first.note).toBe("New best");
+    const zeroish = notePersonalBest({ bestScore: -2 }, { score: 0 });
+    expect(zeroish.stats.bestScore).toBe(-2);
+    expect(zeroish.note).toBe("");
+    const better = notePersonalBest({ bestScore: 0 }, { score: -3 });
+    expect(better.stats.bestScore).toBe(-3);
+    expect(better.note).toBe("New best");
+    const opened = notePersonalBest({}, { score: 0 });
+    expect(opened.stats.bestScore).toBe(0);
+    expect(opened.note).toBe("New best");
+  });
+});
+
+describe("win streak", () => {
+  it("coerces a non-numeric streak to 0 before adding one", () => {
+    expect(coerceStreak("x")).toBe(0);
+    expect(bumpWinStreak({ streak: "x", bestStreak: "x" })).toEqual({ streak: 1, bestStreak: 1 });
+    expect(bumpWinStreak({ streak: 4, bestStreak: 4 })).toEqual({ streak: 5, bestStreak: 5 });
   });
 });
 

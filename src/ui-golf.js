@@ -23,7 +23,7 @@ import { shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
-import { notePersonalBest, personalBestHTML } from "./records.js";
+import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
@@ -523,8 +523,9 @@ export function mount(options = {}) {
     if (isCleared(session.state)) {
       session.stats.cleared += 1;
       session.countedClear = true;
-      session.stats.streak = (session.stats.streak || 0) + 1;
-      session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
+      const bumped = bumpWinStreak(session.stats);
+      session.stats.streak = bumped.streak;
+      session.stats.bestStreak = bumped.bestStreak;
       session.missedRound = false;
     } else if (!session.state.daily) {
       session.streakBeforeMiss = session.stats.streak || 0;
@@ -674,10 +675,10 @@ export function mount(options = {}) {
     if (wasCleared && !isCleared(session.state)) {
       session.stats.cleared = Math.max(0, session.stats.cleared - 1);
       session.countedClear = false;
-      session.stats.streak = Math.max(0, (session.stats.streak || 0) - 1);
+      session.stats.streak = Math.max(0, coerceStreak(session.stats.streak) - 1);
     }
     if (wasOver && !session.state.over && session.missedRound) {
-      session.stats.streak = session.streakBeforeMiss || 0;
+      session.stats.streak = coerceStreak(session.streakBeforeMiss);
       session.missedRound = false;
     }
     if (wasOver && !session.state.over && session.improvedBest) {

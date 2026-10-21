@@ -580,7 +580,7 @@ async function golf(page, ctx, P, touch) {
   await tapEl(page, page.locator('[data-drop="stock"]'), touch);
   await page.waitForTimeout(400);
   const t2 = await page.locator('[data-testid="win-modal"]').innerText().catch(() => "");
-  ok(G, P, "stuck round over detected + score 1", (await winVisible(page)) && /round over/i.test(t2) && /\b1\b/.test(t2), t2.replace(/\s+/g, " ").slice(0, 120));
+  ok(G, P, "stuck round over detected + score 1", (await winVisible(page)) && /so close — 1 card left/i.test(t2) && /\b1\b/.test(t2), t2.replace(/\s+/g, " ").slice(0, 120));
   await page.screenshot({ path: `${SHOTS}/${P}-golf-roundover.png` });
   await closeModal(page);
 }

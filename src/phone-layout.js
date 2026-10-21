@@ -51,6 +51,53 @@ export function fanPeek(natural, cardH, avail, steps) {
   return Math.max(1, fill);
 }
 
+/**
+ * Height of in-flow siblings around the board, inside the table's padding.
+ * The draw choice and tomorrow's deal sit here and are not part of the card stack.
+ */
+export function siblingReserve({
+  boardTop,
+  tableTop,
+  padTop = 0,
+  borderTop = 0,
+  boardBottom,
+  tableBottom,
+  padBottom = 0,
+  borderBottom = 0,
+} = {}) {
+  const before = Math.max(0, Number(boardTop) - Number(tableTop) - Number(padTop || 0) - Number(borderTop || 0));
+  const after = Math.max(0, Number(tableBottom) - Number(padBottom || 0) - Number(borderBottom || 0) - Number(boardBottom));
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return 0;
+  return before + after;
+}
+
+export function measureBoardSiblings(table, board) {
+  if (!table || !board || typeof getComputedStyle !== "function") return 0;
+  const style = getComputedStyle(table);
+  const tableBox = table.getBoundingClientRect();
+  const boardBox = board.getBoundingClientRect();
+  return siblingReserve({
+    boardTop: boardBox.top,
+    tableTop: tableBox.top,
+    padTop: parseFloat(style.paddingTop) || 0,
+    borderTop: parseFloat(style.borderTopWidth) || 0,
+    boardBottom: boardBox.bottom,
+    tableBottom: tableBox.bottom,
+    padBottom: parseFloat(style.paddingBottom) || 0,
+    borderBottom: parseFloat(style.borderBottomWidth) || 0,
+  });
+}
+
+/** First step for which `fits` is true. The last step if none are. */
+export function tightenUntilFit(steps, fits) {
+  let last = steps?.[0];
+  for (const step of steps || []) {
+    last = step;
+    if (fits(step)) return step;
+  }
+  return last;
+}
+
 /** Largest integer <= start that `fits`, never below `min`. */
 export function shrinkToFit(start, min, fits) {
   const top = Math.round(start);

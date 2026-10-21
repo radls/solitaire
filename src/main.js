@@ -10,6 +10,7 @@ import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget
 import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { takeSlots } from "./slots.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
+import { tightenUntilFit } from "./phone-layout.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -167,6 +168,9 @@ function showPicker() {
   document.getElementById("status-text").textContent = "Choose a game. Progress is saved on this device.";
   const bedtime = bedtimeLine();
   document.getElementById("status-seed").textContent = "";
+  document.body.style.removeProperty("--picker-gap");
+  document.body.style.removeProperty("--picker-pad-top");
+  document.body.style.removeProperty("--picker-pad-bottom");
   const klondike = load();
   const freecell = loadFreeCell();
   const golf = loadGolf();
@@ -228,6 +232,43 @@ function showPicker() {
       <a class="picker-changelog" href="changelog.html" data-testid="changelog-link">Changelog: reviews, fixes and QA passes</a>
     </div>`;
   syncHooks();
+  fitPicker();
+}
+
+const PICKER_STEPS = [
+  { gap: "", padTop: "", padBottom: "" },
+  { gap: "0.36rem", padTop: "", padBottom: "" },
+  { gap: "0.24rem", padTop: "", padBottom: "" },
+  { gap: "0.12rem", padTop: "0px", padBottom: "0px" },
+];
+
+function applyPickerStep(step) {
+  const style = document.body.style;
+  if (step.gap) style.setProperty("--picker-gap", step.gap);
+  else style.removeProperty("--picker-gap");
+  if (step.padTop) style.setProperty("--picker-pad-top", step.padTop);
+  else style.removeProperty("--picker-pad-top");
+  if (step.padBottom) style.setProperty("--picker-pad-bottom", step.padBottom);
+  else style.removeProperty("--picker-pad-bottom");
+}
+
+/** The page scrolls on the body (overflow-x: hidden computes overflow-y to auto). */
+function pickerOverflows() {
+  const root = document.documentElement;
+  const body = document.body;
+  if (root.scrollHeight > window.innerHeight + 1) return true;
+  return body.scrollHeight > body.clientHeight + 1;
+}
+
+/** Tomorrow's deal is an extra row. Shrink the picker until that row fits the window. */
+function fitPicker() {
+  if (document.body.dataset.game !== "picker") return;
+  if (!pickerOverflows()) return;
+  const step = tightenUntilFit(PICKER_STEPS, (candidate) => {
+    applyPickerStep(candidate);
+    return !pickerOverflows();
+  });
+  applyPickerStep(step);
 }
 
 function dismissTipModal() {
@@ -304,6 +345,14 @@ function pick(id, opts) {
 }
 
 document.getElementById("btn-home").addEventListener("click", () => showPicker());
+window.addEventListener("resize", () => {
+  if (document.body.dataset.game === "picker") fitPicker();
+});
+if (document.fonts?.ready) {
+  document.fonts.ready.then(() => {
+    if (document.body.dataset.game === "picker") fitPicker();
+  });
+}
 document.getElementById("table").addEventListener("click", (event) => {
   if (mode !== "picker") return;
   if (event.target.closest("[data-testid='picker-tip']")) {

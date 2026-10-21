@@ -275,23 +275,27 @@ for (const P of ["desktop", "phone"]) {
   await page.waitForTimeout(500);
   await page.evaluate(() => {
     const s = window.__solitaire.getState();
-    const c = (suit, rank) => ({ id: `${suit}-${rank}`, suit, rank, faceUp: true });
+    const c = (suit, rank, faceUp = true) => ({ id: `${suit}-${rank}`, suit, rank, faceUp });
     s.columns = [[c("hearts", 5)], [c("clubs", 2)], [], [], [], [], []];
-    s.waste = [c("spades", 10)];
-    s.stock = [];
-    s.over = true;
+    s.waste = [c("spades", 12)];
+    s.stock = [c("diamonds", 9, false)];
+    s.over = false;
     s.moves = 18;
     window.__solitaire.setState(s);
   });
   await page.waitForTimeout(250);
+  await page.locator("[data-drop='stock']").click();
+  await page.waitForTimeout(400);
   const near = await page.evaluate(() => ({
     title: document.querySelector("#overlay h2")?.textContent || "",
     primary: document.querySelector("#overlay .btn.primary")?.textContent || "",
     best: document.querySelector("[data-testid='best-score']")?.textContent || "",
+    note: document.querySelector("[data-testid='new-best']")?.textContent || "",
     cascade: document.querySelectorAll("[data-testid='celebrate'] .cascade-card").length,
+    over: !!window.__solitaire.getState().over,
   }));
-  ok(P, "1 near miss names the cards and Try again", near.title === "So close — 2 cards left" && near.primary === "Try again" && near.cascade === 0, JSON.stringify(near));
-  ok(P, "1 best score stays on the near miss", /4/.test(near.best), near.best);
+  ok(P, "1 near miss names the cards and Try again", near.over === true && near.title === "So close — 2 cards left" && near.primary === "Try again" && near.cascade === 0, JSON.stringify(near));
+  ok(P, "1 near miss judges the best from the real stock draw", /2/.test(near.best) && near.note === "New best", JSON.stringify(near));
   await page.screenshot({ path: `${SH}/${P}-golf-near.png` });
   await ctx.close();
 

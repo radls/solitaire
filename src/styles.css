@@ -764,7 +764,7 @@ html[data-theme="night"] #meter-time-wrap {
 .score-note {
   display: block;
   margin-top: 0.12rem;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--gold);
@@ -888,16 +888,24 @@ html[data-theme="night"] .celebrate[data-glow="1"] {
 .picker {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.5rem;
+  gap: var(--picker-gap, 0.5rem);
   width: min(44rem, 100%);
   min-width: 0;
   margin: 0.25rem auto 0.1rem;
 }
 
+.picker > .tomorrow-deal {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
 @media (min-width: 641px) {
   body[data-game="picker"] .table {
-    padding-top: 0.45rem;
-    padding-bottom: 0.15rem;
+    padding-top: var(--picker-pad-top, 0.45rem);
+    padding-bottom: var(--picker-pad-bottom, 0.15rem);
   }
 }
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { fanPeek, growKlondikePeeks, kbdTipsHTML, shrinkToFit, touchTipsHTML } from "../src/phone-layout.js";
+import {
+  fanPeek,
+  growKlondikePeeks,
+  kbdTipsHTML,
+  shrinkToFit,
+  siblingReserve,
+  tightenUntilFit,
+  touchTipsHTML,
+} from "../src/phone-layout.js";
 
 describe("fanPeek", () => {
   it("grows the strip up to 45% of card height", () => {
@@ -69,6 +77,44 @@ describe("growKlondikePeeks", () => {
       piles: faceUp(20),
     });
     expect(grown).toEqual({ peekUp: 15, peekDown: 8 });
+  });
+});
+
+describe("siblingReserve", () => {
+  it("counts the draw choice between the table padding and the board", () => {
+    expect(
+      siblingReserve({
+        tableTop: 100,
+        borderTop: 0,
+        padTop: 16,
+        boardTop: 190,
+        boardBottom: 700,
+        tableBottom: 708,
+        padBottom: 8,
+        borderBottom: 0,
+      }),
+    ).toBe(74);
+  });
+
+  it("is zero when the board fills the table padding box", () => {
+    expect(
+      siblingReserve({
+        tableTop: 0,
+        padTop: 10,
+        boardTop: 10,
+        boardBottom: 400,
+        tableBottom: 408,
+        padBottom: 8,
+      }),
+    ).toBe(0);
+  });
+});
+
+describe("tightenUntilFit", () => {
+  it("keeps the first step that fits and falls through to the last when none do", () => {
+    expect(tightenUntilFit(["0.5rem", "0.36rem", "0.24rem"], (gap) => gap === "0.24rem")).toBe("0.24rem");
+    expect(tightenUntilFit(["0.5rem", "0.36rem"], () => true)).toBe("0.5rem");
+    expect(tightenUntilFit(["0.5rem", "0.12rem"], () => false)).toBe("0.12rem");
   });
 });
 

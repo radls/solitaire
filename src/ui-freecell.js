@@ -31,7 +31,7 @@ import {
   tomorrowDealHTML,
 } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
-import { notePersonalBest, personalBestHTML } from "./records.js";
+import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
@@ -666,8 +666,9 @@ export function mount(options = {}) {
         session.countedPlay = true;
       }
       session.stats.won += 1;
-      session.stats.streak = (session.stats.streak || 0) + 1;
-      session.stats.bestStreak = Math.max(session.stats.bestStreak || 0, session.stats.streak);
+      const bumped = bumpWinStreak(session.stats);
+      session.stats.streak = bumped.streak;
+      session.stats.bestStreak = bumped.bestStreak;
       const judged = notePersonalBest(session.stats, {
         timeMs: elapsedMs(session.state, session.state.wonAt || Date.now()),
         moves: session.state.moves,
@@ -830,7 +831,7 @@ export function mount(options = {}) {
     session.winShown = false;
     if (wasWin && !session.state.won) {
       session.stats.won = Math.max(0, session.stats.won - 1);
-      session.stats.streak = Math.max(0, (session.stats.streak || 0) - 1);
+      session.stats.streak = Math.max(0, coerceStreak(session.stats.streak) - 1);
       session.countedWin = false;
     }
     hideOverlay();

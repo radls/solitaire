@@ -30,7 +30,8 @@ import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTM
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { hintFromSelector } from "./hint-target.js";
-import { notePersonalBest, personalBestHTML } from "./records.js";
+import { scheduleGlowClear, stopBoardPaint } from "./board-timers.js";
+import { bumpWinStreak, notePersonalBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
@@ -40,6 +41,7 @@ import {
   kbdTipsHTML,
   layoutBottomInset,
   listenLayout,
+  measureBoardSiblings,
   shrinkToFit,
   syncThumbDisabled,
   touchTipsHTML,
@@ -115,6 +117,7 @@ export function mount(options = {}) {
     clockPlayed: false,
     bestNote: "",
     glow: { columns: [], foundations: [] },
+    alive: true,
     glowTimer: 0,
   };
 
@@ -253,6 +256,7 @@ export function mount(options = {}) {
   }
 
   function render() {
+    if (session.alive === false) return;
     const state = session.state;
     const table = root.table;
     table.innerHTML = "";
@@ -417,10 +421,11 @@ export function mount(options = {}) {
     const headerH = document.querySelector(".topbar")?.offsetHeight ?? 0;
     const statusH = document.querySelector(".status")?.offsetHeight ?? 0;
     const topH = board.querySelector(".row.top")?.offsetHeight || cardH;
+    const siblings = measureBoardSiblings(root.table, board);
 
     if (window.innerWidth <= 600) {
       const contentSpace = Math.floor(
-        window.innerHeight - layoutBottomInset() - headerH - statusH - verticalChrome(board) - 4,
+        window.innerHeight - layoutBottomInset() - headerH - statusH - verticalChrome(board) - siblings - 4,
       );
       const fitsWidth = (w) => {
         const ch = Math.round(w * 1.42);
@@ -460,10 +465,10 @@ export function mount(options = {}) {
       return;
     }
 
-    const avail = window.innerHeight - layoutBottomInset() - headerH - statusH - topH - verticalChrome(board) - 4;
+    const avail = window.innerHeight - layoutBottomInset() - headerH - statusH - topH - verticalChrome(board) - siblings - 4;
     const fits = (up, down) =>
       session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
-    if (avail > cardH && !fits(peekUp, peekDown)) {
+    if (avail > 0 && !fits(peekUp, peekDown)) {
       let lo = 0;
       let hi = 1;
       for (let i = 0; i < 14; i++) {
@@ -548,8 +553,9 @@ export function mount(options = {}) {
     countPlay();
     const stats = session.stats;
     stats.won += 1;
-    stats.streak += 1;
-    stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
+    const bumped = bumpWinStreak(stats);
+    stats.streak = bumped.streak;
+    stats.bestStreak = bumped.bestStreak;
     const time = elapsedMs(session.state, session.state.wonAt);
     const judged = notePersonalBest(stats, { timeMs: time, moves: session.state.moves });
     stats.bestTimeMs = judged.stats.bestTimeMs;
@@ -854,13 +860,14 @@ export function mount(options = {}) {
       columns: result?.revealedColumns || [],
       foundations: result?.completedFoundations || [],
     };
-    if (session.glowTimer) window.clearTimeout(session.glowTimer);
     if (session.glow.columns.length || session.glow.foundations.length) {
-      session.glowTimer = window.setTimeout(() => {
+      scheduleGlowClear(session, () => {
         session.glow = { columns: [], foundations: [] };
-        session.glowTimer = 0;
         render();
-      }, 1800);
+      });
+    } else if (session.glowTimer) {
+      window.clearTimeout(session.glowTimer);
+      session.glowTimer = 0;
     }
   }
 
@@ -1093,6 +1100,7 @@ export function mount(options = {}) {
     session.drag = null;
   });
   listenLayout(listen, fit);
+  if (document.fonts?.ready) document.fonts.ready.then(() => fit());
 
   const onNew = () => confirmNew(session.state.drawCount);
   listen(document.getElementById("btn-new"), "click", onNew);
@@ -1207,6 +1215,7 @@ export function mount(options = {}) {
     },
     historyLength: () => session.history.length,
     unmount() {
+      stopBoardPaint(session);
       persist();
       ac.abort();
       window.clearInterval(timer);

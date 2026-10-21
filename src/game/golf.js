@@ -60,6 +60,17 @@ export function score(state) {
   return cardsLeft(state);
 }
 
+/**
+ * Lowest score the rules can record.
+ * A cleared board scores minus the cards still in the stock.
+ * Drawing only raises that number, so the minimum is a clear that never draws:
+ * the opening stock, which is the deck minus the seven columns and the first waste card.
+ */
+export function minimumScore() {
+  const openingStock = buildDeck().length - COLUMN_COUNT * COLUMN_ROWS - 1;
+  return -openingStock;
+}
+
 /** Copy for a loss that left 1–3 column cards. A cleared board is a win, not a near miss. */
 export function nearMissLine(state) {
   if (!isRoundOver(state) || isCleared(state)) return "";

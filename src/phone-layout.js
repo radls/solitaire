@@ -52,40 +52,50 @@ export function fanPeek(natural, cardH, avail, steps) {
 }
 
 /**
- * Height of in-flow siblings around the board, inside the table's padding.
- * The draw choice and tomorrow's deal sit here and are not part of the card stack.
+ * Shrink the fan only when the free column can still hold one card.
+ * Less space than that cannot fit a pile, so shrinking only collapses the hit area.
  */
-export function siblingReserve({
-  boardTop,
-  tableTop,
-  padTop = 0,
-  borderTop = 0,
-  boardBottom,
-  tableBottom,
-  padBottom = 0,
-  borderBottom = 0,
-} = {}) {
-  const before = Math.max(0, Number(boardTop) - Number(tableTop) - Number(padTop || 0) - Number(borderTop || 0));
-  const after = Math.max(0, Number(tableBottom) - Number(padBottom || 0) - Number(borderBottom || 0) - Number(boardBottom));
-  if (!Number.isFinite(before) || !Number.isFinite(after)) return 0;
-  return before + after;
+export function canShrinkFan(avail, cardH) {
+  const space = Number(avail);
+  const card = Number(cardH);
+  return Number.isFinite(space) && Number.isFinite(card) && card > 0 && space >= card;
 }
 
+/**
+ * Fit inputs for Klondike. Selecting a card is not one of them.
+ * A resize, a new deal (the column stacks change), or the draw-choice row
+ * showing or hiding is.
+ */
+export function klondikeLayoutKey({ width, height, choiceVisible, columns } = {}) {
+  const piles = (columns || []).map((pile) => {
+    const cards = Array.isArray(pile) ? pile : [];
+    let up = 0;
+    for (const card of cards) if (card?.faceUp) up += 1;
+    return `${cards.length}:${up}`;
+  }).join(",");
+  return `${Number(width) || 0}x${Number(height) || 0}|${choiceVisible ? 1 : 0}|${piles}`;
+}
+
+/**
+ * Height of in-flow siblings around the board.
+ * The draw choice sits here and is not part of the card stack.
+ * Empty space inside the stretched table is not a sibling: reserving it
+ * makes the next fit shrink the columns, which creates more empty space.
+ */
 export function measureBoardSiblings(table, board) {
   if (!table || !board || typeof getComputedStyle !== "function") return 0;
-  const style = getComputedStyle(table);
-  const tableBox = table.getBoundingClientRect();
-  const boardBox = board.getBoundingClientRect();
-  return siblingReserve({
-    boardTop: boardBox.top,
-    tableTop: tableBox.top,
-    padTop: parseFloat(style.paddingTop) || 0,
-    borderTop: parseFloat(style.borderTopWidth) || 0,
-    boardBottom: boardBox.bottom,
-    tableBottom: tableBox.bottom,
-    padBottom: parseFloat(style.paddingBottom) || 0,
-    borderBottom: parseFloat(style.borderBottomWidth) || 0,
-  });
+  let total = 0;
+  const children = table.children ? [...table.children] : [];
+  for (const child of children) {
+    if (child === board) continue;
+    const style = getComputedStyle(child);
+    const rect = typeof child.getBoundingClientRect === "function" ? child.getBoundingClientRect() : null;
+    const height = Number(rect?.height) || 0;
+    const marginTop = parseFloat(style?.marginTop) || 0;
+    const marginBottom = parseFloat(style?.marginBottom) || 0;
+    total += Math.max(0, height) + Math.max(0, marginTop) + Math.max(0, marginBottom);
+  }
+  return total;
 }
 
 /** First step for which `fits` is true. The last step if none are. */

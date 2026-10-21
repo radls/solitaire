@@ -13,6 +13,7 @@ import {
   isCleared,
   isRoundOver,
   listLegalMoves,
+  minimumScore,
   playColumn,
   score,
 } from "../src/game/golf.js";
@@ -265,6 +266,16 @@ describe("round over and score", () => {
     expect(isCleared(clear)).toBe(true);
     expect(isRoundOver(clear)).toBe(true);
     expect(score(clear)).toBe(-1);
+  });
+
+  it("bottoms out at the opening stock when the columns clear without a draw", () => {
+    const state = deal({ seed: 11 });
+    for (const pile of state.columns) pile.length = 0;
+    const openingStock = buildDeck().length - state.columns.length * 5 - 1;
+    expect(state.stock).toHaveLength(openingStock);
+    expect(score(state)).toBe(-openingStock);
+    expect(minimumScore()).toBe(score(state));
+    expect(minimumScore()).toBe(-16);
   });
 });
 

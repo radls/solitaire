@@ -36,9 +36,11 @@ import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBo
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
+  canShrinkFan,
   growKlondikePeeks,
   isPhonePortrait,
   kbdTipsHTML,
+  klondikeLayoutKey,
   layoutBottomInset,
   listenLayout,
   measureBoardSiblings,
@@ -119,6 +121,7 @@ export function mount(options = {}) {
     glow: { columns: [], foundations: [] },
     alive: true,
     glowTimer: 0,
+    layoutKey: "",
   };
 
   const params = new URLSearchParams(location.search);
@@ -189,8 +192,10 @@ export function mount(options = {}) {
   }
 
   function setStatus(text) {
+    const before = root.status?.offsetHeight ?? 0;
     root.status.textContent = text;
-    if (window.innerWidth <= 600) requestAnimationFrame(() => fit());
+    const after = root.status?.offsetHeight ?? 0;
+    if (after !== before) scheduleFit(true);
   }
 
   function formatTime(ms) {
@@ -370,8 +375,7 @@ export function mount(options = {}) {
     refreshMeters();
     applyHintHighlight();
     updateMuteButton();
-    fit();
-    requestAnimationFrame(() => fit());
+    scheduleFit();
   }
 
   function clearLayoutVars() {
@@ -406,14 +410,41 @@ export function mount(options = {}) {
     style.setProperty("--waste-spread", width < 720 ? "12px" : "20px");
   }
 
+  function layoutKey() {
+    const state = session.state;
+    return klondikeLayoutKey({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      choiceVisible: !!(state && state.moves === 0 && !state.won),
+      columns: state?.tableau,
+    });
+  }
+
+  function scheduleFit(force = false) {
+    const key = layoutKey();
+    if (!force && key === session.layoutKey) return;
+    if (!fit()) {
+      requestAnimationFrame(() => {
+        if (session.alive === false) return;
+        if (fit()) session.layoutKey = layoutKey();
+      });
+      return;
+    }
+    session.layoutKey = key;
+    requestAnimationFrame(() => {
+      if (session.alive === false || session.layoutKey !== key) return;
+      fit();
+    });
+  }
+
   function fit() {
     const board = root.table?.querySelector(".board");
-    if (!board || !session.state) return;
+    if (!board || !session.state) return false;
     const width = board.clientWidth;
-    if (!width) return;
+    if (!width) return false;
     const gap = width < 800 ? 4 : Math.min(16, Math.round(width * 0.012));
     let cardW = Math.min(120, Math.floor((width - gap * 6) / 7));
-    if (cardW < 28 && window.innerWidth > 600) return;
+    if (cardW < 28 && window.innerWidth > 600) return false;
     cardW = Math.max(24, cardW);
     let cardH = Math.round(cardW * 1.42);
     let peekUp = Math.round(cardW * 0.3);
@@ -440,7 +471,7 @@ export function mount(options = {}) {
       const avail = contentSpace - cardH;
       const fits = (up, down) =>
         session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
-      if (avail > 0 && !fits(peekUp, peekDown)) {
+      if (canShrinkFan(avail, cardH) && !fits(peekUp, peekDown)) {
         let lo = 0;
         let hi = 1;
         for (let i = 0; i < 14; i++) {
@@ -462,13 +493,13 @@ export function mount(options = {}) {
         peekDown = grown.peekDown;
       }
       applyFit(cardW, cardH, peekUp, peekDown, gap, width);
-      return;
+      return true;
     }
 
     const avail = window.innerHeight - layoutBottomInset() - headerH - statusH - topH - verticalChrome(board) - siblings - 4;
     const fits = (up, down) =>
       session.state.tableau.every((pile) => pileHeight(pile, cardH, up, down) <= avail);
-    if (avail > 0 && !fits(peekUp, peekDown)) {
+    if (canShrinkFan(avail, cardH) && !fits(peekUp, peekDown)) {
       let lo = 0;
       let hi = 1;
       for (let i = 0; i < 14; i++) {
@@ -487,6 +518,7 @@ export function mount(options = {}) {
       }
     }
     applyFit(cardW, cardH, peekUp, peekDown, gap, width);
+    return true;
   }
 
   function nudgeBoard(from) {
@@ -1099,8 +1131,12 @@ export function mount(options = {}) {
     if (session.drag?.ghost) endDrag(-1, -1);
     session.drag = null;
   });
-  listenLayout(listen, fit);
-  if (document.fonts?.ready) document.fonts.ready.then(() => fit());
+  listenLayout(listen, () => scheduleFit());
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(() => {
+      if (session.alive !== false) scheduleFit(true);
+    });
+  }
 
   const onNew = () => confirmNew(session.state.drawCount);
   listen(document.getElementById("btn-new"), "click", onNew);

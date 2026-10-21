@@ -6,6 +6,7 @@ import { cardsLeft, deal as dealGolf, nearMissLine } from "../src/game/golf.js";
 import { makeCard } from "../src/game/cards.js";
 import { emptyState, moveCards, scoreParts } from "../src/game/klondike.js";
 import { hintFromSelector } from "../src/hint-target.js";
+import { minimumScore } from "../src/game/golf.js";
 import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "../src/records.js";
 import { abandonsStreak, dailyAlongsidePlan, isDailyBoard, placeBoard, takeSlots } from "../src/slots.js";
 
@@ -187,6 +188,33 @@ describe("personal bests", () => {
     expect(ignored.note).toBe("");
   });
 
+  it("treats a move count or time of zero as missing", () => {
+    const judged = notePersonalBest({ fewestMoves: 0, bestTimeMs: 0 }, { moves: 40, timeMs: 12_000 });
+    expect(judged.stats.fewestMoves).toBe(40);
+    expect(judged.stats.bestTimeMs).toBe(12_000);
+    expect(judged.note).toBe("New best");
+    const ignored = notePersonalBest({ fewestMoves: 30, bestTimeMs: 8_000 }, { moves: 0, timeMs: 0 });
+    expect(ignored.stats.fewestMoves).toBe(30);
+    expect(ignored.stats.bestTimeMs).toBe(8_000);
+    expect(ignored.note).toBe("");
+  });
+
+  it("clamps a golf best to the opening-stock minimum", () => {
+    const floor = minimumScore();
+    expect(floor).toBe(-16);
+    const corrupt = notePersonalBest({ bestScore: -9999 }, { score: 4 });
+    expect(corrupt.stats.bestScore).toBe(floor);
+    expect(corrupt.note).toBe("");
+    const replaced = notePersonalBest({ bestScore: -9999 }, { score: -9999 });
+    expect(replaced.stats.bestScore).toBe(floor);
+    const earned = notePersonalBest({ bestScore: 3 }, { score: floor });
+    expect(earned.stats.bestScore).toBe(floor);
+    expect(earned.note).toBe("New best");
+    const held = notePersonalBest({ bestScore: floor }, { score: -2 });
+    expect(held.stats.bestScore).toBe(floor);
+    expect(held.note).toBe("");
+  });
+
   it("keeps a negative or zero golf score as a real best", () => {
     const first = notePersonalBest({}, { score: -2 });
     expect(first.stats.bestScore).toBe(-2);
@@ -208,6 +236,12 @@ describe("win streak", () => {
     expect(coerceStreak("x")).toBe(0);
     expect(bumpWinStreak({ streak: "x", bestStreak: "x" })).toEqual({ streak: 1, bestStreak: 1 });
     expect(bumpWinStreak({ streak: 4, bestStreak: 4 })).toEqual({ streak: 5, bestStreak: 5 });
+  });
+
+  it("clamps a negative streak to 0 before adding one", () => {
+    expect(coerceStreak("-5")).toBe(0);
+    expect(coerceStreak(-5)).toBe(0);
+    expect(bumpWinStreak({ streak: "-5", bestStreak: "-3" })).toEqual({ streak: 1, bestStreak: 1 });
   });
 });
 

@@ -1,28 +1,33 @@
+import { minimumScore } from "./game/golf.js";
+
 /**
  * A stored record, or null when it is missing.
- * Moves and time below 0 are corrupt. Golf scores may be negative or zero.
+ * Moves and time at or below 0 are missing. Golf scores may be negative or zero,
+ * but not below the opening-stock minimum.
  */
-function storedNumber(value, allowNegative) {
+function storedNumber(value, { allowNegative = false, minimum = null } = {}) {
   if (value == null || value === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
-  if (!allowNegative && n < 0) return null;
+  if (!allowNegative && n <= 0) return null;
+  if (minimum != null && n < minimum) return minimum;
   return n;
 }
 
 /** Lower is better. A missing previous record counts as a first best. */
-export function judgeBest(previous, value, { allowNegative = false } = {}) {
-  const n = storedNumber(value, allowNegative);
-  const prev = storedNumber(previous, allowNegative);
+export function judgeBest(previous, value, { allowNegative = false, minimum = null } = {}) {
+  const n = storedNumber(value, { allowNegative, minimum });
+  const prev = storedNumber(previous, { allowNegative, minimum });
   if (n == null) return { value: prev, improved: false };
   if (prev == null || n < prev) return { value: n, improved: true };
   return { value: prev, improved: false };
 }
 
-/** Non-numeric streaks (a corrupt "x") are 0 so the next win is 1, not "x1". */
+/** Non-numeric or negative streaks are 0 so the next win is 1, not a count-up from a corrupt value. */
 export function coerceStreak(value) {
   const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
 }
 
 export function bumpWinStreak(stats) {
@@ -49,7 +54,7 @@ export function notePersonalBest(stats, { timeMs, moves, score } = {}) {
     if (judged.improved) kinds.push("moves");
   }
   if (score != null) {
-    const judged = judgeBest(next.bestScore ?? null, score, { allowNegative: true });
+    const judged = judgeBest(next.bestScore ?? null, score, { allowNegative: true, minimum: minimumScore() });
     next.bestScore = judged.value;
     if (judged.improved) kinds.push("score");
   }

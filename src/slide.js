@@ -260,6 +260,7 @@ export function createSlides() {
   let activeRun = 0;
 
   const SWEEP_MS = 120;
+  const KEEP_FRAMES = 3;
 
   function sample(run) {
     if (run !== activeRun) return;
@@ -267,7 +268,11 @@ export function createSlides() {
     for (const job of jobs) {
       if (!job.card?.isConnected) continue;
       const r = job.card.getBoundingClientRect();
-      job.seen = (job.seen || []).filter((it) => now - it.t <= SWEEP_MS);
+      // Keep the last few frames even when they are old: if rAF stalls while the
+      // animation clock runs (WebKit), the card jumps far between two samples, and
+      // the box the user aimed at is the one from before the gap.
+      const prior = job.seen || [];
+      job.seen = prior.filter((it, k) => now - it.t <= SWEEP_MS || k >= prior.length - KEEP_FRAMES);
       job.seen.push({ t: now, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
     }
   }

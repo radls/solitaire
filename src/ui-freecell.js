@@ -21,6 +21,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, markPickDone, saveFreeCell, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
+import { createSlides } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
   dailyDoneText,
@@ -123,6 +124,8 @@ export function mount(options = {}) {
     animating: false,
     landedId: null,
   };
+
+  const slides = createSlides();
 
   const params = new URLSearchParams(location.search);
   const rawDeal = Number(params.get("deal"));
@@ -354,6 +357,7 @@ export function mount(options = {}) {
   }
 
   function render() {
+    const slideFrom = slides.capture(root.table);
     const state = session.state;
     const board = document.createElement("div");
     board.className = "board freecell";
@@ -425,6 +429,8 @@ export function mount(options = {}) {
     requestAnimationFrame(() => {
       if (alive) fit();
     });
+    if (slideFrom.size === 0 && (state.moves ?? 0) === 0) slides.setDeal(true);
+    slides.play(root.table, slideFrom);
   }
 
   function syncPlayClock() {
@@ -519,6 +525,7 @@ export function mount(options = {}) {
 
   // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
   function confirmNewDeal(dealNumber, extra = {}) {
+    interruptMotion();
     if (extra.daily || (isDailyBoard(session.state) && !extra.pick)) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -546,10 +553,15 @@ export function mount(options = {}) {
     syncPlayClock();
   }
 
-  function stopAuto() {
+  function interruptMotion() {
+    slides.interrupt();
+    session.animating = false;
     if (session.autoTimer) window.clearTimeout(session.autoTimer);
     session.autoTimer = 0;
-    session.animating = false;
+  }
+
+  function stopAuto() {
+    interruptMotion();
   }
 
   function creditDaily() {
@@ -685,39 +697,28 @@ export function mount(options = {}) {
     setStatus("All cards are home.");
   }
 
-  function runAutoStep() {
-    session.autoTimer = 0;
-    if (!alive) {
-      session.animating = false;
-      return;
-    }
-    const finishMode = isTriviallySolvable(session.state);
-    const before = session.state;
-    const result = foundationStep(before, { safeOnly: !finishMode });
-    if (!result.ok) {
-      session.animating = false;
-      if (session.state.won || isWon(session.state)) recordWin();
-      else {
-        persist();
-        render();
+  async function pumpAuto(token) {
+    while (slides.chainIs(token) && alive && !session.state.won && !isWon(session.state)) {
+      const finishMode = isTriviallySolvable(session.state);
+      const before = session.state;
+      const result = foundationStep(before, { safeOnly: !finishMode });
+      if (!result.ok) break;
+      session.landedId = foundationLandedId(before, result.state);
+      markFoundationGlow(before, result.state);
+      session.state = result.state;
+      session.selected = null;
+      session.hintMove = null;
+      persist();
+      slides.setFast(true);
+      render();
+      if (session.state.won || isWon(session.state)) {
+        recordWin();
+        break;
       }
-      return;
+      if (isTriviallySolvable(session.state)) setStatus("Finishing…");
+      if (!slides.chainIs(token)) break;
+      await slides.whenDone();
     }
-    session.landedId = foundationLandedId(before, result.state);
-    markFoundationGlow(before, result.state);
-    session.state = result.state;
-    session.selected = null;
-    session.hintMove = null;
-    persist();
-    render();
-    if (session.state.won || isWon(session.state)) {
-      session.animating = false;
-      recordWin();
-      return;
-    }
-    if (isTriviallySolvable(session.state)) setStatus("Finishing…");
-    session.animating = true;
-    session.autoTimer = window.setTimeout(runAutoStep, stepDelay());
   }
 
   function queueAuto() {
@@ -726,9 +727,18 @@ export function mount(options = {}) {
     const finishMode = isTriviallySolvable(session.state);
     const probe = foundationStep(session.state, { safeOnly: !finishMode });
     if (!probe.ok) return;
+    const token = slides.beginChain();
     session.animating = true;
     if (finishMode) setStatus("Finishing…");
-    session.autoTimer = window.setTimeout(runAutoStep, stepDelay());
+    void (async () => {
+      try {
+        await slides.whenDone();
+        if (!slides.chainIs(token) || !alive) return;
+        await pumpAuto(token);
+      } finally {
+        if (slides.chainIs(token)) session.animating = false;
+      }
+    })();
   }
 
   function commit(result, from, to) {
@@ -803,9 +813,13 @@ export function mount(options = {}) {
   }
 
   function doFinish() {
-    if (!alive || session.animating || !root.overlay.hidden) return;
+    if (!alive || !root.overlay.hidden) return;
     if (session.state.won || isWon(session.state)) return;
     if (!isTriviallySolvable(session.state)) return;
+    if (session.animating) {
+      interruptMotion();
+      return;
+    }
     const snapshot = cloneState(session.state);
     session.history.push(snapshot);
     if (session.history.length > HISTORY_CAP) session.history.shift();
@@ -813,14 +827,23 @@ export function mount(options = {}) {
     session.hintMove = null;
     if (root.undo) root.undo.disabled = false;
     syncThumbDisabled();
-    queueAuto();
+    const token = slides.beginChain();
+    session.animating = true;
+    setStatus("Finishing…");
+    void (async () => {
+      try {
+        await pumpAuto(token);
+      } finally {
+        if (slides.chainIs(token)) session.animating = false;
+      }
+    })();
     if (!session.animating && session.history[session.history.length - 1] === snapshot) {
       session.history.pop();
     }
   }
 
   function doUndo() {
-    stopAuto();
+    interruptMotion();
     session.landedId = null;
     if (!session.history.length) return;
     const wasWin = session.countedWin && session.state.won;
@@ -893,6 +916,7 @@ export function mount(options = {}) {
     const drag = session.drag;
     const tilt = drag?.tilt || 0;
     const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
+    const ghosts = slides.capture(root.dragLayer);
     session.drag = null;
     document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
@@ -900,12 +924,19 @@ export function mount(options = {}) {
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to && canMove(drag.from, to)) armCardSettle(ids, tilt);
+    if (to && canMove(drag.from, to)) {
+      slides.prefer(ghosts);
+      armCardSettle(ids, tilt);
+    }
     if (to) {
       const ok = tryMove(drag.from, to);
-      if (!ok) cancelCardSettle();
+      if (!ok) {
+        cancelCardSettle();
+        slides.clearPrefer();
+      }
       return ok;
     }
+    slides.clearPrefer();
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
     nudgeBoard(drag.from);
@@ -957,7 +988,7 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
-    if (session.animating) return;
+    if (session.animating) interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;
     resumeAudio();
@@ -1029,6 +1060,7 @@ export function mount(options = {}) {
   });
   listenLayout(listen, fit);
   function doHint() {
+    interruptMotion();
     const move = findHint(session.state);
     session.hintMove = move;
     render();
@@ -1144,7 +1176,7 @@ export function mount(options = {}) {
     hint: doHint,
     undo: doUndo,
     move(from, to) {
-      if (session.animating) return { ok: false, reason: "finishing", state: session.state };
+      if (session.animating) interruptMotion();
       const result = moveCards(session.state, from, to);
       if (!result.ok) {
         sounds.illegal(session.muted);
@@ -1155,7 +1187,7 @@ export function mount(options = {}) {
       commit(result, from, to);
       return { ok: true, state: session.state };
     },
-    isAnimating: () => session.animating === true,
+    isAnimating: () => session.animating === true || slides.running(),
     historyLength: () => session.history.length,
     listMoves: () => listLegalMoves(session.state),
     unmount() {

@@ -26,6 +26,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, markPickDone, save, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
+import { createSlides } from "./slide.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -118,7 +119,19 @@ export function mount(options = {}) {
     glow: { columns: [], foundations: [] },
     alive: true,
     glowTimer: 0,
+    finishing: false,
+    finishFast: false,
   };
+
+  const slides = createSlides();
+
+  function interruptMotion() {
+    slides.interrupt();
+    session.finishing = false;
+    session.finishFast = false;
+    if (session.autoTimer) window.clearTimeout(session.autoTimer);
+    session.autoTimer = 0;
+  }
 
   const params = new URLSearchParams(location.search);
   const urlSeed = params.has("seed") ? Number(params.get("seed")) : undefined;
@@ -256,6 +269,7 @@ export function mount(options = {}) {
 
   function render() {
     if (session.alive === false) return;
+    const slideFrom = slides.capture(root.table);
     const state = session.state;
     const table = root.table;
     table.innerHTML = "";
@@ -371,6 +385,8 @@ export function mount(options = {}) {
     updateMuteButton();
     fit();
     requestAnimationFrame(() => fit());
+    if (slideFrom.size === 0 && (state.moves ?? 0) === 0) slides.setDeal(true);
+    slides.play(root.table, slideFrom);
   }
 
   function clearLayoutVars() {
@@ -707,6 +723,7 @@ export function mount(options = {}) {
   }
 
   function confirmNew(drawCount, extra = {}) {
+    interruptMotion();
     if (extra.daily) {
       startDaily(drawCount);
       return;
@@ -834,11 +851,13 @@ export function mount(options = {}) {
   }
 
   function doDraw() {
+    interruptMotion();
     const result = draw(session.state);
     commit(result, result.recycled ? "recycle" : "draw", null, { zone: "stock" });
   }
 
   function doUndo() {
+    interruptMotion();
     if (!session.history.length || session.state.won) return;
     session.state = continueClock(session.state, session.history.pop());
     session.state.undoUsed = true;
@@ -870,6 +889,7 @@ export function mount(options = {}) {
   }
 
   function doHint() {
+    interruptMotion();
     const move = findHint(session.state);
     if (move) {
       session.hintMove = move;
@@ -892,19 +912,33 @@ export function mount(options = {}) {
     return commit(autoMove(session.state, from), "place", null, from);
   }
 
-  function doFinish() {
-    if (!canAutoComplete(session.state) || session.autoTimer) return;
-    const step = () => {
-      const result = autoCompleteStep(session.state);
-      if (!result.ok) {
-        session.autoTimer = 0;
-        return;
+  async function doFinish() {
+    if (!canAutoComplete(session.state) || session.state.won) return;
+    if (session.finishing) {
+      session.finishFast = true;
+      slides.finishNow();
+      return;
+    }
+    const token = slides.beginChain();
+    session.finishing = true;
+    session.finishFast = false;
+    try {
+      while (slides.chainIs(token) && canAutoComplete(session.state) && !session.state.won) {
+        const result = autoCompleteStep(session.state);
+        if (!result.ok) break;
+        if (session.finishFast) slides.setInstant(true);
+        else slides.setFast(true);
+        commit(result, "place");
+        if (!slides.chainIs(token)) break;
+        if (session.finishFast) {
+          slides.finishNow();
+          continue;
+        }
+        await slides.whenDone();
       }
-      commit(result, "place");
-      if (!session.state.won) session.autoTimer = window.setTimeout(step, 90);
-      else session.autoTimer = 0;
-    };
-    step();
+    } finally {
+      if (slides.chainIs(token)) session.finishing = false;
+    }
   }
 
   function legalDrop(from, to) {
@@ -974,6 +1008,7 @@ export function mount(options = {}) {
     const drag = session.drag;
     const tilt = drag?.tilt || 0;
     const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
+    const ghosts = slides.capture(root.dragLayer);
     session.drag = null;
     document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
@@ -981,12 +1016,19 @@ export function mount(options = {}) {
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to && legalDrop(drag.from, to)) armCardSettle(ids, tilt);
+    if (to && legalDrop(drag.from, to)) {
+      slides.prefer(ghosts);
+      armCardSettle(ids, tilt);
+    }
     if (to) {
       const ok = tryMove(drag.from, to);
-      if (!ok) cancelCardSettle();
+      if (!ok) {
+        cancelCardSettle();
+        slides.clearPrefer();
+      }
       return ok;
     }
+    slides.clearPrefer();
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
     nudgeBoard(drag.from);
@@ -1023,6 +1065,7 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
+    interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;
     if (event.target.closest("[data-testid='draw-choice']")) return;
@@ -1193,6 +1236,7 @@ export function mount(options = {}) {
   return {
     getState: () => session.state,
     setState(next) {
+      interruptMotion();
       session.state = next;
       session.selected = null;
       session.hintMove = null;
@@ -1208,6 +1252,7 @@ export function mount(options = {}) {
     hint: doHint,
     listMoves: () => listLegalMoves(session.state),
     move(from, to) {
+      interruptMotion();
       const result = moveCards(session.state, from, to);
       if (!result.ok) {
         sounds.illegal(session.muted);
@@ -1219,7 +1264,9 @@ export function mount(options = {}) {
       return { ok: true, state: session.state };
     },
     historyLength: () => session.history.length,
+    isAnimating: () => session.finishing || slides.running(),
     unmount() {
+      interruptMotion();
       stopBoardPaint(session);
       persist();
       ac.abort();

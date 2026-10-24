@@ -64,6 +64,10 @@ html[data-theme="night"] {
     0 1px 0 var(--card-sheen) inset,
     0 1px 0 rgba(0, 0, 0, 0.22),
     0 7px 10px rgba(0, 0, 0, 0.24);
+  --slide-ms: 200ms;
+  --slide-fast-ms: 120ms;
+  --slide-distance: 1;
+  --slide-ease: cubic-bezier(0.16, 0.84, 0.3, 1.12);
 }
 
 html[data-theme="night"] {
@@ -81,6 +85,10 @@ html[data-theme="night"] {
     0 1px 0 var(--card-sheen) inset,
     0 1px 0 rgba(0, 0, 0, 0.16),
     0 4px 7px rgba(0, 0, 0, 0.16);
+  --slide-ms: 240ms;
+  --slide-fast-ms: 150ms;
+  --slide-distance: 0.58;
+  --slide-ease: cubic-bezier(0.45, 0.02, 0.25, 1);
 }
 
 html[data-theme="classic"] {
@@ -648,6 +656,21 @@ html[data-theme="night"] #drag-layer .ghost .card .card-lift::after {
   opacity: 0.28;
 }
 
+/* Slide wrapper sits outside the perspective card so a translate cannot flatten the flip. */
+.card-slide {
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.card-slide > .card {
+  pointer-events: auto;
+}
+
+.card-slide.is-sliding {
+  z-index: 30;
+  will-change: transform;
+}
+
 .corner {
   position: absolute;
   top: 1px;
@@ -953,6 +976,12 @@ html[data-theme="night"] .card.is-settling .card-lift {
   .card.is-turning .card-rotator {
     transform: none !important;
     animation: none !important;
+  }
+
+  .card-slide {
+    transform: none !important;
+    animation: none !important;
+    transition: none !important;
   }
 
   .card.is-turning .card-face.back {
@@ -1347,14 +1376,8 @@ body[data-game="freecell"] .table {
 }
 
 @keyframes fc-land {
-  from {
-    opacity: 0.4;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0.4; }
+  to { opacity: 1; }
 }
 
 .board.freecell .slot.foundation .card.fc-land {

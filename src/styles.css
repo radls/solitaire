@@ -464,10 +464,10 @@ body[data-game="picker"] .meters {
   border-radius: var(--radius);
   position: relative;
   touch-action: none;
-  isolation: isolate;
+  /* Perspective lives here because .card is not transformed. A transform on this
+     element would flatten the flip, and isolation would do the same in WebKit. */
   perspective: var(--card-perspective, 900px);
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
+  -webkit-perspective: var(--card-perspective, 900px);
   box-shadow:
     0 1px 0 var(--card-sheen) inset,
     0 2px 3px rgba(0, 0, 0, 0.28);
@@ -530,18 +530,20 @@ body[data-game="picker"] .meters {
 .card-face {
   position: absolute;
   inset: 0;
-  border-radius: inherit;
   pointer-events: none;
 }
 
-.card-lift,
-.card-rotator {
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
+.card-face {
+  border-radius: var(--radius);
 }
 
+/* One preserve-3d element, and it is the direct child of the perspective card.
+   An extra wrapper, border-radius, or opacity on that element makes WebKit
+   paint the back face flat for the whole turn. */
 .card-rotator {
   transform: rotateY(0deg);
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .card-face {
@@ -566,10 +568,6 @@ body[data-game="picker"] .meters {
   background-size: 7px 7px, 100% 100%, 100% 100%;
 }
 
-.card.is-turning .card-face.back {
-  opacity: 1;
-}
-
 .card-face.back::after {
   content: "";
   position: absolute;
@@ -582,6 +580,35 @@ body[data-game="picker"] .meters {
 
 .card.is-turning .card-rotator {
   animation: card-flip var(--card-flip-ms, 440ms) ease;
+}
+
+/* WebKit paints the back face for the whole rotateY unless the faces swap
+   visibility at the same moment the turn crosses 90deg. ease reaches that
+   angle at 29.3% of the duration. */
+.card.is-turning .card-face.front {
+  animation: card-flip-front var(--card-flip-ms, 440ms) linear both;
+}
+
+.card.is-turning .card-face.back {
+  animation: card-flip-back var(--card-flip-ms, 440ms) linear both;
+}
+
+/* The rotating faces paint the card. The outer box stays transparent so the
+   full rectangle does not show as a blank ivory slab at the edge-on frame. */
+.card.is-turning,
+.pile .card.is-turning:not(:last-child) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.card.is-turning .card-face.front {
+  background: linear-gradient(180deg, var(--ivory-top), var(--ivory));
+  border: 1px solid var(--ivory-edge);
+}
+
+.card.is-turning .card-face.back {
+  border: var(--back-border-width) solid var(--back-border);
 }
 
 .card.selected {
@@ -861,6 +888,16 @@ html[data-theme="night"] #meter-time-wrap {
 @keyframes card-flip {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
+}
+
+@keyframes card-flip-front {
+  0%, 29.3% { opacity: 0; }
+  29.4%, 100% { opacity: 1; }
+}
+
+@keyframes card-flip-back {
+  0%, 29.3% { opacity: 1; }
+  29.4%, 100% { opacity: 0; }
 }
 
 @keyframes card-settle {

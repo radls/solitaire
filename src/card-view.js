@@ -109,6 +109,11 @@ export function cancelCardSettle() {
   settleTilt = 0;
 }
 
+function clearTurning(node) {
+  node.classList.remove("is-turning");
+  delete node.dataset.turning;
+}
+
 function queueTurning(el) {
   flipBatch.push(el);
   if (flipQueued) return;
@@ -119,12 +124,39 @@ function queueTurning(el) {
     flipBatch = [];
     // A deal or undo turns many cards at once. Only a real reveal (1–3) flips.
     if (batch.length > 3) {
-      for (const node of batch) {
-        node.classList.remove("is-turning");
-        delete node.dataset.turning;
-      }
+      for (const node of batch) clearTurning(node);
     }
   });
+}
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// animationend does not fire when the flip animation is suppressed. A timeout
+// still clears the flag if the event never arrives.
+function armFlip(el) {
+  el.classList.add("is-turning");
+  el.dataset.turning = "1";
+  if (prefersReducedMotion()) {
+    clearTurning(el);
+    return;
+  }
+  let timer = 0;
+  const finish = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = 0;
+    el.removeEventListener("animationend", onEnd);
+    clearTurning(el);
+  };
+  const onEnd = (event) => {
+    if (event.animationName !== "card-flip") return;
+    finish();
+  };
+  el.addEventListener("animationend", onEnd);
+  const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--card-flip-ms"));
+  timer = window.setTimeout(finish, (Number.isFinite(ms) ? ms : 700) + 400);
+  queueTurning(el);
 }
 
 export function makeCardElement(card, loc, count, playable, selected) {
@@ -142,19 +174,8 @@ export function makeCardElement(card, loc, count, playable, selected) {
   const prev = faceWasUp.get(card.id);
   faceWasUp.set(card.id, !!card.faceUp);
   const face = card.faceUp ? cardFaceHTML(card) : "";
-  el.innerHTML = `<div class="card-lift"><div class="card-rotator"><div class="card-face front">${face}</div><div class="card-face back"></div></div></div>`;
-  if (card.faceUp && prev === false) {
-    el.classList.add("is-turning");
-    el.dataset.turning = "1";
-    const done = (event) => {
-      if (event.animationName !== "card-flip") return;
-      el.removeEventListener("animationend", done);
-      el.classList.remove("is-turning");
-      delete el.dataset.turning;
-    };
-    el.addEventListener("animationend", done);
-    queueTurning(el);
-  }
+  el.innerHTML = `<div class="card-lift card-rotator"><div class="card-face front">${face}</div><div class="card-face back"></div></div>`;
+  if (card.faceUp && prev === false) armFlip(el);
   if (settleIds.has(card.id)) {
     el.classList.add("is-settling");
     el.dataset.settling = "1";

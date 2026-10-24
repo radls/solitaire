@@ -1,6 +1,6 @@
 import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
-import { makeCardElement } from "./card-view.js";
+import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import {
   apply,
   canPlay,
@@ -19,7 +19,7 @@ import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, markPickDone, saveGolf, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
-import { shakeMoved } from "./motion.js";
+import { paintDragTilt, shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -706,6 +706,7 @@ export function mount(options = {}) {
     if (!ghost) return;
     const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
     ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+    paintDragTilt(ghost, session.drag, x);
   }
 
   function startDrag(from, x, y, originEl) {
@@ -725,6 +726,8 @@ export function mount(options = {}) {
 
   function endDrag(x, y) {
     const drag = session.drag;
+    const tilt = drag?.tilt || 0;
+    const played = drag?.from?.zone === "column" ? exposedCard(drag.from.index) : null;
     session.drag = null;
     document.documentElement.classList.remove("is-dragging");
     if (root.dragLayer) root.dragLayer.innerHTML = "";
@@ -733,7 +736,9 @@ export function mount(options = {}) {
     if (!drag || drag.from?.zone !== "column") return;
     const drop = document.elementFromPoint(x, y)?.closest?.("[data-drop]");
     if (drop?.dataset.zone === "waste") {
-      doApply({ type: "play", col: drag.from.index });
+      if (played && canPlay(played, wasteTop())) armCardSettle([played.id], tilt);
+      const result = doApply({ type: "play", col: drag.from.index });
+      if (!result?.ok) cancelCardSettle();
       return;
     }
     sounds.illegal(session.muted);

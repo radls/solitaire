@@ -1,6 +1,6 @@
 import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
-import { makeCardElement } from "./card-view.js";
+import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import {
   apply,
   cardsInCorners,
@@ -18,7 +18,7 @@ import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, markPickDone, saveKings, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
-import { shakeMoved } from "./motion.js";
+import { paintDragTilt, shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -898,6 +898,7 @@ export function mount(options = {}) {
     if (!ghost) return;
     const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
     ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+    paintDragTilt(ghost, session.drag, x);
   }
 
   function startDrag(from, x, y, originEl) {
@@ -936,6 +937,8 @@ export function mount(options = {}) {
 
   function endDrag(x, y) {
     const drag = session.drag;
+    const tilt = drag?.tilt || 0;
+    const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
     session.drag = null;
     clearDragChrome();
     const to = dropTarget(document.elementFromPoint(x, y));
@@ -946,7 +949,10 @@ export function mount(options = {}) {
       if (session.selected) highlightDrops(session.selected, true);
       return false;
     }
-    return doMove(drag.from, to);
+    if (canDrop(drag.from, to)) armCardSettle(ids, tilt);
+    const result = doMove(drag.from, to);
+    if (!result?.ok) cancelCardSettle();
+    return result;
   }
 
   function onPointerDown(event) {

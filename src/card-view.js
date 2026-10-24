@@ -90,6 +90,43 @@ function cardFaceHTML(card) {
   return `${corner}<div class="pips">${pips}</div>`;
 }
 
+const faceWasUp = new Map();
+const settleIds = new Set();
+let settleTilt = 0;
+let flipBatch = [];
+let flipQueued = false;
+
+/** Remember cards dropped this gesture so the next render can play the settle. */
+export function armCardSettle(ids, tiltDeg = 0) {
+  settleIds.clear();
+  for (const id of ids || []) if (id) settleIds.add(id);
+  const tilt = Number(tiltDeg);
+  settleTilt = Number.isFinite(tilt) ? Math.max(-6, Math.min(6, tilt)) : 0;
+}
+
+export function cancelCardSettle() {
+  settleIds.clear();
+  settleTilt = 0;
+}
+
+function queueTurning(el) {
+  flipBatch.push(el);
+  if (flipQueued) return;
+  flipQueued = true;
+  queueMicrotask(() => {
+    flipQueued = false;
+    const batch = flipBatch;
+    flipBatch = [];
+    // A deal or undo turns many cards at once. Only a real reveal (1–3) flips.
+    if (batch.length > 3) {
+      for (const node of batch) {
+        node.classList.remove("is-turning");
+        delete node.dataset.turning;
+      }
+    }
+  });
+}
+
 export function makeCardElement(card, loc, count, playable, selected) {
   const el = document.createElement("article");
   const color = card.faceUp ? suitColor(card.suit) : "";
@@ -102,6 +139,27 @@ export function makeCardElement(card, loc, count, playable, selected) {
   el.dataset.count = String(count);
   el.setAttribute("role", "button");
   el.setAttribute("aria-label", card.faceUp ? cardName(card) : "Face-down card");
-  if (card.faceUp) el.innerHTML = cardFaceHTML(card);
+  const prev = faceWasUp.get(card.id);
+  faceWasUp.set(card.id, !!card.faceUp);
+  const face = card.faceUp ? cardFaceHTML(card) : "";
+  el.innerHTML = `<div class="card-lift"><div class="card-rotator"><div class="card-face front">${face}</div><div class="card-face back"></div></div></div>`;
+  if (card.faceUp && prev === false) {
+    el.classList.add("is-turning");
+    el.dataset.turning = "1";
+    const done = (event) => {
+      if (event.animationName !== "card-flip") return;
+      el.removeEventListener("animationend", done);
+      el.classList.remove("is-turning");
+      delete el.dataset.turning;
+    };
+    el.addEventListener("animationend", done);
+    queueTurning(el);
+  }
+  if (settleIds.has(card.id)) {
+    el.classList.add("is-settling");
+    el.dataset.settling = "1";
+    el.style.setProperty("--card-tilt", `${settleTilt}deg`);
+    settleIds.delete(card.id);
+  }
   return el;
 }

@@ -69,3 +69,41 @@ export function shakeMoved(from, root) {
   if (typeof queueMicrotask === "function") queueMicrotask(run);
   else run();
 }
+
+const TILT_GAIN = 12;
+const TILT_EASE = 0.32;
+
+/** Ease horizontal pointer velocity into a clamped rotateZ, in degrees. */
+export function stepTilt(prev, vx, maxDeg) {
+  const max = Math.abs(Number(maxDeg) || 0);
+  const target = Math.max(-max, Math.min(max, (Number(vx) || 0) * TILT_GAIN));
+  const from = Number(prev) || 0;
+  const next = from + (target - from) * TILT_EASE;
+  return Math.abs(next) < 0.04 ? 0 : next;
+}
+
+export function dragTiltMax() {
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--card-tilt-max");
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 6;
+  } catch {
+    return 6;
+  }
+}
+
+/** Write --card-tilt on the drag ghost from pointer x. Returns degrees. */
+export function paintDragTilt(ghost, drag, x, now = typeof performance !== "undefined" ? performance.now() : 0) {
+  if (!ghost || !drag) return 0;
+  const prevX = drag.tiltX ?? x;
+  const prevT = drag.tiltT ?? now;
+  const dt = Math.max(16, now - prevT);
+  const vx = (x - prevX) / dt;
+  const tilt = stepTilt(drag.tilt || 0, vx, dragTiltMax());
+  drag.tiltX = x;
+  drag.tiltT = now;
+  drag.tilt = tilt;
+  ghost.style.setProperty("--card-tilt", `${tilt.toFixed(2)}deg`);
+  ghost.dataset.tilt = tilt.toFixed(2);
+  return tilt;
+}

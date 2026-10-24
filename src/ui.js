@@ -1,7 +1,7 @@
 import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
-import { makeCardElement } from "./card-view.js";
+import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import {
   autoCompleteStep,
   autoMove,
@@ -25,7 +25,7 @@ import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, markPickDone, save, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
-import { shakeMoved } from "./motion.js";
+import { paintDragTilt, shakeMoved } from "./motion.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -967,10 +967,13 @@ export function mount(options = {}) {
     const ghost = session.drag?.ghost;
     if (!ghost) return;
     ghost.style.transform = `translate(${x - 28}px, ${y - 20}px)`;
+    paintDragTilt(ghost, session.drag, x);
   }
 
   function endDrag(x, y) {
     const drag = session.drag;
+    const tilt = drag?.tilt || 0;
+    const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
     session.drag = null;
     document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
@@ -978,7 +981,12 @@ export function mount(options = {}) {
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to) return tryMove(drag.from, to);
+    if (to && legalDrop(drag.from, to)) armCardSettle(ids, tilt);
+    if (to) {
+      const ok = tryMove(drag.from, to);
+      if (!ok) cancelCardSettle();
+      return ok;
+    }
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
     nudgeBoard(drag.from);

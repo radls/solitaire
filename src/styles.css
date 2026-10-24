@@ -50,6 +50,37 @@ html[data-theme="night"] {
   --ui: "Outfit", system-ui, sans-serif;
   --display: "Fraunces", Georgia, serif;
   --card-font: "Cormorant Garamond", Georgia, serif;
+  --card-lift-scale: 1.04;
+  --card-lift-y: -3px;
+  --card-tilt-max: 6deg;
+  --card-curl-rx: 4deg;
+  --card-curl-skew: 1.6deg;
+  --card-motion-ms: 160ms;
+  --card-flip-ms: 440ms;
+  --card-settle-ms: 280ms;
+  --card-perspective: 900px;
+  --card-lift-shadow: 0 16px 28px rgba(0, 0, 0, 0.34), 0 4px 10px rgba(0, 0, 0, 0.24);
+  --card-stack-shadow:
+    0 1px 0 var(--card-sheen) inset,
+    0 1px 0 rgba(0, 0, 0, 0.22),
+    0 7px 10px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="night"] {
+  --card-lift-scale: 1.02;
+  --card-lift-y: -1.5px;
+  --card-tilt-max: 3deg;
+  --card-curl-rx: 2deg;
+  --card-curl-skew: 0.6deg;
+  --card-motion-ms: 320ms;
+  --card-flip-ms: 680ms;
+  --card-settle-ms: 0ms;
+  --card-perspective: 1400px;
+  --card-lift-shadow: 0 8px 14px rgba(0, 0, 0, 0.26), 0 2px 5px rgba(0, 0, 0, 0.18);
+  --card-stack-shadow:
+    0 1px 0 var(--card-sheen) inset,
+    0 1px 0 rgba(0, 0, 0, 0.16),
+    0 4px 7px rgba(0, 0, 0, 0.16);
 }
 
 html[data-theme="classic"] {
@@ -433,6 +464,10 @@ body[data-game="picker"] .meters {
   border-radius: var(--radius);
   position: relative;
   touch-action: none;
+  isolation: isolate;
+  perspective: var(--card-perspective, 900px);
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
   box-shadow:
     0 1px 0 var(--card-sheen) inset,
     0 2px 3px rgba(0, 0, 0, 0.28);
@@ -448,6 +483,10 @@ body[data-game="picker"] .meters {
 
 .pile .card:first-child {
   margin-top: 0;
+}
+
+.pile .card:not(:last-child) {
+  box-shadow: var(--card-stack-shadow);
 }
 
 .slot.waste .card,
@@ -486,10 +525,96 @@ body[data-game="picker"] .meters {
   background: var(--back-cross);
 }
 
+.card-lift,
+.card-rotator,
+.card-face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.card-lift,
+.card-rotator {
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+.card-rotator {
+  transform: rotateY(0deg);
+}
+
+.card-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-face.front {
+  transform: translateZ(0.1px);
+  background: transparent;
+}
+
+.card.face-up .card-face.front {
+  background: linear-gradient(180deg, var(--ivory-top), var(--ivory));
+}
+
+.card-face.back {
+  transform: rotateY(180deg) translateZ(0.1px);
+  opacity: 0;
+  background-color: var(--navy);
+  background-image: var(--back-image);
+  background-size: 7px 7px, 100% 100%, 100% 100%;
+}
+
+.card.is-turning .card-face.back {
+  opacity: 1;
+}
+
+.card-face.back::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid var(--back-frame);
+  border-radius: 4px;
+  background: var(--back-cross);
+  pointer-events: none;
+}
+
+.card.is-turning .card-rotator {
+  animation: card-flip var(--card-flip-ms, 440ms) ease;
+}
+
 .card.selected {
   outline: 2px solid var(--outline);
   outline-offset: 1px;
   z-index: 5;
+}
+
+.card.selected .card-lift,
+#drag-layer .ghost .card .card-lift {
+  transform: translateY(var(--card-lift-y)) rotateX(var(--card-curl-rx)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
+  box-shadow: var(--card-lift-shadow);
+  transition: transform var(--card-motion-ms, 160ms) ease-out, box-shadow var(--card-motion-ms, 160ms) ease-out;
+}
+
+.card.selected .card-lift::after,
+#drag-layer .ghost .card .card-lift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    radial-gradient(125% 80% at 50% -8%, rgba(255, 255, 255, 0.55), transparent 54%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.2), transparent 42%, rgba(0, 0, 0, 0.07));
+}
+
+html[data-theme="night"] .card.selected .card-lift::after,
+html[data-theme="night"] #drag-layer .ghost .card .card-lift::after {
+  background:
+    radial-gradient(125% 80% at 50% -8%, rgba(255, 255, 255, 0.16), transparent 52%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.06), transparent 46%, rgba(0, 0, 0, 0.05));
 }
 
 .card.is-ghost-source {
@@ -621,8 +746,8 @@ html[data-theme="night"] #meter-time-wrap {
   position: absolute;
   top: 0;
   left: 0;
+  --card-tilt: 0deg;
   will-change: transform;
-  filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.4));
 }
 
 #drag-layer .ghost .card {
@@ -733,6 +858,33 @@ html[data-theme="night"] #meter-time-wrap {
   75% { transform: translateX(3px); }
 }
 
+@keyframes card-flip {
+  from { transform: rotateY(180deg); }
+  to { transform: rotateY(0deg); }
+}
+
+@keyframes card-settle {
+  0% {
+    transform: translateY(var(--card-lift-y)) rotateX(var(--card-curl-rx)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
+  }
+  62% {
+    transform: translateY(1.5px) rotateZ(0deg) scale(0.985);
+  }
+  100% {
+    transform: translateY(0) rotateZ(0deg) scale(1);
+  }
+}
+
+.card.is-settling .card-lift {
+  animation: card-settle var(--card-settle-ms, 280ms) ease-out;
+  transition: none;
+}
+
+html[data-theme="night"] .card.is-settling .card-lift {
+  animation: none;
+  transform: none;
+}
+
 .card.shake,
 .slot.shake {
   animation: shake 380ms ease-in-out;
@@ -754,6 +906,20 @@ html[data-theme="night"] #meter-time-wrap {
   *::after {
     animation: none !important;
     transition: none !important;
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+  }
+
+  .card.selected .card-lift,
+  #drag-layer .ghost .card .card-lift,
+  .card.is-settling .card-lift,
+  .card.is-turning .card-rotator {
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .card.is-turning .card-face.back {
+    opacity: 0 !important;
   }
 
   .slot.pile-glow,

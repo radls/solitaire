@@ -1,7 +1,7 @@
 import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
-import { makeCardElement } from "./card-view.js";
+import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import {
   cloneState,
   continueClock,
@@ -20,7 +20,7 @@ import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, markPickDone, saveFreeCell, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
-import { shakeMoved } from "./motion.js";
+import { paintDragTilt, shakeMoved } from "./motion.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
   dailyDoneText,
@@ -886,10 +886,13 @@ export function mount(options = {}) {
     if (!ghost) return;
     const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
     ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
+    paintDragTilt(ghost, session.drag, x);
   }
 
   function endDrag(x, y) {
     const drag = session.drag;
+    const tilt = drag?.tilt || 0;
+    const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
     session.drag = null;
     document.documentElement.classList.remove("is-dragging");
     root.dragLayer.innerHTML = "";
@@ -897,7 +900,12 @@ export function mount(options = {}) {
     highlightDrops(null, false);
     if (!drag) return false;
     const to = parseDrop(document.elementFromPoint(x, y));
-    if (to) return tryMove(drag.from, to);
+    if (to && canMove(drag.from, to)) armCardSettle(ids, tilt);
+    if (to) {
+      const ok = tryMove(drag.from, to);
+      if (!ok) cancelCardSettle();
+      return ok;
+    }
     sounds.illegal(session.muted);
     setStatus("That card cannot move there.");
     nudgeBoard(drag.from);

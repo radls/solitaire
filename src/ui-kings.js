@@ -19,6 +19,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, markPickDone, saveKings, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
+import { createSlides } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -104,6 +105,12 @@ export function mount(options = {}) {
     clockPlayed: false,
     modal: null,
   };
+
+  const slides = createSlides();
+
+  function interruptMotion() {
+    slides.interrupt();
+  }
 
   const params = new URLSearchParams(location.search);
   const rawSeed = params.get("seed");
@@ -421,6 +428,7 @@ export function mount(options = {}) {
   }
 
   function render() {
+    const slideFrom = root.table ? slides.capture(root.table) : new Map();
     const state = session.state;
     if (!state || !root.table) return;
     const board = document.createElement("div");
@@ -453,6 +461,8 @@ export function mount(options = {}) {
     requestAnimationFrame(() => {
       if (alive) fit();
     });
+    if (slideFrom.size === 0 && (state.moves ?? 0) === 0) slides.setDeal(true);
+    slides.play(root.table, slideFrom);
   }
 
   function syncPlayClock() {
@@ -587,6 +597,7 @@ export function mount(options = {}) {
   }
 
   function confirmNewDeal(extra = {}) {
+    interruptMotion();
     if (extra.daily || (session.state && isDailyBoard(session.state) && !extra.pick)) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -785,6 +796,7 @@ export function mount(options = {}) {
   }
 
   function doUndo() {
+    interruptMotion();
     if (!session.history.length) return;
     const wasWin = session.countedWin && session.state.won;
     session.state = continueClock(session.state, session.history.pop());
@@ -939,23 +951,32 @@ export function mount(options = {}) {
     const drag = session.drag;
     const tilt = drag?.tilt || 0;
     const ids = drag?.from ? cardsFor(drag.from).map((card) => card.id) : [];
+    const ghosts = slides.capture(root.dragLayer);
     session.drag = null;
     clearDragChrome();
     const to = dropTarget(document.elementFromPoint(x, y));
     if (!to) {
+      slides.clearPrefer();
       sounds.illegal(session.muted);
       setStatus("That card cannot move there.");
       nudgeBoard(drag.from);
       if (session.selected) highlightDrops(session.selected, true);
       return false;
     }
-    if (canDrop(drag.from, to)) armCardSettle(ids, tilt);
+    if (canDrop(drag.from, to)) {
+      slides.prefer(ghosts);
+      armCardSettle(ids, tilt);
+    }
     const result = doMove(drag.from, to);
-    if (!result?.ok) cancelCardSettle();
+    if (!result?.ok) {
+      cancelCardSettle();
+      slides.clearPrefer();
+    }
     return result;
   }
 
   function onPointerDown(event) {
+    interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay?.hidden) return;
     if (session.state?.won) return;
@@ -1064,6 +1085,7 @@ export function mount(options = {}) {
     if (status) observer.observe(status);
   }
   function doHint() {
+    interruptMotion();
     const move = findHint(session.state);
     session.hintMove = move;
     render();
@@ -1170,6 +1192,7 @@ export function mount(options = {}) {
   return {
     getState: () => session.state,
     setState(next) {
+      interruptMotion();
       session.drag = null;
       session.selected = null;
       session.hintMove = null;
@@ -1197,8 +1220,9 @@ export function mount(options = {}) {
     apply: (action) => doApply(action),
     historyLength: () => session.history.length,
     listMoves: () => listLegalMoves(session.state),
-    isAnimating: () => false,
+    isAnimating: () => slides.running(),
     unmount() {
+      interruptMotion();
       if (session.state) persist();
       alive = false;
       document.documentElement.classList.remove("is-dragging");

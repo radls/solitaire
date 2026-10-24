@@ -59,3 +59,23 @@ describe("slide helper", () => {
     expect(reduced.overshoot).toBe(false);
   });
 });
+
+import { easeAt, slideBoxAt } from "../src/slide.js";
+describe("slide path (aim model)", () => {
+  it("easeAt matches endpoints and keywords", () => {
+    expect(easeAt("linear", 0.5)).toBeCloseTo(0.5, 3);
+    expect(easeAt("ease-out", 0)).toBe(0);
+    expect(easeAt("ease-out", 1)).toBe(1);
+    expect(easeAt("ease-out", 0.5)).toBeGreaterThan(0.5);
+  });
+  it("normal ease overshoots, bedtime ease does not", () => {
+    const peak = (e) => Math.max(...Array.from({ length: 101 }, (_, i) => easeAt(e, i / 100)));
+    expect(peak("cubic-bezier(0.16, 0.84, 0.3, 1.12)")).toBeGreaterThan(1);
+    expect(peak("cubic-bezier(0.37, 0, 0.25, 1)")).toBeLessThanOrEqual(1);
+  });
+  it("box sits at the start before motion and at the end after", () => {
+    const b = { x0: 752, y0: 300, x1: 20, y1: 120 };
+    expect(slideBoxAt(b, "ease-out", 200, -5)).toEqual({ left: 752, top: 300 });
+    expect(slideBoxAt(b, "ease-out", 200, 500)).toEqual({ left: 20, top: 120 });
+  });
+});

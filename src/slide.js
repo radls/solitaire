@@ -249,6 +249,38 @@ function paintInvert(job) {
   host.style.transform = `translate(${dx}px, ${dy}px)`;
 }
 
+const NAMED_EASE = {
+  linear: [0, 0, 1, 1],
+  ease: [0.25, 0.1, 0.25, 1],
+  "ease-in": [0.42, 0, 1, 1],
+  "ease-out": [0, 0, 0.58, 1],
+  "ease-in-out": [0.42, 0, 0.58, 1],
+};
+
+/** Progress (may exceed 1 for overshoot) of a CSS easing at linear time p in [0, 1]. */
+export function easeAt(ease, p) {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const m = String(ease || "").match(/cubic-bezier\(([^)]+)\)/);
+  const pts = m ? m[1].split(",").map(Number) : NAMED_EASE[String(ease).trim()] || NAMED_EASE["ease-out"];
+  const [x1, y1, x2, y2] = pts.length === 4 && pts.every(Number.isFinite) ? pts : NAMED_EASE["ease-out"];
+  const bez = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < 40; k++) {
+    const mid = (lo + hi) / 2;
+    if (bez(x1, x2, mid) < p) lo = mid;
+    else hi = mid;
+  }
+  return bez(y1, y2, (lo + hi) / 2);
+}
+
+/** Top-left of a sliding card `elapsed` ms into its motion (before 0: start box). */
+export function slideBoxAt(b, ease, ms, elapsed) {
+  const k = ms > 0 ? easeAt(ease, elapsed / ms) : 1;
+  return { left: b.x0 + (b.x1 - b.x0) * k, top: b.y0 + (b.y1 - b.y0) * k };
+}
+
 export function createSlides() {
   let runId = 0;
   let chainToken = 0;
@@ -259,89 +291,26 @@ export function createSlides() {
   let flags = { fast: false, deal: false, instant: false };
   let activeRun = 0;
 
-  const SWEEP_MS = 120;
-  const KEEP_FRAMES = 3;
+  // A press is aimed at where the eye last saw a moving card, which trails the
+  // live position (and in WebKit, stalled frames can let the slide finish before
+  // the press is handled). The slide path is a pure function of time, so a press
+  // claims a card if it falls inside the card's box at any moment in the last
+  // AIM_LAG_MS of its motion. Nothing depends on which frames were painted.
+  const AIM_LAG_MS = 100;
+  let flight = { motionT: null, ms: 0, ease: "linear", boxes: [] };
 
-  function sample(run) {
-    if (run !== activeRun) return;
-    const now = performance.now();
-    for (const job of jobs) {
-      if (!job.card?.isConnected) continue;
-      const r = job.card.getBoundingClientRect();
-      // Keep the last few frames even when they are old: if rAF stalls while the
-      // animation clock runs (WebKit), the card jumps far between two samples, and
-      // the box the user aimed at is the one from before the gap.
-      const prior = job.seen || [];
-      job.seen = prior.filter((it, k) => now - it.t <= SWEEP_MS || k >= prior.length - KEEP_FRAMES);
-      job.seen.push({ t: now, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-    }
-  }
-
-  function pump(run) {
-    if (run !== activeRun) return;
-    sample(run);
-    requestAnimationFrame(() => pump(run));
-  }
-
-  /**
-   * The moving card a press at (x, y) is aimed at, read before anything snaps.
-   * A press lands a frame or two after the eye saw the card, so the area it
-   * swept over the last few frames counts too. Topmost (latest) job wins.
-   */
   function pickAt(x, y) {
-    const run = activeRun;
-    const inside = (a) => x >= a.left && x <= a.right && y >= a.top && y <= a.bottom;
-    if (!run) return pickRecent(inside);
-    sample(run);
-
-    for (let i = jobs.length - 1; i >= 0; i--) {
-      const seen = jobs[i].seen || [];
-      if (seen.length && inside(seen[seen.length - 1])) return jobs[i].card;
-    }
-    for (let i = jobs.length - 1; i >= 0; i--) {
-      // Only a card still in flight can claim the strip it just crossed.
-      const state = jobs[i].anim?.playState;
-      if (state === "idle" || state === "finished") continue;
-      const seen = jobs[i].seen || [];
-      for (let k = 1; k < seen.length; k++) {
-        const a = seen[k - 1];
-        const b = seen[k];
-        const box = {
-          left: Math.min(a.left, b.left),
-          right: Math.max(a.right, b.right),
-          top: Math.min(a.top, b.top),
-          bottom: Math.max(a.bottom, b.bottom),
-        };
-        if (inside(box)) return jobs[i].card;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * A slide can end entirely inside a stalled stretch of frames (WebKit), so
-   * the press arrives after settle while the user still saw the card mid-way.
-   * For a short grace period after settle, the boxes it was last painted at
-   * still claim the press.
-   */
-  let recent = null;
-  const GRACE_MS = 200;
-
-  function pickRecent(inside) {
-    if (!recent || performance.now() - recent.t > GRACE_MS) return null;
-    for (let i = recent.jobs.length - 1; i >= 0; i--) {
-      const { card, seen } = recent.jobs[i];
-      if (!card?.isConnected) continue;
-      for (let k = 0; k < seen.length; k++) {
-        const a = seen[k];
-        const b = seen[k + 1] || a;
-        const box = {
-          left: Math.min(a.left, b.left),
-          right: Math.max(a.right, b.right),
-          top: Math.min(a.top, b.top),
-          bottom: Math.max(a.bottom, b.bottom),
-        };
-        if (inside(box)) return card;
+    const now = performance.now();
+    const f = flight;
+    if (!f.boxes.length) return null;
+    const start = f.motionT ?? now; // not moving yet: still at the start box
+    if (now - start > f.ms + AIM_LAG_MS) return null;
+    for (let i = f.boxes.length - 1; i >= 0; i--) {
+      const b = f.boxes[i];
+      if (!b.card?.isConnected) continue;
+      for (let back = 0; back <= AIM_LAG_MS; back += 8) {
+        const box = slideBoxAt(b, f.ease, f.ms, now - back - start);
+        if (x >= box.left && x <= box.left + b.w && y >= box.top && y <= box.top + b.h) return b.card;
       }
     }
     return null;
@@ -349,7 +318,8 @@ export function createSlides() {
 
   function settle(run) {
     if (run !== activeRun) return;
-    recent = { t: performance.now(), jobs: jobs.map((job) => ({ card: job.card, seen: job.seen || [] })) };
+    // Ended before motion began: the aim window closes AIM_LAG_MS from now.
+    if (flight.motionT == null) flight.motionT = performance.now() - flight.ms;
     for (const job of jobs) {
       clearHostMotion(job.host);
       unwrap(job);
@@ -482,7 +452,8 @@ export function createSlides() {
         deal: fromStock,
       });
       if (kind === "still" || kind === "appear") continue;
-      planned.push({ card, sourceX: source.x, sourceY: source.y });
+      const r = prev || now;
+      planned.push({ card, sourceX: source.x, sourceY: source.y, destX: now.left, destY: now.top, w: r.w ?? r.width, h: r.h ?? r.height, fromStock: !prev });
     }
 
     if (!planned.length) {
@@ -497,6 +468,11 @@ export function createSlides() {
         ...wrapped,
         sourceX: item.sourceX,
         sourceY: item.sourceY,
+        destX: item.destX,
+        destY: item.destY,
+        w: item.w,
+        h: item.h,
+        fromStock: item.fromStock,
         ms: profile.ms,
         ease: profile.ease,
         gentle: profile.gentle,
@@ -510,11 +486,19 @@ export function createSlides() {
       settle(run);
       return pending;
     }
-    sample(run);
+    flight = {
+      motionT: null,
+      ms: profile.ms,
+      ease: profile.ease,
+      boxes: jobs
+        .filter((job) => !job.fromStock)
+        .map((job) => ({ card: job.card, x0: job.sourceX, y0: job.sourceY, x1: job.destX, y1: job.destY, w: job.w, h: job.h })),
+    };
 
     const beginMotion = () => {
       if (run !== activeRun) return;
       let pendingAnims = 0;
+      flight.motionT = performance.now();
       for (const job of jobs) {
         if (!job.host?.isConnected || job.dead) continue;
         let anim;
@@ -550,9 +534,7 @@ export function createSlides() {
         settle(run);
         return;
       }
-      sample(run);
       requestAnimationFrame(beginMotion);
-      requestAnimationFrame(() => pump(run));
     });
 
     return pending;

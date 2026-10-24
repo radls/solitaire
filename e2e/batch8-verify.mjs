@@ -647,6 +647,74 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
   const lost = race.filter((r) => !r.landed);
   ok(name, "a drag started mid-slide still lands", lost.length === 0, JSON.stringify(lost.length ? race : { tries: race.length }));
 
+  // A press on a card in a column the slide crosses must never grab the sliding
+  // card unless the card was actually over that point within the aim window
+  // (100 ms back, plus a frame of slack for the timer's frame-quantized log;
+  // the live box at the press itself is logged by a capture listener).
+  // Presses at the start column (4) are not checked: it is claimed by design.
+  // A 1 ms timer logs the card's live box so the oracle does not depend on rAF.
+  const cross = [];
+  for (const wait of [0, 2, 20, 40, 60, 100, 150, 200, 260]) {
+    for (const col of [1, 2, 3]) {
+      await tapPage.goto(BASE + "?game=klondike&seed=12345");
+      await tapPage.waitForTimeout(600);
+      const mv = (await tapPage.evaluate(() => window.__solitaire.listMoves())).find(
+        (m) => m.kind !== "draw" && m.from.zone === "tableau",
+      );
+      await tapPage.evaluate((m) => window.__solitaire.move(m.from, m.to), mv);
+      await tapPage.waitForTimeout(400);
+      const pick = await tapPage.evaluate(({ from, col }) => {
+        const moving = document.querySelector(`#table .card[data-zone="tableau"][data-index="${from.index}"]`)
+          || [...document.querySelectorAll('#table .card[data-zone="tableau"][data-index="4"]')].pop();
+        const cards = [...document.querySelectorAll(`#table .card[data-zone="tableau"][data-index="${col}"]:not(.face-down)`)];
+        const top = cards[cards.length - 1];
+        const r = top.getBoundingClientRect();
+        const id = [...document.querySelectorAll('#table .card[data-zone="tableau"]:not(.face-down)')]
+          .filter((e) => e.dataset.index === "4").pop().dataset.id;
+        const el = () => document.querySelector(`#table .card[data-id="${id}"]`);
+        const log = [];
+        window.__crossLog = log;
+        const timer = setInterval(() => {
+          const r2 = el()?.getBoundingClientRect();
+          if (r2) log.push({ t: performance.now(), x: r2.x, y: r2.y, w: r2.width, h: r2.height });
+        }, 1);
+        setTimeout(() => clearInterval(timer), 1500);
+        window.addEventListener("pointerdown", (e) => {
+          if (!e.target.closest?.("#table")) return;
+          window.__pressT = performance.now();
+          const r2 = el()?.getBoundingClientRect(); // the live box this press hit-tests against
+          if (r2) log.push({ t: window.__pressT, x: r2.x, y: r2.y, w: r2.width, h: r2.height });
+        }, { capture: true });
+        return { id, x: r.x + r.width / 2, y: r.y + r.height * 0.85, target: top.dataset.id };
+      }, { from: mv.from, col });
+      await tapPage.click("#btn-undo:visible, #thumb-undo:visible");
+      if (wait) await tapPage.waitForTimeout(wait);
+      await tapPage.mouse.click(pick.x, pick.y);
+      await tapPage.waitForTimeout(300);
+      const after = await tapPage.evaluate(({ id, x, y }) => {
+        const t = window.__pressT;
+        const near = window.__crossLog.filter((s) => s.t >= t - 141 && s.t <= t);
+        const covered = near.some((s) => x >= s.x - 1 && x <= s.x + s.w + 1 && y >= s.y - 1 && y <= s.y + s.h + 1);
+        return {
+          covered,
+          samples: near.length,
+          selected: document.querySelector("#table .card.selected")?.dataset.id || null,
+          dragging: !!document.querySelector("#drag-layer .card"),
+        };
+      }, pick);
+      const grabbed = after.selected === pick.id || after.dragging;
+      cross.push({ wait, col, covered: after.covered, grabbed, selected: after.selected, samples: after.samples });
+    }
+  }
+  const wrong = cross.filter((c) => c.grabbed && !c.covered);
+  const clear = cross.filter((c) => !c.covered).length;
+  ok(
+    name,
+    "a press on a crossed column never grabs the sliding card",
+    wrong.length === 0 && clear >= 6,
+    JSON.stringify(wrong.length || clear < 6 ? cross : { tries: cross.length, offPath: clear, onPath: cross.length - clear }),
+  );
+
   for (const game of ["freecell", "golf", "kings"]) {
     await openGame(tapPage, game);
     const primed = await tapPage.evaluate((game) => {

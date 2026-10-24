@@ -295,21 +295,34 @@ export function createSlides() {
   // live position (and in WebKit, stalled frames can let the slide finish before
   // the press is handled). The slide path is a pure function of time, so a press
   // claims a card if it falls inside the card's box at any moment in the last
-  // AIM_LAG_MS of its motion. Nothing depends on which frames were painted.
+  // AIM_LAG_MS of its motion, or in its start box until AIM_LAG_MS after the
+  // slide ends. Nothing depends on which frames were painted.
   const AIM_LAG_MS = 100;
-  let flight = { motionT: null, ms: 0, ease: "linear", boxes: [] };
+  let flight = { motionT: null, anim: null, ms: 0, ease: "linear", boxes: [] };
+
+  /** Ms into the current/last slide by the animation's own clock; < 0 before it moves. */
+  function elapsed(f, now) {
+    const t = f.anim?.currentTime;
+    if (typeof t === "number" && f.anim.playState === "running") return t;
+    const startT = f.anim?.startTime;
+    if (typeof startT === "number") return now - startT;
+    if (f.motionT != null) return now - f.motionT;
+    return -1;
+  }
 
   function pickAt(x, y) {
-    const now = performance.now();
     const f = flight;
     if (!f.boxes.length) return null;
-    const start = f.motionT ?? now; // not moving yet: still at the start box
-    if (now - start > f.ms + AIM_LAG_MS) return null;
+    const now = performance.now();
+    const at = elapsed(f, now);
+    if (at > f.ms + AIM_LAG_MS) return null;
     for (let i = f.boxes.length - 1; i >= 0; i--) {
       const b = f.boxes[i];
       if (!b.card?.isConnected) continue;
-      for (let back = 0; back <= AIM_LAG_MS; back += 8) {
-        const box = slideBoxAt(b, f.ease, f.ms, now - back - start);
+      // The start box counts for the whole slide: if frames stall (WebKit), the
+      // card can still be painted there while its clock has run on.
+      for (let back = 0; back <= AIM_LAG_MS + 8; back += 8) {
+        const box = back > AIM_LAG_MS ? slideBoxAt(b, f.ease, f.ms, -1) : slideBoxAt(b, f.ease, f.ms, at - back);
         if (x >= box.left && x <= box.left + b.w && y >= box.top && y <= box.top + b.h) return b.card;
       }
     }
@@ -319,7 +332,7 @@ export function createSlides() {
   function settle(run) {
     if (run !== activeRun) return;
     // Ended before motion began: the aim window closes AIM_LAG_MS from now.
-    if (flight.motionT == null) flight.motionT = performance.now() - flight.ms;
+    if (flight.motionT == null && !flight.anim) flight.motionT = performance.now() - flight.ms;
     for (const job of jobs) {
       clearHostMotion(job.host);
       unwrap(job);
@@ -514,6 +527,7 @@ export function createSlides() {
           );
         }
         job.anim = anim;
+        if (!flight.anim) flight.anim = anim;
         pendingAnims += 1;
         anim.onfinish = () => {
           pendingAnims -= 1;

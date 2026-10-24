@@ -290,9 +290,10 @@ export function createSlides() {
    */
   function pickAt(x, y) {
     const run = activeRun;
-    if (!run) return null;
-    sample(run);
     const inside = (a) => x >= a.left && x <= a.right && y >= a.top && y <= a.bottom;
+    if (!run) return pickRecent(inside);
+    sample(run);
+
     for (let i = jobs.length - 1; i >= 0; i--) {
       const seen = jobs[i].seen || [];
       if (seen.length && inside(seen[seen.length - 1])) return jobs[i].card;
@@ -317,8 +318,38 @@ export function createSlides() {
     return null;
   }
 
+  /**
+   * A slide can end entirely inside a stalled stretch of frames (WebKit), so
+   * the press arrives after settle while the user still saw the card mid-way.
+   * For a short grace period after settle, the boxes it was last painted at
+   * still claim the press.
+   */
+  let recent = null;
+  const GRACE_MS = 200;
+
+  function pickRecent(inside) {
+    if (!recent || performance.now() - recent.t > GRACE_MS) return null;
+    for (let i = recent.jobs.length - 1; i >= 0; i--) {
+      const { card, seen } = recent.jobs[i];
+      if (!card?.isConnected) continue;
+      for (let k = 0; k < seen.length; k++) {
+        const a = seen[k];
+        const b = seen[k + 1] || a;
+        const box = {
+          left: Math.min(a.left, b.left),
+          right: Math.max(a.right, b.right),
+          top: Math.min(a.top, b.top),
+          bottom: Math.max(a.bottom, b.bottom),
+        };
+        if (inside(box)) return card;
+      }
+    }
+    return null;
+  }
+
   function settle(run) {
     if (run !== activeRun) return;
+    recent = { t: performance.now(), jobs: jobs.map((job) => ({ card: job.card, seen: job.seen || [] })) };
     for (const job of jobs) {
       clearHostMotion(job.host);
       unwrap(job);

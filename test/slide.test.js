@@ -2,13 +2,8 @@ import { describe, expect, it } from "vitest";
 import { classifySlide, easeOvershoots, profileFromTokens, slideDelta } from "../src/slide.js";
 
 describe("slide helper", () => {
-  it("scales the invert delta and keeps the sign toward the old spot", () => {
-    const delta = slideDelta({ x: 10, y: 40 }, { x: 110, y: 20 }, 1);
-    expect(delta).toEqual({ dx: -100, dy: 20 });
-    const gentle = slideDelta({ x: 10, y: 40 }, { x: 110, y: 20 }, 0.58);
-    expect(gentle.dx).toBeCloseTo(-58);
-    expect(gentle.dy).toBeCloseTo(11.6);
-    expect(Math.hypot(gentle.dx, gentle.dy)).toBeLessThan(Math.hypot(delta.dx, delta.dy));
+  it("inverts the full way back to the old spot", () => {
+    expect(slideDelta({ x: 10, y: 40 }, { x: 110, y: 20 })).toEqual({ dx: -100, dy: 20 });
   });
 
   it("slides a pile change and a drag ghost, not a peek in the same pile", () => {
@@ -38,23 +33,23 @@ describe("slide helper", () => {
     expect(classifySlide({ prev: { zone: "waste", index: "" }, next: { zone: "waste", index: "" }, delta: { dx: 20, dy: 0 } })).toBe("nudge");
   });
 
-  it("uses a shorter bedtime path without overshoot, and no motion when reduced", () => {
+  it("uses a slower bedtime pace without overshoot, and no motion when reduced", () => {
     const day = profileFromTokens({
       ms: 200,
       fastMs: 120,
-      distance: 1,
       ease: "cubic-bezier(0.16, 0.84, 0.3, 1.12)",
     });
     const night = profileFromTokens({
-      ms: 240,
-      fastMs: 150,
-      distance: 0.58,
-      ease: "cubic-bezier(0.45, 0.02, 0.25, 1)",
+      ms: 250,
+      fastMs: 160,
+      gentle: true,
+      ease: "cubic-bezier(0.37, 0, 0.25, 1)",
     });
-    const fast = profileFromTokens({ fast: true, ms: 200, fastMs: 120, distance: 1, ease: day.ease });
-    const reduced = profileFromTokens({ reduced: true, distance: 0.58, ease: night.ease });
+    const fast = profileFromTokens({ fast: true, ms: 200, fastMs: 120, ease: day.ease });
+    const reduced = profileFromTokens({ reduced: true, gentle: true, ease: night.ease });
     expect(day.ms).toBeGreaterThan(fast.ms);
-    expect(night.distance).toBeLessThan(day.distance);
+    expect(night.ms).toBeGreaterThan(day.ms);
+    expect(day.gentle).toBe(false);
     expect(night.gentle).toBe(true);
     expect(night.overshoot).toBe(false);
     expect(easeOvershoots(day.ease)).toBe(true);

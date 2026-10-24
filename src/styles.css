@@ -66,7 +66,7 @@ html[data-theme="night"] {
     0 7px 10px rgba(0, 0, 0, 0.24);
   --slide-ms: 200ms;
   --slide-fast-ms: 120ms;
-  --slide-distance: 1;
+  --slide-gentle: 0;
   --slide-ease: cubic-bezier(0.16, 0.84, 0.3, 1.12);
 }
 
@@ -85,10 +85,11 @@ html[data-theme="night"] {
     0 1px 0 var(--card-sheen) inset,
     0 1px 0 rgba(0, 0, 0, 0.16),
     0 4px 7px rgba(0, 0, 0, 0.16);
-  --slide-ms: 240ms;
-  --slide-fast-ms: 150ms;
-  --slide-distance: 0.58;
-  --slide-ease: cubic-bezier(0.45, 0.02, 0.25, 1);
+  /* Calmer by pace, not by distance: every slide starts at the card's real spot. */
+  --slide-ms: 250ms;
+  --slide-fast-ms: 160ms;
+  --slide-gentle: 1;
+  --slide-ease: cubic-bezier(0.37, 0, 0.25, 1);
 }
 
 html[data-theme="classic"] {

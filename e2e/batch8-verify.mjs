@@ -253,6 +253,14 @@ async function sampleSlide(page, id) {
       return { missing: true, sliding: !!host?.classList.contains("is-sliding"), waited: performance.now() - started };
     }
     const dur = Number(anim.effect?.getTiming?.().duration) || 200;
+    let first = null;
+    try {
+      anim.pause();
+      anim.currentTime = 0;
+      first = card.getBoundingClientRect();
+    } catch {
+      /* no seek */
+    }
     const target = Math.min(110, Math.max(50, dur * 0.42));
     try {
       anim.pause();
@@ -279,7 +287,8 @@ async function sampleSlide(page, id) {
       sliding: host.classList.contains("is-sliding"),
       cardTransform: cardCs.transform,
       ease: host.dataset.slideEase || "",
-      distance: Number(host.dataset.slideDistance || "1"),
+      firstX: first?.x,
+      firstY: first?.y,
       ms: Number(host.dataset.slideMs || "0"),
       gentle: host.dataset.slideGentle === "1",
       turning: card.classList.contains("is-turning"),
@@ -502,26 +511,34 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
   await page.waitForTimeout(40);
   await layoutKlondike(page, { tableau: [{ index: 0, suit: "spades", rank: 13 }] });
   const daySlide = await moveAndSample(page, { zone: "tableau", index: 0, count: 1 }, { zone: "tableau", index: 5 }, "spades-13");
-  const nightFrac = (() => {
-    const s = nightSlide;
+  // Fraction of the path still ahead at the sample time, and how far frame 0 sits from the real start.
+  const frac = (s) => {
     const full = Math.hypot(s.start.x - s.sample.endX, s.start.y - s.sample.endY);
     const left = Math.hypot(s.sample.x - s.sample.endX, s.sample.y - s.sample.endY);
     return full ? left / full : 1;
-  })();
+  };
+  const jump = (s) => Math.hypot(s.sample.firstX - s.start.x, s.sample.firstY - s.start.y);
+  const nightFrac = frac(nightSlide);
+  const dayFrac = frac(daySlide);
+  const nightJump = jump(nightSlide);
+  const dayJump = jump(daySlide);
   ok(
     name,
     "bedtime motion is gentler",
     theme === "night" &&
       nightSlide.sample.gentle &&
-      nightSlide.sample.distance < 0.9 &&
-      daySlide.sample.distance > 0.95 &&
+      !daySlide.sample.gentle &&
+      nightJump < 3 &&
+      dayJump < 3 &&
+      nightSlide.sample.ms > daySlide.sample.ms &&
       nightSlide.sample.ms >= 150 &&
       daySlide.sample.ms >= 150 &&
       nightSlide.sample.ms <= 260 &&
       !nightSlide.sample.ease.includes("1.12") &&
       daySlide.sample.ease.includes("1.12") &&
-      nightFrac < 0.9,
-    JSON.stringify({ theme, night: nightSlide.sample, day: daySlide.sample, nightFrac }),
+      nightFrac < 0.9 &&
+      nightFrac > dayFrac,
+    JSON.stringify({ theme, nightJump, dayJump, nightFrac, dayFrac, night: nightSlide.sample, day: daySlide.sample }),
   );
 
   await ctx.close();
@@ -696,6 +713,7 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
       : game === "golf"
         ? { card: `#table .card[data-id="${primed.dragId}"]`, drop: `[data-drop="waste"]` }
         : { card: `#table .card[data-id="${primed.dragId}"]`, drop: `[data-drop="side:3"]` };
+    await tapPage.waitForTimeout(300); // let the sampled move finish so the drag starts from rest
     const g = await dragOnto(tapPage, dragSel.card, dragSel.drop);
     const gSlide = g ? await sampleSlide(tapPage, g.id) : { missing: true };
     ok(

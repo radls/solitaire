@@ -18,11 +18,10 @@ export function easeOvershoots(ease) {
   return y1 < -0.001 || y1 > 1.001 || y2 < -0.001 || y2 > 1.001;
 }
 
-export function slideDelta(from, to, distance = 1) {
-  const scale = Number.isFinite(distance) ? distance : 1;
+export function slideDelta(from, to) {
   return {
-    dx: ((Number(from?.x) || 0) - (Number(to?.x) || 0)) * scale,
-    dy: ((Number(from?.y) || 0) - (Number(to?.y) || 0)) * scale,
+    dx: (Number(from?.x) || 0) - (Number(to?.x) || 0),
+    dy: (Number(from?.y) || 0) - (Number(to?.y) || 0),
   };
 }
 
@@ -51,20 +50,18 @@ export function profileFromTokens({
   instant = false,
   ms = 200,
   fastMs = 120,
-  distance = 1,
+  gentle = false,
   ease = "ease-out",
 } = {}) {
   if (reduced || instant) {
-    return { ms: 0, distance: 1, ease: "linear", instant: true, gentle: false, overshoot: false };
+    return { ms: 0, ease: "linear", instant: true, gentle: false, overshoot: false };
   }
   const duration = Math.max(0, fast ? fastMs : ms);
-  const dist = Number.isFinite(distance) ? distance : 1;
   return {
     ms: duration,
-    distance: dist,
     ease: ease || "ease-out",
     instant: duration <= 0,
-    gentle: dist < 0.999,
+    gentle: !!gentle,
     overshoot: easeOvershoots(ease),
   };
 }
@@ -97,19 +94,19 @@ function readCssMs(style, name, fallback) {
 function readProfile(fast, instant) {
   let ms = 200;
   let fastMs = 120;
-  let distance = 1;
+  let gentle = false;
   let ease = "ease-out";
   try {
     const style = getComputedStyle(document.documentElement);
     ms = readCssMs(style, "--slide-ms", ms);
     fastMs = readCssMs(style, "--slide-fast-ms", fastMs);
-    distance = readCssNumber(style, "--slide-distance", distance);
+    gentle = readCssNumber(style, "--slide-gentle", 0) > 0;
     const named = style.getPropertyValue("--slide-ease").trim();
     if (named) ease = named;
   } catch {
     /* keep classic defaults when computed style is unavailable */
   }
-  return profileFromTokens({ reduced: prefersReduced(), fast, instant, ms, fastMs, distance, ease });
+  return profileFromTokens({ reduced: prefersReduced(), fast, instant, ms, fastMs, gentle, ease });
 }
 
 export function captureRects(root) {
@@ -227,13 +224,13 @@ function wrapCard(card) {
   return { card, host, saved, owned: true };
 }
 
-function paintInvert(job, distance) {
+function paintInvert(job) {
   const host = job.host;
   if (!host?.isConnected) return;
   host.style.transform = "none";
   const fresh = job.card.getBoundingClientRect();
-  const dx = (job.sourceX - fresh.left) * distance;
-  const dy = (job.sourceY - fresh.top) * distance;
+  const dx = job.sourceX - fresh.left;
+  const dy = job.sourceY - fresh.top;
   job.dx = dx;
   job.dy = dy;
   if (Math.hypot(dx, dy) <= MOVE_PX) {
@@ -246,7 +243,6 @@ function paintInvert(job, distance) {
   host.dataset.sliding = "1";
   host.dataset.slideMs = String(job.ms);
   host.dataset.slideEase = job.ease;
-  host.dataset.slideDistance = String(distance);
   host.dataset.slideGentle = job.gentle ? "1" : "0";
   const z = parseInt(host.style.zIndex || "0", 10) || 0;
   host.style.zIndex = String(Math.max(z, 30));
@@ -297,6 +293,9 @@ export function createSlides() {
       if (seen.length && inside(seen[seen.length - 1])) return jobs[i].card;
     }
     for (let i = jobs.length - 1; i >= 0; i--) {
+      // Only a card still in flight can claim the strip it just crossed.
+      const state = jobs[i].anim?.playState;
+      if (state === "idle" || state === "finished") continue;
       const seen = jobs[i].seen || [];
       for (let k = 1; k < seen.length; k++) {
         const a = seen[k - 1];
@@ -438,7 +437,7 @@ export function createSlides() {
       const fromStock = !prev && (deal || next.zone === "waste");
       const source = prev || (fromStock && origin ? { x: origin.x, y: origin.y, zone: "", index: "" } : null);
       if (!source) continue;
-      const full = slideDelta(source, now, 1);
+      const full = slideDelta(source, now);
       const kind = classifySlide({
         prev: prev ? { zone: prev.zone, index: prev.index } : null,
         next,
@@ -469,7 +468,7 @@ export function createSlides() {
         anim: null,
       });
     }
-    for (const job of jobs) paintInvert(job, profile.distance);
+    for (const job of jobs) paintInvert(job);
     jobs = jobs.filter((job) => !job.dead);
     if (!jobs.length) {
       settle(run);
@@ -509,7 +508,7 @@ export function createSlides() {
 
     requestAnimationFrame(() => {
       if (run !== activeRun) return;
-      for (const job of jobs) paintInvert(job, profile.distance);
+      for (const job of jobs) paintInvert(job);
       jobs = jobs.filter((job) => !job.dead);
       if (!jobs.length) {
         settle(run);

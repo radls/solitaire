@@ -767,13 +767,14 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
+    const moving = slides.pickAt(event.clientX, event.clientY);
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay?.hidden) return;
     if (session.state?.over) return;
     resumeAudio();
-    const cardEl = event.target.closest?.(".card");
-    const slot = event.target.closest?.("[data-drop]");
+    const cardEl = moving || event.target.closest?.(".card");
+    const slot = (moving || event.target).closest?.("[data-drop]");
     if (!cardEl && slot?.dataset.zone === "stock") {
       event.preventDefault();
       session.drag = { from: { zone: "stock" }, x: event.clientX, y: event.clientY, clickOnly: true };

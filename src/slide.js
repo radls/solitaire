@@ -263,6 +263,56 @@ export function createSlides() {
   let flags = { fast: false, deal: false, instant: false };
   let activeRun = 0;
 
+  const SWEEP_MS = 120;
+
+  function sample(run) {
+    if (run !== activeRun) return;
+    const now = performance.now();
+    for (const job of jobs) {
+      if (!job.card?.isConnected) continue;
+      const r = job.card.getBoundingClientRect();
+      job.seen = (job.seen || []).filter((it) => now - it.t <= SWEEP_MS);
+      job.seen.push({ t: now, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+  }
+
+  function pump(run) {
+    if (run !== activeRun) return;
+    sample(run);
+    requestAnimationFrame(() => pump(run));
+  }
+
+  /**
+   * The moving card a press at (x, y) is aimed at, read before anything snaps.
+   * A press lands a frame or two after the eye saw the card, so the area it
+   * swept over the last few frames counts too. Topmost (latest) job wins.
+   */
+  function pickAt(x, y) {
+    const run = activeRun;
+    if (!run) return null;
+    sample(run);
+    const inside = (a) => x >= a.left && x <= a.right && y >= a.top && y <= a.bottom;
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      const seen = jobs[i].seen || [];
+      if (seen.length && inside(seen[seen.length - 1])) return jobs[i].card;
+    }
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      const seen = jobs[i].seen || [];
+      for (let k = 1; k < seen.length; k++) {
+        const a = seen[k - 1];
+        const b = seen[k];
+        const box = {
+          left: Math.min(a.left, b.left),
+          right: Math.max(a.right, b.right),
+          top: Math.min(a.top, b.top),
+          bottom: Math.max(a.bottom, b.bottom),
+        };
+        if (inside(box)) return jobs[i].card;
+      }
+    }
+    return null;
+  }
+
   function settle(run) {
     if (run !== activeRun) return;
     for (const job of jobs) {
@@ -464,7 +514,9 @@ export function createSlides() {
         settle(run);
         return;
       }
+      sample(run);
       requestAnimationFrame(beginMotion);
+      requestAnimationFrame(() => pump(run));
     });
 
     return pending;
@@ -480,6 +532,7 @@ export function createSlides() {
     play,
     finishNow,
     interrupt,
+    pickAt,
     beginChain,
     chainIs,
     whenDone,

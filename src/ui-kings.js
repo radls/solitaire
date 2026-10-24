@@ -976,13 +976,14 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
+    const moving = slides.pickAt(event.clientX, event.clientY);
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay?.hidden) return;
     if (session.state?.won) return;
     resumeAudio();
-    const cardEl = event.target.closest?.(".card");
-    const slot = event.target.closest?.("[data-drop]");
+    const cardEl = moving || event.target.closest?.(".card");
+    const slot = (moving || event.target).closest?.("[data-drop]");
     if (!cardEl && !slot) {
       if (session.selected) {
         session.selected = null;

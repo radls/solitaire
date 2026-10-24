@@ -602,6 +602,34 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
   const glideState = await domMatches(tapPage);
   ok(name, "drag-drop ends matched to state", glideState.ok, JSON.stringify(glideState));
 
+  // A drag that starts while the card is still sliding must still land.
+  const race = [];
+  for (const wait of [0, 0, 10, 30, 50, 70, 90, 120, 160, 220]) {
+    await tapPage.goto(BASE + "?game=klondike&seed=12345");
+    await tapPage.waitForTimeout(600);
+    const mv = (await tapPage.evaluate(() => window.__solitaire.listMoves())).find(
+      (m) => m.kind !== "draw" && m.from.zone === "tableau",
+    );
+    await tapPage.evaluate((m) => window.__solitaire.move(m.from, m.to), mv);
+    await tapPage.waitForTimeout(400);
+    const before = await tapPage.evaluate(() => window.__solitaire.historyLength());
+    await tapPage.click('#btn-undo:visible, #thumb-undo:visible');
+    if (wait) await tapPage.waitForTimeout(wait);
+    const sb = await tapPage
+      .locator(`.card[data-zone="tableau"][data-index="${mv.from.index}"][data-count="${mv.from.count}"]`)
+      .boundingBox();
+    const db = await tapPage.locator(`[data-drop="${mv.to.zone}:${mv.to.index}"]`).boundingBox();
+    await tapPage.mouse.move(sb.x + sb.width / 2, sb.y + Math.min(12, sb.height / 2));
+    await tapPage.mouse.down();
+    await tapPage.mouse.move(db.x + db.width / 2, db.y + db.height / 2, { steps: 12 });
+    await tapPage.mouse.up();
+    await tapPage.waitForTimeout(300);
+    const after = await tapPage.evaluate(() => window.__solitaire.historyLength());
+    race.push({ wait, landed: after === before });
+  }
+  const lost = race.filter((r) => !r.landed);
+  ok(name, "a drag started mid-slide still lands", lost.length === 0, JSON.stringify(lost.length ? race : { tries: race.length }));
+
   for (const game of ["freecell", "golf", "kings"]) {
     await openGame(tapPage, game);
     const primed = await tapPage.evaluate((game) => {

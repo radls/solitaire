@@ -475,6 +475,7 @@ export function createSlides() {
       settle(run);
       return pending;
     }
+    sample(run);
 
     const beginMotion = () => {
       if (run !== activeRun) return;

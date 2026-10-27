@@ -133,6 +133,16 @@ function prefersReducedMotion() {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** A CSS time token in ms. The build minifies `680ms` to `.68s`, so units matter. */
+export function cssTimeMs(raw, fallback) {
+  const text = String(raw ?? "").trim();
+  const value = parseFloat(text);
+  if (!Number.isFinite(value)) return fallback;
+  if (text.endsWith("ms")) return value;
+  if (text.endsWith("s")) return value * 1000;
+  return value;
+}
+
 // animationend does not fire when the flip animation is suppressed. A timeout
 // still clears the flag if the event never arrives.
 function armFlip(el) {
@@ -154,8 +164,8 @@ function armFlip(el) {
     finish();
   };
   el.addEventListener("animationend", onEnd);
-  const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--card-flip-ms"));
-  timer = window.setTimeout(finish, (Number.isFinite(ms) ? ms : 700) + 400);
+  const ms = cssTimeMs(getComputedStyle(document.documentElement).getPropertyValue("--card-flip-ms"), 700);
+  timer = window.setTimeout(finish, ms + 400);
   queueTurning(el);
 }
 

@@ -13,6 +13,12 @@ export default defineConfig({
     port: 5180,
     strictPort: true,
   },
+  // Vite 8 defaults CSS minify to lightningcss, which rejects a stray brace
+  // esbuild previously warned about and still emitted. Keep that minifier so
+  // the production stylesheet stays the same.
+  build: {
+    cssMinify: "esbuild",
+  },
   test: {
     environment: "node",
     include: ["test/**/*.test.js"],

@@ -13,6 +13,10 @@ export default defineConfig({
     port: 5180,
     strictPort: true,
   },
+  // Keep the pre-Vite-7 browser targets so older iOS Safari keeps working.
+  build: {
+    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
+  },
   test: {
     environment: "node",
     include: ["test/**/*.test.js"],

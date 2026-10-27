@@ -1026,25 +1026,6 @@ html[data-theme="night"] .card.is-settling .card-lift {
   }
 }
 
-.slot.pile-glow,
-  .celebrate[data-glow="1"] {
-    box-shadow: 0 0 0 2px rgba(156, 138, 92, 0.55), 0 0 14px rgba(156, 138, 92, 0.28);
-  }
-}
-
-.score-note {
-  display: block;
-  margin-top: 0.12rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--gold);
-}
-
-.score-note[hidden] {
-  display: none;
-}
-
 .slot.pile-glow {
   border-radius: var(--radius);
   box-shadow:

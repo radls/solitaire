@@ -101,7 +101,7 @@ for (const P of ["desktop", "phone"]) {
       facesDirect: card.querySelector(".card-face.front")?.parentElement === card.querySelector(".card-rotator") &&
         card.querySelector(".card-face.back")?.parentElement === card.querySelector(".card-rotator"),
       frontZ: /translateZ\(\s*(?:0)?\.1px\s*\)/.test(sheet),
-      backTransform: /rotateY\(180deg\) translateZ\(\s*(?:0)?\.1px\s*\)/.test(sheet),
+      backTransform: /rotateY\(180deg\)\s*translateZ\(\s*(?:0)?\.1px\s*\)/.test(sheet),
       corner: !!card?.querySelector(".corner"),
       rank: card?.querySelector(".corner")?.textContent || "",
       label: card?.getAttribute("aria-label") || "",

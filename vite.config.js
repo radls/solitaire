@@ -13,11 +13,9 @@ export default defineConfig({
     port: 5180,
     strictPort: true,
   },
-  // Vite 8 defaults CSS minify to lightningcss, which rejects a stray brace
-  // esbuild previously warned about and still emitted. Keep that minifier so
-  // the production stylesheet stays the same.
+  // Keep the pre-Vite-7 browser targets so older iOS Safari keeps working.
   build: {
-    cssMinify: "esbuild",
+    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
   },
   test: {
     environment: "node",

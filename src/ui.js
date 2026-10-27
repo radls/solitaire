@@ -1065,7 +1065,10 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
-    const moving = slides.pickAt(event.clientX, event.clientY);
+    // A press on the stock is a draw; a card sliding out of it must not claim the press.
+    const onStock = event.target.closest?.('[data-drop="stock"]');
+    const picked = slides.pickAt(event.clientX, event.clientY);
+    const moving = onStock && picked?.dataset.zone !== "stock" ? null : picked;
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;

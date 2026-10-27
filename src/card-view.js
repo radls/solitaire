@@ -135,12 +135,11 @@ function prefersReducedMotion() {
 
 /** A CSS time token in ms. The build minifies `680ms` to `.68s`, so units matter. */
 export function cssTimeMs(raw, fallback) {
-  const text = String(raw ?? "").trim();
-  const value = parseFloat(text);
-  if (!Number.isFinite(value)) return fallback;
-  if (text.endsWith("ms")) return value;
-  if (text.endsWith("s")) return value * 1000;
-  return value;
+  const match = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(ms|s)?$/.exec(String(raw ?? "").trim().toLowerCase());
+  if (!match) return fallback;
+  const value = Number(match[1]) * (match[2] === "s" ? 1000 : 1);
+  // A negative or non-finite time means no usable duration.
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 // animationend does not fire when the flip animation is suppressed. A timeout

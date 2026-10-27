@@ -767,7 +767,11 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
-    const moving = slides.pickAt(event.clientX, event.clientY);
+    // A press that lands on the stock is a draw. A card sliding out of (or past) the
+    // stock must not claim it, or the draw is lost while the deal settles.
+    const onStock = event.target.closest?.('[data-drop="stock"]');
+    const picked = slides.pickAt(event.clientX, event.clientY);
+    const moving = onStock && picked?.dataset.zone !== "stock" ? null : picked;
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay?.hidden) return;

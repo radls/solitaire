@@ -8,6 +8,21 @@
 export const MOVE_PX = 1.5;
 export const WASTE_NUDGE_PX = 8;
 
+/**
+ * The element a press at (x, y) should act on when it falls inside the stock slot:
+ * the stock's top card, or the slot itself. A card sliding out of the stock sits on
+ * top of it (and pickAt finds it there), but a press on the stock is always a draw.
+ * Returns null when the press is not on the stock, or when the picked card is a stock card.
+ */
+export function stockPress(x, y, picked, doc = typeof document === "undefined" ? null : document) {
+  const slot = doc?.querySelector?.('[data-drop="stock"]');
+  if (!slot) return null;
+  const r = slot.getBoundingClientRect();
+  if (!(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) return null;
+  if (picked?.dataset?.zone === "stock") return null;
+  return slot.querySelector('.card[data-zone="stock"]') || slot;
+}
+
 export function easeOvershoots(ease) {
   const match = String(ease || "").match(
     /cubic-bezier\(\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*\)/,

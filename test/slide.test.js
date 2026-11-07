@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifySlide, easeOvershoots, profileFromTokens, slideDelta } from "../src/slide.js";
+import { classifySlide, easeOvershoots, profileFromTokens, slideDelta, stockPress } from "../src/slide.js";
 
 describe("slide helper", () => {
   it("inverts the full way back to the old spot", () => {
@@ -79,3 +79,55 @@ describe("slide path (aim model)", () => {
     expect(slideBoxAt(b, "ease-out", 200, 500)).toEqual({ left: 20, top: 120 });
   });
 });
+
+function fakeStockDoc({ left = 10, top = 20, width = 80, height = 110, hasStockCard = true } = {}) {
+  const card = hasStockCard ? { className: "card", dataset: { zone: "stock" } } : null;
+  const slot = {
+    dataset: { drop: "stock", zone: "stock" },
+    getBoundingClientRect: () => ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+    }),
+    querySelector(sel) {
+      return sel === '.card[data-zone="stock"]' ? card : null;
+    },
+  };
+  return {
+    slot,
+    card,
+    querySelector(sel) {
+      return sel === '[data-drop="stock"]' ? slot : null;
+    },
+  };
+}
+
+describe("stockPress", () => {
+  it("returns the top stock card (or the slot) when the press is inside and pickAt found a non-stock card", () => {
+    const doc = fakeStockDoc();
+    const picked = { dataset: { zone: "side" } };
+    expect(stockPress(50, 70, picked, doc)).toBe(doc.card);
+    expect(stockPress(10, 20, picked, doc)).toBe(doc.card);
+    expect(stockPress(90, 130, picked, doc)).toBe(doc.card);
+    const empty = fakeStockDoc({ hasStockCard: false });
+    expect(stockPress(50, 70, picked, empty)).toBe(empty.slot);
+  });
+
+  it("returns null when the picked card is already a stock card", () => {
+    const doc = fakeStockDoc();
+    expect(stockPress(50, 70, { dataset: { zone: "stock" } }, doc)).toBeNull();
+  });
+
+  it("returns null when the press is outside the stock rect", () => {
+    const doc = fakeStockDoc();
+    const picked = { dataset: { zone: "waste" } };
+    expect(stockPress(9, 70, picked, doc)).toBeNull();
+    expect(stockPress(91, 70, picked, doc)).toBeNull();
+    expect(stockPress(50, 19, picked, doc)).toBeNull();
+    expect(stockPress(50, 131, picked, doc)).toBeNull();
+  });
+});
+

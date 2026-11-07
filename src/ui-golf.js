@@ -20,7 +20,7 @@ import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, markPickDone, saveGolf, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
-import { createSlides } from "./slide.js";
+import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
@@ -767,18 +767,18 @@ export function mount(options = {}) {
   }
 
   function onPointerDown(event) {
-    // A press that lands on the stock is a draw. A card sliding out of (or past) the
-    // stock must not claim it, or the draw is lost while the deal settles.
-    const onStock = event.target.closest?.('[data-drop="stock"]');
+    // A press on the stock is a draw, even while a card slides out of (or past) it.
     const picked = slides.pickAt(event.clientX, event.clientY);
-    const moving = onStock && picked?.dataset.zone !== "stock" ? null : picked;
+    const stockHit = stockPress(event.clientX, event.clientY, picked);
+    const moving = stockHit ? null : picked;
+    const target = stockHit || event.target;
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay?.hidden) return;
     if (session.state?.over) return;
     resumeAudio();
-    const cardEl = moving || event.target.closest?.(".card");
-    const slot = (moving || event.target).closest?.("[data-drop]");
+    const cardEl = moving || target.closest?.(".card");
+    const slot = (moving || target).closest?.("[data-drop]");
     if (!cardEl && slot?.dataset.zone === "stock") {
       event.preventDefault();
       session.drag = { from: { zone: "stock" }, x: event.clientX, y: event.clientY, clickOnly: true };

@@ -15,6 +15,8 @@ const strip = (s) => { const o = JSON.parse(s); delete o.startedAt; delete o.pau
 
 async function tapEl(page, loc, touch) { try { if (touch) await loc.tap({ timeout: 4000 }); else await loc.click({ timeout: 4000 }); } catch (e) { console.log("  (tap failed: " + e.message.split("\n")[0] + ")"); } await page.waitForTimeout(150); }
 async function drag(page, ctx, srcLoc, dstLoc, touch) {
+  // Measure only once slides settle: a box read mid-slide goes stale if the slide ends before the press lands (flaky drag after Undo).
+  await page.waitForFunction(() => !window.__solitaire?.isAnimating?.(), null, { timeout: 3000 }).catch(() => {});
   const sb = await srcLoc.boundingBox(); const db = await dstLoc.boundingBox();
   const sx = sb.x + sb.width / 2, sy = sb.y + Math.min(12, sb.height / 2), dx = db.x + db.width / 2, dy = db.y + db.height / 2;
   if (touch) {

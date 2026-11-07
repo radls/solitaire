@@ -8,7 +8,18 @@ const BASE = "http://127.0.0.1:4173/solitaire/";
 const SH = process.env.SHOTS_DIR || "/tmp/solitaire-batch7";
 mkdirSync(SH, { recursive: true });
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+const ALLOWED_ENGINES = new Set(["chromium", "webkit"]);
+const engineList = (process.env.ENGINES == null ? "chromium,webkit" : process.env.ENGINES).split(",").map((name) => name.trim()).filter(Boolean);
+const ENGINES = new Set(engineList);
+if (engineList.length === 0 || engineList.some((name) => !ALLOWED_ENGINES.has(name))) {
+  console.error(`error: ENGINES must list only chromium and webkit (got ${JSON.stringify(process.env.ENGINES ?? "")})`);
+  process.exit(2);
+}
+const CHROME_PATH = process.env.CHROME_PATH || "/usr/bin/google-chrome";
+let browser = null;
+if (ENGINES.has("chromium")) {
+  browser = await chromium.launch({ executablePath: CHROME_PATH, args: ["--no-sandbox"] });
+}
 const results = [];
 const ok = (P, name, cond, note = "") => {
   results.push({ P, name, pass: !!cond, note });
@@ -66,6 +77,7 @@ async function readMotion(page) {
   });
 }
 
+if (ENGINES.has("chromium")) {
 for (const P of ["desktop", "phone"]) {
   let [ctx, page] = await newPage(P);
   await page.goto(`${BASE}?game=klondike`);
@@ -299,6 +311,7 @@ for (const P of ["desktop", "phone"]) {
   await page.screenshot({ path: `${SH}/${P}-reduced.png` });
   await ctx.close();
 }
+}
 
 function paeth(a, b, c) {
   const p = a + b - c;
@@ -401,40 +414,81 @@ function transparentBg(bg) {
   return parts.length === 4 && parts[3] === 0;
 }
 
-async function readFlipFrame(page, time) {
+async function pauseFreshFlip(page, time) {
   return page.evaluate(async (time) => {
+    const s = window.__solitaire.getState();
+    const c = (suit, rank, faceUp = true) => ({ id: `${suit}-${rank}`, suit, rank, faceUp });
+    s.tableau = Array.from({ length: 7 }, () => []);
+    s.tableau[0] = [c("spades", 6)];
+    s.tableau[1] = [c("hearts", 1, false), c("diamonds", 5)];
+    s.foundations = [[], [], [], []];
+    s.stock = [];
+    s.waste = [];
+    s.moves = 3;
+    s.won = false;
+    window.__solitaire.setState(s);
+    window.__solitaire.move({ zone: "tableau", index: 1 }, { zone: "tableau", index: 0 });
+    const t0 = performance.now();
+    return await new Promise((resolve) => {
+      let sawFlip = false;
+      const tick = () => {
+        const slideWaitMs = Math.round(performance.now() - t0);
+        const slideLeft = !!document.querySelector(".card-slide");
+        const el = document.querySelector('.card[data-id="hearts-1"]');
+        const anims = el?.getAnimations({ subtree: true }).filter((a) => String(a.animationName || "").startsWith("card-flip")) || [];
+        const running = anims.filter((a) => a.playState === "running");
+        if (running.length) sawFlip = true;
+        if (!slideLeft && running.length) {
+          for (const item of anims) {
+            item.pause();
+            item.currentTime = time;
+          }
+          resolve({ paused: true, slideWaitMs });
+          return;
+        }
+        if ((sawFlip && running.length === 0) || slideWaitMs >= 600) {
+          resolve({ paused: false, slideWaitMs });
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }, time);
+}
+
+async function verifyPausedFlip(page, time) {
+  return page.evaluate((time) => {
     const el = document.querySelector('.card[data-id="hearts-1"]');
-    const rot = el?.querySelector(".card-rotator");
     const anims = el?.getAnimations({ subtree: true }).filter((a) => String(a.animationName || "").startsWith("card-flip")) || [];
-    const anim = anims.find((a) => a.animationName === "card-flip");
-    if (!el || !rot || !anim) return { missing: true, hasEl: !!el, hasRot: !!rot, hasAnim: !!anim };
-    for (const item of anims) {
-      item.pause();
-      item.currentTime = time;
-    }
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const cs = getComputedStyle(el);
-    const front = el.querySelector(".card-face.front");
-    const back = el.querySelector(".card-face.back");
-    const lift = el.querySelector(".card-lift");
-    const between = lift ? getComputedStyle(lift) : null;
+    const anim = anims.find((a) => a.animationName === "card-flip") || null;
+    const turning = !!(el && (el.classList.contains("is-turning") || el.dataset.turning === "1"));
     return {
-      transform: getComputedStyle(rot).transform,
-      turning: el.classList.contains("is-turning") || el.dataset.turning === "1",
-      bg: cs.backgroundColor,
-      image: cs.backgroundImage,
-      border: `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`,
-      shadow: cs.boxShadow,
-      frontBack: getComputedStyle(front).backfaceVisibility,
-      backBack: getComputedStyle(back).backfaceVisibility,
-      liftPreserve: between?.transformStyle || "",
-      liftOpacity: between?.opacity || "",
-      liftFilter: between?.filter || "",
-      liftOverflow: between?.overflow || "",
-      liftIsolation: between?.isolation || "",
-      flipperPreserve: getComputedStyle(rot).transformStyle,
+      ok: !!(anim && anim.playState === "paused" && anim.currentTime === time && turning),
+      exists: !!anim,
+      paused: anim?.playState === "paused",
+      playState: anim?.playState ?? null,
+      currentTime: anim ? anim.currentTime : null,
+      target: time,
+      turning,
+      anims: anims.length,
     };
   }, time);
+}
+
+async function captureVerifiedFlipShot(page, time) {
+  let verify = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const held = await pauseFreshFlip(page, time);
+    if (!held.paused) {
+      verify = { ok: false, attempt, slideWaitMs: held.slideWaitMs };
+      continue;
+    }
+    const shot = await shotCard(page);
+    verify = { ...(await verifyPausedFlip(page, time)), attempt, slideWaitMs: held.slideWaitMs };
+    if (verify.ok) return { shot, verify };
+  }
+  return { shot: null, verify };
 }
 
 async function shotCard(page) {
@@ -514,13 +568,17 @@ async function verifyFlip(engine, page) {
     const backTime = frames.find((f) => f.yaw != null && f.yaw >= 120)?.time;
     let frontShot = null;
     let backShot = null;
+    let frontVerify = null;
+    let backVerify = null;
     if (frontTime != null) {
-      await readFlipFrame(page, frontTime);
-      frontShot = await shotCard(page);
+      const got = await captureVerifiedFlipShot(page, frontTime);
+      frontShot = got.shot;
+      frontVerify = got.verify;
     }
     if (backTime != null) {
-      await readFlipFrame(page, backTime);
-      backShot = await shotCard(page);
+      const got = await captureVerifiedFlipShot(page, backTime);
+      backShot = got.shot;
+      backVerify = got.verify;
     }
     const turningFrames = frames.filter((f) => f.turning);
     const clearChrome = turningFrames.length > 0 && turningFrames.every(
@@ -537,6 +595,8 @@ async function verifyFlip(engine, page) {
         frames,
         frontRed: frontShot?.redR,
         backRed: backShot?.redR,
+        frontVerify,
+        backVerify,
       }),
     );
     const finalState = await page.evaluate(async () => {
@@ -586,31 +646,52 @@ async function verifyReducedClear(engine, page) {
     s.moves = 3;
     s.won = false;
     window.__solitaire.setState(s);
-    const t0 = performance.now();
-    const result = window.__solitaire.move({ zone: "tableau", index: 1 }, { zone: "tableau", index: 0 });
-    const el = document.querySelector('.card[data-id="hearts-1"]');
-    const seen = [];
-    const read = () => {
-      seen.push({
-        t: performance.now() - t0,
-        turning: !!(el?.classList.contains("is-turning") || el?.dataset.turning === "1"),
-      });
+    const records = [];
+    const hitsHearts = (node) => node?.nodeType === 1 && (node.matches?.('.card[data-id="hearts-1"]') || !!node.querySelector?.('.card[data-id="hearts-1"]'));
+    const turningNow = () => {
+      const node = document.querySelector('.card[data-id="hearts-1"]');
+      return !!(node && (node.classList.contains("is-turning") || node.dataset.turning === "1"));
     };
-    read();
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        let hit = false;
+        if (m.type === "childList") {
+          for (const n of m.addedNodes) if (hitsHearts(n)) hit = true;
+        } else if (m.type === "attributes" && hitsHearts(m.target)) hit = true;
+        if (!hit) continue;
+        records.push({ now: performance.now(), turning: turningNow() });
+      }
+    });
+    const root = document.querySelector("#table") || document.body;
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "data-turning"] });
+    const moveStart = performance.now();
+    const result = window.__solitaire.move({ zone: "tableau", index: 1 }, { zone: "tableau", index: 0 });
+    const moveReturn = performance.now();
+    await new Promise((resolve) => queueMicrotask(resolve));
+    const t0 = records.length ? records[0].now : moveReturn;
+    const raf = [];
     await new Promise((resolve) => {
       const tick = () => {
-        read();
-        if (performance.now() - t0 < 100) requestAnimationFrame(tick);
+        const now = performance.now();
+        raf.push({ now, turning: turningNow() });
+        if (now - t0 < 120) requestAnimationFrame(tick);
         else resolve();
       };
       requestAnimationFrame(tick);
     });
+    observer.disconnect();
+    const el = document.querySelector('.card[data-id="hearts-1"]');
+    const seen = [
+      ...records.map((rec) => ({ t: rec.now - t0, turning: rec.turning, src: "mut" })),
+      ...raf.map((rec) => ({ t: rec.now - t0, turning: rec.turning, src: "raf" })),
+    ];
     return {
       ok: result?.ok === true,
       match: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       seen,
       faceUp: el?.classList.contains("face-up") === true,
       label: el?.getAttribute("aria-label") || "",
+      moveReturnMs: moveReturn - moveStart,
     };
   });
   const onTime = reduced.seen.filter((s) => s.t <= 100);
@@ -632,39 +713,43 @@ async function verifyReducedClear(engine, page) {
 const iphone = { ...devices["iPhone 13"] };
 delete iphone.defaultBrowserType;
 
-const flipChrome = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
-{
-  const ctx = await flipChrome.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
-  const page = await ctx.newPage();
-  await verifyFlip("chromium", page);
-  await ctx.close();
-  const rctx = await flipChrome.newContext({
-    viewport: { width: 390, height: 844 },
-    hasTouch: true,
-    isMobile: true,
-    deviceScaleFactor: 2,
-    reducedMotion: "reduce",
-  });
-  const rpage = await rctx.newPage();
-  await verifyReducedClear("chromium", rpage);
-  await rctx.close();
-  await flipChrome.close();
+if (ENGINES.has("chromium")) {
+  const flipChrome = await chromium.launch({ executablePath: CHROME_PATH, args: ["--no-sandbox"] });
+  {
+    const ctx = await flipChrome.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    const page = await ctx.newPage();
+    await verifyFlip("chromium", page);
+    await ctx.close();
+    const rctx = await flipChrome.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      reducedMotion: "reduce",
+    });
+    const rpage = await rctx.newPage();
+    await verifyReducedClear("chromium", rpage);
+    await rctx.close();
+    await flipChrome.close();
+  }
 }
 
-const flipWebkit = await webkit.launch();
-{
-  const ctx = await flipWebkit.newContext(iphone);
-  const page = await ctx.newPage();
-  await verifyFlip("webkit", page);
-  await ctx.close();
-  const rctx = await flipWebkit.newContext({ ...iphone, reducedMotion: "reduce" });
-  const rpage = await rctx.newPage();
-  await verifyReducedClear("webkit", rpage);
-  await rctx.close();
-  await flipWebkit.close();
+if (ENGINES.has("webkit")) {
+  const flipWebkit = await webkit.launch();
+  {
+    const ctx = await flipWebkit.newContext(iphone);
+    const page = await ctx.newPage();
+    await verifyFlip("webkit", page);
+    await ctx.close();
+    const rctx = await flipWebkit.newContext({ ...iphone, reducedMotion: "reduce" });
+    const rpage = await rctx.newPage();
+    await verifyReducedClear("webkit", rpage);
+    await rctx.close();
+    await flipWebkit.close();
+  }
 }
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
-await browser.close();
-if (failed.length) process.exit(1);
+if (browser) await browser.close();
+if (results.length === 0 || failed.length) process.exit(1);

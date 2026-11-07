@@ -8,6 +8,15 @@ const BASE = "http://127.0.0.1:4173/solitaire/";
 const SH = process.env.SHOTS_DIR || "/workspace/qa/b8";
 mkdirSync(SH, { recursive: true });
 
+const ALLOWED_ENGINES = new Set(["chromium", "webkit"]);
+const engineList = (process.env.ENGINES == null ? "chromium,webkit" : process.env.ENGINES).split(",").map((name) => name.trim()).filter(Boolean);
+const ENGINES = new Set(engineList);
+if (engineList.length === 0 || engineList.some((name) => !ALLOWED_ENGINES.has(name))) {
+  console.error(`error: ENGINES must list only chromium and webkit (got ${JSON.stringify(process.env.ENGINES ?? "")})`);
+  process.exit(2);
+}
+const CHROME_PATH = process.env.CHROME_PATH || "/usr/bin/google-chrome";
+
 const results = [];
 const ok = (P, name, cond, note = "") => {
   results.push({ P, name, pass: !!cond, note });
@@ -145,7 +154,7 @@ function between(start, end, point, slack = 6, minLength = 24) {
 }
 
 async function launchChrome() {
-  return chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+  return chromium.launch({ executablePath: CHROME_PATH, args: ["--no-sandbox"] });
 }
 
 async function boot(page) {
@@ -796,14 +805,18 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
   await tapCtx.close();
 }
 
-const chrome = await launchChrome();
-await runEngine("chromium", chrome, { viewport: { width: 1280, height: 800 } }, { shots: true });
-await chrome.close();
+if (ENGINES.has("chromium")) {
+  const chrome = await launchChrome();
+  await runEngine("chromium", chrome, { viewport: { width: 1280, height: 800 } }, { shots: true });
+  await chrome.close();
+}
 
-const web = await webkit.launch();
-await runEngine("webkit", web, iphone, { shots: false });
-await web.close();
+if (ENGINES.has("webkit")) {
+  const web = await webkit.launch();
+  await runEngine("webkit", web, iphone, { shots: false });
+  await web.close();
+}
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
-if (failed.length) process.exit(1);
+if (results.length === 0 || failed.length) process.exit(1);

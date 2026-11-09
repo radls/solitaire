@@ -28,7 +28,7 @@ import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { hintFromSelector } from "./hint-target.js";
 import { scheduleGlowClear, stopBoardPaint } from "./board-timers.js";
@@ -579,12 +579,7 @@ export function mount(options = {}) {
   }
 
   function creditDaily() {
-    const key = session.state?.daily;
-    if (!key || key !== todayKey()) return;
-    const next = nextDailyStreak(session.stats, key);
-    session.stats.dailyStreak = next.dailyStreak;
-    session.stats.dailyBest = next.dailyBest;
-    session.stats.dailyLast = next.dailyLast;
+    creditDailyWin(session.stats, session.state, !!session.state?.won);
   }
 
   function dailyDoneHTML() {

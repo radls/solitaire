@@ -7,7 +7,7 @@ import { makeCard } from "../src/game/cards.js";
 import { emptyState, moveCards, scoreParts } from "../src/game/klondike.js";
 import { hintFromSelector } from "../src/hint-target.js";
 import { minimumScore } from "../src/game/golf.js";
-import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "../src/records.js";
+import { bumpWinStreak, coerceStreak, noteGolfRoundBest, notePersonalBest, personalBestHTML } from "../src/records.js";
 import { abandonsStreak, dailyAlongsidePlan, isDailyBoard, placeBoard, takeSlots } from "../src/slots.js";
 
 function C(suit, rank, faceUp = true) {
@@ -213,6 +213,23 @@ describe("personal bests", () => {
     const held = notePersonalBest({ bestScore: floor }, { score: -2 });
     expect(held.stats.bestScore).toBe(floor);
     expect(held.note).toBe("");
+  });
+
+  it("does not treat a failed Golf daily as a personal best", () => {
+    const stats = { bestScore: 4, cleared: 2 };
+    const failed = noteGolfRoundBest(stats, { score: 3, cleared: false, daily: true });
+    expect(failed.note).toBe("");
+    expect(failed.stats.bestScore).toBe(4);
+    expect(stats.bestScore).toBe(4);
+    expect(stats.cleared).toBe(2);
+
+    const cleared = noteGolfRoundBest(stats, { score: 1, cleared: true, daily: true });
+    expect(cleared.note).toBe("New best");
+    expect(cleared.stats.bestScore).toBe(1);
+
+    const casualMiss = noteGolfRoundBest({ bestScore: 4 }, { score: 2, cleared: false, daily: false });
+    expect(casualMiss.note).toBe("New best");
+    expect(casualMiss.stats.bestScore).toBe(2);
   });
 
   it("keeps a negative or zero golf score as a real best", () => {

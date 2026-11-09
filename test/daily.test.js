@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   canResume,
@@ -7,6 +8,7 @@ import {
   dailySeed,
   formatDailyLabel,
   frozenElapsedMs,
+  creditDailyWin,
   nextDailyStreak,
   pickerStatsText,
   resumeText,
@@ -98,6 +100,58 @@ describe("nextDailyStreak", () => {
       dailyLast: "2026-10-09",
     });
     expect(nextDailyStreak(null, "2026-10-09").dailyStreak).toBe(1);
+  });
+});
+
+describe("creditDailyWin", () => {
+  const key = "2026-10-09";
+  const base = () => ({ dailyStreak: 2, dailyBest: 4, dailyLast: "2026-10-08", won: 3 });
+
+  it("does not credit a failed or unfinished daily", () => {
+    const stats = base();
+    expect(creditDailyWin(stats, { daily: key, over: true }, false, key)).toBe(false);
+    expect(stats).toEqual(base());
+  });
+
+  it("credits a cleared or won daily and advances the streak", () => {
+    const stats = base();
+    expect(creditDailyWin(stats, { daily: key, won: true }, true, key)).toBe(true);
+    expect(stats.dailyStreak).toBe(3);
+    expect(stats.dailyBest).toBe(4);
+    expect(stats.dailyLast).toBe(key);
+    expect(stats.won).toBe(3);
+  });
+
+  it("is a no-op when that day is already credited", () => {
+    const stats = { dailyStreak: 3, dailyBest: 4, dailyLast: key };
+    expect(creditDailyWin(stats, { daily: key }, true, key)).toBe(false);
+    expect(stats).toEqual({ dailyStreak: 3, dailyBest: 4, dailyLast: key });
+  });
+
+  it("does not credit a casual board, another day, or a missing stats object", () => {
+    const stats = base();
+    expect(creditDailyWin(stats, { moves: 10 }, true, key)).toBe(false);
+    expect(creditDailyWin(stats, { daily: "2026-10-08" }, true, key)).toBe(false);
+    expect(creditDailyWin(stats, null, true, key)).toBe(false);
+    expect(creditDailyWin(null, { daily: key }, true, key)).toBe(false);
+    expect(stats).toEqual(base());
+  });
+
+  it("wires Klondike, FreeCell, and King's Corners to credit only a win, and Golf only a clear", () => {
+    const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const klondike = read("src/ui.js");
+    const freecell = read("src/ui-freecell.js");
+    const kings = read("src/ui-kings.js");
+    const golf = read("src/ui-golf.js");
+    expect(klondike).toMatch(/creditDailyWin\(session\.stats, session\.state, !!session\.state\?\.won\)/);
+    expect(freecell).toMatch(/creditDailyWin\(session\.stats, session\.state, !!\(session\.state\?\.won \|\| \(session\.state && isWon\(session\.state\)\)\)\)/);
+    expect(kings).toMatch(/creditDailyWin\(session\.stats, session\.state, !!\(session\.state\?\.won \|\| \(session\.state && isWon\(session\.state\)\)\)\)/);
+    expect(golf).toMatch(/creditDailyWin\(session\.stats, session\.state, isCleared\(session\.state\)\)/);
+    expect(golf).toMatch(/if \(session\.state\?\.daily !== key \|\| !isCleared\(session\.state\)\) return "";/);
+    expect(golf).toMatch(/won: isCleared\(state\)/);
+    for (const src of [klondike, freecell, kings, golf]) {
+      expect(src).not.toMatch(/nextDailyStreak/);
+    }
   });
 });
 

@@ -61,6 +61,26 @@ export function nextDailyStreak(stats, key) {
 }
 
 /**
+ * Record today's daily only when `credited` is a real win or a Golf clear.
+ * A stuck, lost, or unfinished deal does not touch the streak. Same day is a no-op.
+ * Mutates `stats`. Returns true when a field changes.
+ */
+export function creditDailyWin(stats, state, credited, key = todayKey()) {
+  if (!credited || !stats) return false;
+  const day = state?.daily;
+  if (!day || day !== key) return false;
+  const next = nextDailyStreak(stats, day);
+  const changed =
+    stats.dailyStreak !== next.dailyStreak ||
+    stats.dailyBest !== next.dailyBest ||
+    stats.dailyLast !== next.dailyLast;
+  stats.dailyStreak = next.dailyStreak;
+  stats.dailyBest = next.dailyBest;
+  stats.dailyLast = next.dailyLast;
+  return changed;
+}
+
+/**
  * How to open a game when the player asked for today's daily.
  * `resume` keeps today's unfinished daily. `confirm` asks before abandoning
  * another in-progress deal. `deal` starts today's daily immediately.

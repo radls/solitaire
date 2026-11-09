@@ -64,6 +64,15 @@ export function notePersonalBest(stats, { timeMs, moves, score } = {}) {
   return { stats: next, note };
 }
 
+/**
+ * Golf personal best. A failed daily must not read as a win, so it does not
+ * move `bestScore` or produce "New best". Clears and casual rounds still judge.
+ */
+export function noteGolfRoundBest(stats, { score, cleared, daily } = {}) {
+  if (!cleared && daily) return { stats: { ...(stats || {}) }, note: "" };
+  return notePersonalBest(stats, { score });
+}
+
 export function personalBestHTML(note) {
   if (!note) return "";
   return `<p class="new-best" data-testid="new-best">${note}</p>`;

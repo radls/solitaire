@@ -24,9 +24,9 @@ import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
+  creditDailyWin,
   dailyDoneText,
   dailyFreeCellDeal,
-  nextDailyStreak,
   seedStatusText,
   todayKey,
   tomorrowDealHTML,
@@ -565,12 +565,7 @@ export function mount(options = {}) {
   }
 
   function creditDaily() {
-    const key = session.state?.daily;
-    if (!key || key !== todayKey()) return;
-    const next = nextDailyStreak(session.stats, key);
-    session.stats.dailyStreak = next.dailyStreak;
-    session.stats.dailyBest = next.dailyBest;
-    session.stats.dailyLast = next.dailyLast;
+    creditDailyWin(session.stats, session.state, !!(session.state?.won || (session.state && isWon(session.state))));
   }
 
   function dailyDoneHTML() {

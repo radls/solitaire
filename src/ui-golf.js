@@ -22,9 +22,9 @@ import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { dailyDoneText, dailySeed, nextDailyStreak, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
-import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
+import { bumpWinStreak, coerceStreak, noteGolfRoundBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
@@ -438,7 +438,7 @@ export function mount(options = {}) {
       <p data-testid="win-count">Courses cleared ${session.stats.cleared}</p>
       ${personalBestHTML(session.bestNote)}
       ${dailyDoneHTML()}
-      ${state.daily === todayKey() ? tomorrowDealHTML() : ""}
+      ${cleared && state.daily === todayKey() ? tomorrowDealHTML() : ""}
       ${pickResultHTML()}
       ${winScreenTipHTML(session.stats.streak)}
       <div class="modal-actions">
@@ -531,7 +531,8 @@ export function mount(options = {}) {
     if (!session.state?.over || session.notedEnd) return;
     session.notedEnd = true;
     const value = score(session.state);
-    if (isCleared(session.state)) {
+    const cleared = isCleared(session.state);
+    if (cleared) {
       session.stats.cleared += 1;
       session.countedClear = true;
       const bumped = bumpWinStreak(session.stats);
@@ -545,7 +546,7 @@ export function mount(options = {}) {
     } else {
       session.missedRound = false;
     }
-    const judged = notePersonalBest(session.stats, { score: value });
+    const judged = noteGolfRoundBest(session.stats, { score: value, cleared, daily: !!session.state.daily });
     session.bestSnapshot = session.stats.bestScore;
     session.stats.bestScore = judged.stats.bestScore;
     session.improvedBest = judged.note !== "";
@@ -555,17 +556,12 @@ export function mount(options = {}) {
   }
 
   function creditDaily() {
-    const key = session.state?.daily;
-    if (!key || key !== todayKey()) return;
-    const next = nextDailyStreak(session.stats, key);
-    session.stats.dailyStreak = next.dailyStreak;
-    session.stats.dailyBest = next.dailyBest;
-    session.stats.dailyLast = next.dailyLast;
+    creditDailyWin(session.stats, session.state, isCleared(session.state));
   }
 
   function dailyDoneHTML() {
     const key = todayKey();
-    if (session.state?.daily !== key) return "";
+    if (session.state?.daily !== key || !isCleared(session.state)) return "";
     if (session.stats.dailyLast !== key) {
       creditDaily();
       persist();
@@ -588,7 +584,7 @@ export function mount(options = {}) {
     const entry = pickForDate(state.pick);
     if (!entry) return "";
     const view = formatPickResult(entry, {
-      won: true,
+      won: isCleared(state),
       moves: state.moves || 0,
       elapsedMs: elapsedMs(state, state.wonAt || Date.now()),
       undoUsed: state.undoUsed === true,

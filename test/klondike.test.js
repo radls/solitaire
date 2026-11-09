@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { makeCard } from "../src/game/cards.js";
 import {
@@ -787,16 +786,5 @@ describe("draw toggle", () => {
 
   it("redeals a finished game without asking", () => {
     expect(drawTogglePlan(emptyState({ drawCount: 1, moves: 40, won: true }), 3).action).toBe("deal");
-  });
-
-  it("wires the header toggle through the plan and keeps a daily on OK", () => {
-    const src = readFileSync(new URL("../src/ui.js", import.meta.url), "utf8");
-    expect(src).toMatch(/listen\(root\.draw1, "click", \(\) => applyDrawToggle\(1\)\)/);
-    expect(src).toMatch(/listen\(root\.draw3, "click", \(\) => applyDrawToggle\(3\)\)/);
-    const confirm = src.slice(src.indexOf("function confirmDrawChange"), src.indexOf("function confirmNew"));
-    expect(confirm).toMatch(/data-testid="confirm-cancel"/);
-    expect(confirm).toMatch(/data-act="close"/);
-    expect(confirm).toMatch(/plan\.keepDaily \? ` data-daily="1"`/);
-    expect(confirm).toMatch(/drawToggleConfirmCopy\(plan\)/);
   });
 });

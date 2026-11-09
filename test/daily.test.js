@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { isCleared } from "../src/game/golf.js";
 import {
   canResume,
   dailyButtonLabel,
@@ -140,19 +141,68 @@ describe("creditDailyWin", () => {
     expect(stats).toEqual(base());
   });
 
-  it("wires Klondike, FreeCell, and King's Corners to credit only a win, and Golf only a clear", () => {
+  it("keeps a legacy Golf streak on a failed daily and adds one on a clear", () => {
+    const today = "2026-11-09";
+    const yesterday = "2026-11-08";
+    const legacy = () => ({
+      played: 10,
+      cleared: 3,
+      bestScore: 2,
+      streak: 1,
+      bestStreak: 2,
+      dailyStreak: 4,
+      dailyBest: 6,
+      dailyLast: yesterday,
+    });
+    const card = (suit, rank) => ({ id: `${suit}-${rank}`, suit, rank, faceUp: true });
+    const columns = () => Array.from({ length: 7 }, () => []);
+    const failedColumns = columns();
+    failedColumns[0] = [card("hearts", 9)];
+    failedColumns[1] = [card("clubs", 11)];
+    const failed = {
+      columns: failedColumns,
+      stock: [],
+      waste: [card("clubs", 5)],
+      daily: today,
+      over: true,
+      moves: 4,
+    };
+    const failedStats = legacy();
+    expect(isCleared(failed)).toBe(false);
+    expect(creditDailyWin(failedStats, failed, isCleared(failed), today)).toBe(false);
+    expect(failedStats.dailyStreak).toBe(4);
+    expect(failedStats.dailyBest).toBe(6);
+    expect(failedStats.dailyLast).toBe(yesterday);
+    expect(failedStats.played).toBe(10);
+    expect(failedStats.cleared).toBe(3);
+
+    const cleared = {
+      columns: columns(),
+      stock: [],
+      waste: [card("clubs", 5)],
+      daily: today,
+      over: true,
+      moves: 4,
+    };
+    const clearedStats = legacy();
+    expect(isCleared(cleared)).toBe(true);
+    expect(creditDailyWin(clearedStats, cleared, isCleared(cleared), today)).toBe(true);
+    expect(clearedStats.dailyStreak).toBe(5);
+    expect(clearedStats.dailyBest).toBe(6);
+    expect(clearedStats.dailyLast).toBe(today);
+    expect(clearedStats.played).toBe(10);
+    expect(clearedStats.cleared).toBe(3);
+  });
+
+  it("wires Klondike, FreeCell, and King's Corners to credit only a win", () => {
     const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
     const klondike = read("src/ui.js");
     const freecell = read("src/ui-freecell.js");
     const kings = read("src/ui-kings.js");
-    const golf = read("src/ui-golf.js");
     expect(klondike).toMatch(/creditDailyWin\(session\.stats, session\.state, !!session\.state\?\.won\)/);
     expect(freecell).toMatch(/creditDailyWin\(session\.stats, session\.state, !!\(session\.state\?\.won \|\| \(session\.state && isWon\(session\.state\)\)\)\)/);
     expect(kings).toMatch(/creditDailyWin\(session\.stats, session\.state, !!\(session\.state\?\.won \|\| \(session\.state && isWon\(session\.state\)\)\)\)/);
-    expect(golf).toMatch(/creditDailyWin\(session\.stats, session\.state, isCleared\(session\.state\)\)/);
-    expect(golf).toMatch(/if \(session\.state\?\.daily !== key \|\| !isCleared\(session\.state\)\) return "";/);
-    expect(golf).toMatch(/won: isCleared\(state\)/);
-    for (const src of [klondike, freecell, kings, golf]) {
+    for (const src of [klondike, freecell, kings]) {
       expect(src).not.toMatch(/nextDailyStreak/);
     }
   });

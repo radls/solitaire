@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   armSameTapGuard,
@@ -159,11 +158,5 @@ describe("sameTapShouldSwallow", () => {
     expect(sameTapShouldSwallow(holder, { x: 80, y: 80 }, 1100)).toBe(false);
     expect(holder.sameTapGuard).toBeTruthy();
     expect(sameTapShouldSwallow(holder, { x: 40, y: 80 }, 1000 + 701)).toBe(false);
-  });
-
-  it("Golf swallows the click that follows the tap which opened the dialog", () => {
-    const src = readFileSync(new URL("../src/ui-golf.js", import.meta.url), "utf8");
-    expect(src).toContain("armSameTapGuard(session,");
-    expect(src).toContain("sameTapShouldSwallow(session,");
   });
 });

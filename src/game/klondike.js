@@ -136,14 +136,19 @@ export function recyclePenalty(drawCount) {
   return drawCount === 3 ? 20 : 100;
 }
 
+/** Tooltip for the classic-theme time line. Bedtime does not charge this. */
+export const TIME_PENALTY_LABEL = "Time penalty: 2 points for every 10 seconds";
+
 /**
  * The meter shows `display`, which is the move score minus 2 points per 10 seconds.
  * `raw` is `state.score` (recycles already subtracted). `timePenalty` is not stored,
  * so the move count can stay still while the meter falls.
+ * Pass `{ penalizeTime: false }` in Bedtime, where the timer is hidden.
  */
-export function scoreParts(state, now = Date.now()) {
+export function scoreParts(state, now = Date.now(), options = {}) {
   const safe = state || emptyState();
-  const timePenalty = Math.floor(elapsedMs(safe, now) / 10000) * 2;
+  const penalizeTime = options.penalizeTime !== false;
+  const timePenalty = penalizeTime ? Math.floor(elapsedMs(safe, now) / 10000) * 2 : 0;
   const recycleEach = recyclePenalty(safe.drawCount);
   const recycleTotal = (safe.recycled || 0) * recycleEach;
   const raw = safe.score || 0;
@@ -156,13 +161,13 @@ export function scoreParts(state, now = Date.now()) {
   };
 }
 
-export function timedScore(state, now = Date.now()) {
-  return scoreParts(state, now).display;
+export function timedScore(state, now = Date.now(), options) {
+  return scoreParts(state, now, options).display;
 }
 
 export function timePenaltyNote(parts) {
   if (!parts?.timePenalty) return "";
-  return `−${parts.timePenalty} time`;
+  return `−${parts.timePenalty} time penalty`;
 }
 
 export function recycleNote(drawCount) {

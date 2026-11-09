@@ -21,6 +21,7 @@ import {
   moveCards,
   recycleNote,
   scoreParts,
+  TIME_PENALTY_LABEL,
   timePenaltyNote,
   timedScore,
 } from "./game/klondike.js";
@@ -524,11 +525,15 @@ export function mount(options = {}) {
     return meterElapsed(state, historyLength, now);
   }
 
+  function timePenaltyOn() {
+    return document.documentElement.dataset.theme === "classic";
+  }
+
   function refreshMeters() {
     syncPlayClock();
     const now = Date.now();
     root.time.textContent = formatTime(readMeter(now));
-    const parts = scoreParts(session.state, now);
+    const parts = scoreParts(session.state, now, { penalizeTime: timePenaltyOn() });
     root.score.textContent = String(parts.display);
     let note = document.getElementById("score-note");
     if (!note && root.score) {
@@ -542,6 +547,13 @@ export function mount(options = {}) {
       const text = timePenaltyNote(parts);
       note.textContent = text;
       note.hidden = !text;
+      if (text) {
+        note.title = TIME_PENALTY_LABEL;
+        note.setAttribute("aria-label", TIME_PENALTY_LABEL);
+      } else {
+        note.removeAttribute("title");
+        note.removeAttribute("aria-label");
+      }
     }
   }
 
@@ -674,7 +686,7 @@ export function mount(options = {}) {
       `<div class="modal win" data-testid="win-modal">
         <p class="big">You won</p>
         ${winCelebrateHTML()}
-        <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt)} points</p>
+        <p>${formatTime(elapsedMs(s, s.wonAt))} · ${s.moves} moves · ${timedScore(s, s.wonAt, { penalizeTime: timePenaltyOn() })} points</p>
         <ul class="stats-line">
           <li data-testid="win-count"><span>Wins</span>${stats.won} / ${playedShown}</li>
           <li><span>Streak</span>${stats.streak}</li>
@@ -709,7 +721,7 @@ export function mount(options = {}) {
       <div class="help-tip-row">${tipEntryHTML("help-tip")}</div>
       ${touchTipsHTML(gestures)}
       <p>Build the four foundations up by suit from ace to king. On the tableau, stack cards down in alternating colors. Empty columns take kings.</p>
-      <p>The score on the board is the move score minus 2 points for every 10 seconds. That time cost shows beside the score. Turning the waste over costs 20 points in Draw 3 and 100 in Draw 1. The cost is already in the move score, and the status line names it.</p>
+      <p>The score on the board is the move score minus 2 points for every 10 seconds. That time cost shows beside the score as a time penalty. Bedtime mode does not charge for time. Turning the waste over costs 20 points in Draw 3 and 100 in Draw 1. The cost is already in the move score, and the status line names it.</p>
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
       <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>

@@ -143,12 +143,28 @@ for (const P of ["desktop", "phone"]) {
     window.__solitaire.setState(s);
   });
   await page.waitForTimeout(200);
-  const score = await page.evaluate(() => ({
+  const bedtime = await page.evaluate(() => ({
     meter: document.getElementById("meter-score")?.textContent,
     note: document.querySelector("[data-testid='score-note']")?.textContent || "",
+    hidden: document.querySelector("[data-testid='score-note']")?.hidden !== false,
     moves: document.getElementById("meter-moves")?.textContent,
+    theme: document.documentElement.dataset.theme,
   }));
-  ok(P, "C time penalty is visible and moves stay", score.meter === "37" && score.note === "−24 time" && score.moves === "12", JSON.stringify(score));
+  ok(P, "C bedtime charges no time", bedtime.theme !== "classic" && bedtime.meter === "61" && bedtime.note === "" && bedtime.hidden && bedtime.moves === "12", JSON.stringify(bedtime));
+  await page.click("#btn-theme");
+  await page.waitForTimeout(400);
+  const score = await page.evaluate(() => {
+    const note = document.querySelector("[data-testid='score-note']");
+    return {
+      meter: document.getElementById("meter-score")?.textContent,
+      note: note?.textContent || "",
+      title: note?.getAttribute("title") || "",
+      label: note?.getAttribute("aria-label") || "",
+      moves: document.getElementById("meter-moves")?.textContent,
+      theme: document.documentElement.dataset.theme,
+    };
+  });
+  ok(P, "C time penalty is visible and moves stay", score.theme === "classic" && score.meter === "37" && score.note === "−24 time penalty" && /2 points for every 10 seconds/.test(score.title) && score.label === score.title && score.moves === "12", JSON.stringify(score));
   await page.screenshot({ path: `${SH}/${P}-score-note.png` });
   await page.click("#btn-help");
   await page.waitForTimeout(200);

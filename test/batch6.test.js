@@ -1,10 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { tomorrowDealHTML, tomorrowDealText } from "../src/daily.js";
 import { celebrationHTML, winCelebration } from "../src/celebrate.js";
 import { foundationCountLabel, completedFoundationIndexes } from "../src/game/freecell.js";
 import { cardsLeft, deal as dealGolf, nearMissLine } from "../src/game/golf.js";
 import { makeCard } from "../src/game/cards.js";
-import { emptyState, moveCards, scoreParts } from "../src/game/klondike.js";
+import { emptyState, moveCards, scoreParts, TIME_PENALTY_LABEL, timePenaltyNote, timedScore } from "../src/game/klondike.js";
 import { hintFromSelector } from "../src/hint-target.js";
 import { minimumScore } from "../src/game/golf.js";
 import { bumpWinStreak, coerceStreak, noteGolfRoundBest, notePersonalBest, personalBestHTML } from "../src/records.js";
@@ -33,6 +34,35 @@ describe("score parts", () => {
     expect(state.score).toBe(61);
     expect(state.moves).toBe(12);
     expect(later.recycleTotal).toBe(0);
+  });
+
+  it("charges no time in Bedtime and labels the penalty outside it", () => {
+    const state = emptyState({
+      score: 61,
+      moves: 12,
+      startedAt: 1_000,
+      drawCount: 3,
+    });
+    const bedtime = scoreParts(state, 1_000 + 120_000, { penalizeTime: false });
+    expect(bedtime.timePenalty).toBe(0);
+    expect(bedtime.display).toBe(61);
+    expect(timePenaltyNote(bedtime)).toBe("");
+    expect(timedScore(state, 1_000 + 120_000, { penalizeTime: false })).toBe(61);
+
+    const classic = scoreParts(state, 1_000 + 120_000);
+    expect(classic.timePenalty).toBe(24);
+    expect(classic.display).toBe(37);
+    expect(timePenaltyNote(classic)).toBe("−24 time penalty");
+    expect(TIME_PENALTY_LABEL).toMatch(/2 points for every 10 seconds/);
+  });
+
+  it("shows the penalty line only in the classic theme", () => {
+    const src = readFileSync(new URL("../src/ui.js", import.meta.url), "utf8");
+    const meters = src.slice(src.indexOf("function refreshMeters"), src.indexOf("function updateMuteButton"));
+    expect(meters).toMatch(/penalizeTime: timePenaltyOn\(\)/);
+    expect(meters).toMatch(/note\.title = TIME_PENALTY_LABEL/);
+    expect(meters).toMatch(/note\.hidden = !text/);
+    expect(src).toMatch(/function timePenaltyOn\(\) \{\s*return document\.documentElement\.dataset\.theme === "classic";/);
   });
 });
 

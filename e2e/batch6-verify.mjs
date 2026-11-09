@@ -74,13 +74,13 @@ for (const P of ["desktop", "phone"]) {
   [ctx, page] = await newPage(P);
   await page.goto(`${BASE}?game=klondike`);
   await page.waitForTimeout(600);
-  const choice = page.locator('[data-testid="draw-choice"]');
-  const choiceText = (await choice.innerText()).replace(/\s+/g, " ");
-  const box = await choice.boundingBox();
+  ok(P, "7 no waste draw prompt", (await page.locator('[data-testid="draw-choice"]').count()) === 0);
+  const draw3 = page.locator("#btn-draw-3");
+  const box = await draw3.boundingBox();
   const vw = P === "phone" ? 390 : 1280;
-  ok(P, "7 draw choice words visible at the start", /Draw 1/.test(choiceText) && /Draw 3/.test(choiceText) && !!box && box.width > 80 && box.x >= 0 && box.x + box.width <= vw + 1, choiceText);
+  ok(P, "7 Draw 3 header control is on screen", !!box && box.width > 20 && box.x >= 0 && box.x + box.width <= vw + 1, JSON.stringify(box));
   await page.screenshot({ path: `${SH}/${P}-draw-choice.png` });
-  await choice.locator('[data-draw="3"]').click();
+  await draw3.click();
   await page.waitForTimeout(300);
   ok(P, "7 Draw 3 starts that mode", (await page.evaluate(() => window.__solitaire.getState().drawCount)) === 3);
   const opening = await page.evaluate(() => {

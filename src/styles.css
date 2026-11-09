@@ -1008,54 +1008,6 @@ html[data-theme="night"] .card.is-settling .card-lift {
   display: none;
 }
 
-.draw-choice {
-  /* Overlay in the top row's empty waste + gap space (waste is empty at move 0).
-     Out of the board's layout flow so the board fit is identical to the board without it. */
-  position: absolute;
-  top: 50%;
-  left: calc(var(--card-w) + var(--col-gap));
-  right: calc(4 * var(--card-w) + 4 * var(--col-gap));
-  transform: translateY(-50%);
-  z-index: 30;
-  padding: 0.35rem;
-  border-radius: var(--radius);
-  background: rgba(10, 20, 16, 0.86);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  text-align: center;
-  pointer-events: none;
-}
-
-.row.top {
-  position: relative;
-}
-
-.draw-choice p {
-  margin: 0 0 0.3rem;
-  color: var(--text);
-  font-family: var(--display);
-  font-size: clamp(0.75rem, 1.4vw, 1rem);
-  line-height: 1.1;
-}
-
-.draw-choice-row {
-  display: flex;
-  justify-content: center;
-  gap: 0.35rem;
-}
-
-.draw-choice .btn {
-  pointer-events: auto;
-  min-width: 0;
-  min-height: 44px;
-  padding-inline: clamp(0.4rem, 1.5vw, 1rem);
-}
-
-@media (max-width: 600px) {
-  .draw-choice .btn {
-    font-size: 0.75rem;
-  }
-}
-
 .slot.pile-glow {
   border-radius: var(--radius);
   box-shadow:
@@ -1467,6 +1419,10 @@ body[data-game="golf"] .table {
   cursor: pointer;
   outline: 2px solid var(--outline);
   outline-offset: 1px;
+}
+
+.board.golf.hinting .pile .card.playable:not(.hint-from) {
+  outline: none;
 }
 
 .board.golf .pile .card {

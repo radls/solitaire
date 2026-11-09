@@ -365,17 +365,6 @@ export function mount(options = {}) {
     });
 
     board.append(topRow, tableau);
-    if (state.moves === 0 && !state.won) {
-      const choice = document.createElement("div");
-      choice.className = "draw-choice";
-      choice.dataset.testid = "draw-choice";
-      choice.innerHTML = `<p>Draw from the stock</p>
-        <div class="draw-choice-row">
-          <button type="button" class="btn${state.drawCount === 1 ? " primary" : ""}" data-draw="1">Draw 1</button>
-          <button type="button" class="btn${state.drawCount === 3 ? " primary" : ""}" data-draw="3">Draw 3</button>
-        </div>`;
-      topRow.appendChild(choice);
-    }
     table.appendChild(board);
 
     root.moves.textContent = String(state.moves);
@@ -1114,7 +1103,6 @@ export function mount(options = {}) {
     interruptMotion();
     if (event.button != null && event.button !== 0) return;
     if (!root.overlay.hidden) return;
-    if (event.target.closest("[data-testid='draw-choice']")) return;
     resumeAudio();
     const cardEl = moving || target.closest(".card");
     const slot = (moving || target).closest("[data-drop]");
@@ -1181,12 +1169,6 @@ export function mount(options = {}) {
   }
 
   listen(root.table, "pointerdown", onPointerDown);
-  listen(root.table, "click", (event) => {
-    const btn = event.target.closest("[data-testid='draw-choice'] [data-draw]");
-    if (!btn) return;
-    event.preventDefault();
-    applyDrawToggle(Number(btn.dataset.draw));
-  });
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
   listen(window, "pointercancel", () => {

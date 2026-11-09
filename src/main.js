@@ -6,7 +6,7 @@ import { mount as mountKings } from "./ui-kings.js";
 import { isPickDone, load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePrefs } from "./storage.js";
 import { bootInstallHint } from "./install-hint.js";
 import { wireShare } from "./share.js";
-import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey, tomorrowDealHTML } from "./daily.js";
+import { canResume, dailyButtonLabel, PICKER_BLURBS, pickerStatsText, resumeText, startupTarget, todayKey, tomorrowDealHTML } from "./daily.js";
 import { groksPickButtonLabel, PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { takeSlots } from "./slots.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
@@ -196,7 +196,7 @@ function showPicker() {
         testid: "pick-klondike",
         kicker: "Classic",
         name: "Klondike",
-        blurb: "Build down by color. Draw from the stock.",
+        blurb: PICKER_BLURBS.klondike,
         stats: klondike.stats,
         state: klondikeCasual?.state,
         savedAt: klondikeCasual?.savedAt,
@@ -206,7 +206,7 @@ function showPicker() {
         testid: "pick-freecell",
         kicker: "Microsoft deals",
         name: "FreeCell",
-        blurb: "All cards face up. Four free cells.",
+        blurb: PICKER_BLURBS.freecell,
         stats: freecell.stats,
         state: freecellCasual?.state,
         savedAt: freecellCasual?.savedAt,
@@ -216,7 +216,7 @@ function showPicker() {
         testid: "pick-golf",
         kicker: "Calm & quick",
         name: "Golf",
-        blurb: "Clear the columns one rank up or down.",
+        blurb: PICKER_BLURBS.golf,
         stats: golf.stats,
         state: golfCasual?.state,
         savedAt: golfCasual?.savedAt,
@@ -226,7 +226,7 @@ function showPicker() {
         testid: "pick-kings",
         kicker: "Four kings",
         name: "King's Corners",
-        blurb: "Kings in the corners. Build down by color.",
+        blurb: PICKER_BLURBS.kings,
         stats: kings.stats,
         state: kingsCasual?.state,
         savedAt: kingsCasual?.savedAt,

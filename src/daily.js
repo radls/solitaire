@@ -122,6 +122,20 @@ export function dailyDoneText(streak) {
   return `Today's deal done · ${n} ${unit} in a row`;
 }
 
+export const PICKER_BLURBS = {
+  klondike: "Build down in alternating colors. Draw from the stock.",
+  freecell: "All cards face up. Four free cells.",
+  golf: "Clear the columns one rank up or down.",
+  kings: "Kings in the corners. Build down in alternating colors.",
+};
+
+export const KINGS_BUILD_STATUS = "Build down in alternating colors. Kings belong in the corners.";
+
+/** Golf win count. The picker and the round dialog share this wording. */
+export function golfClearedLabel(count) {
+  return `Cleared ${Number(count) || 0}`;
+}
+
 export function pickerStatsText(game, stats) {
   const played = stats?.played || 0;
   const wins = game === "golf" ? stats?.cleared || 0 : stats?.won || 0;
@@ -130,7 +144,7 @@ export function pickerStatsText(game, stats) {
   if (played === 0 && wins === 0) {
     line = "No games yet";
   } else {
-    const parts = game === "golf" ? [`Cleared ${wins}`, `Streak ${streak}`] : [`Wins ${wins}`, `Streak ${streak}`];
+    const parts = game === "golf" ? [golfClearedLabel(wins), `Streak ${streak}`] : [`Wins ${wins}`, `Streak ${streak}`];
     if (stats && stats.bestStreak != null) parts.push(`Best ${stats.bestStreak}`);
     line = parts.join(" · ");
   }

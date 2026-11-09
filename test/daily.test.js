@@ -9,7 +9,10 @@ import {
   formatDailyLabel,
   frozenElapsedMs,
   creditDailyWin,
+  golfClearedLabel,
+  KINGS_BUILD_STATUS,
   nextDailyStreak,
+  PICKER_BLURBS,
   pickerStatsText,
   resumeText,
   startupTarget,
@@ -198,6 +201,25 @@ describe("picker copy", () => {
       "Wins 0 · Streak 0 · Best 0 · Daily 1 day",
     );
     expect(pickerStatsText("kings", { played: 2, won: 1, streak: 1 })).toBe("Wins 1 · Streak 1");
+    expect(golfClearedLabel(4)).toBe("Cleared 4");
+    expect(golfClearedLabel(0)).toBe("Cleared 0");
+  });
+
+  it("says alternating colors wherever a build-down rule is shown", () => {
+    expect(PICKER_BLURBS.klondike).toMatch(/alternating colors/);
+    expect(PICKER_BLURBS.kings).toMatch(/alternating colors/);
+    expect(KINGS_BUILD_STATUS).toMatch(/alternating colors/);
+    for (const text of [...Object.values(PICKER_BLURBS), KINGS_BUILD_STATUS]) {
+      expect(text).not.toMatch(/by color/);
+    }
+    const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+    const kings = readFileSync(new URL("../src/ui-kings.js", import.meta.url), "utf8");
+    const golf = readFileSync(new URL("../src/ui-golf.js", import.meta.url), "utf8");
+    expect(main).not.toMatch(/by color/);
+    expect(kings).not.toMatch(/by color/);
+    expect(golf).not.toMatch(/Courses cleared/);
+    expect(golf).toMatch(/golfClearedLabel\(session\.stats\.cleared\)/);
+    expect(golf).toMatch(/roundEndTipHTML\(cleared,/);
   });
 
   it("always shows the daily streak, including 0, and drops a lapsed streak", () => {

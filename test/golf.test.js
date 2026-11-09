@@ -9,6 +9,7 @@ import {
   deal,
   drawStock,
   elapsedMs,
+  golfHintTargets,
   hint,
   isCleared,
   isRoundOver,
@@ -328,6 +329,8 @@ describe("hint", () => {
       stock: [C("spades", 2, false)],
     });
     expect(hint(play)).toEqual({ type: "play", col: 1 });
+    expect(golfHintTargets(hint(play))).toEqual(["card", "waste"]);
+    expect(golfHintTargets(hint(play))).not.toContain("stock");
 
     const draw = blank({
       waste: [C("hearts", 13)],
@@ -335,6 +338,7 @@ describe("hint", () => {
       stock: [C("clubs", 4, false)],
     });
     expect(hint(draw)).toEqual({ type: "draw" });
+    expect(golfHintTargets(hint(draw))).toEqual(["stock"]);
   });
 
   it("returns null when the stock is empty and nothing plays", () => {

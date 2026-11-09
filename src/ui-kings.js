@@ -21,7 +21,7 @@ import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { creditDailyWin, dailyDoneText, dailySeed, KINGS_BUILD_STATUS, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { hintFromSelector } from "./hint-target.js";
 import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
@@ -29,8 +29,8 @@ import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBo
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
 import {
   bindThumb,
-  fanPeek,
   isPhonePortrait,
+  kingsBoardFit,
   kbdTipsHTML,
   layoutBottomInset,
   listenLayout,
@@ -267,10 +267,6 @@ export function mount(options = {}) {
     const colGap = 6;
     const innerGap = 4;
     const rowGap = 6;
-    let cardW = Math.floor((width - colGap * 2 - innerGap) / 4);
-    if (window.innerWidth <= 600) cardW = Math.max(22, cardW);
-    else cardW = Math.max(26, Math.min(118, cardW));
-
     const lengths = session.state.sides.map((pile) => Math.max(1, pile.length));
     const extra =
       lengths[0] -
@@ -287,26 +283,16 @@ export function mount(options = {}) {
     let avail = window.innerHeight - headerH - statusH - padY - rowGap * 2 - 8 - layoutBottomInset();
     if (!phone && avail < 90) avail = 90;
 
-    let cardH = Math.round(cardW * 1.42);
-    const minPeek = extra > 0 ? 1 : 0;
-    const minCard = phone ? 24 : 36;
-    if (cardH * 3 + extra * minPeek > avail) {
-      cardH = Math.max(minCard, Math.floor((avail - extra * minPeek) / 3));
-      cardW = Math.max(phone ? 22 : 26, Math.min(cardW, Math.floor(cardH / 1.42)));
-      cardH = Math.round(cardW * 1.42);
-      if (cardH * 3 + extra * minPeek > avail) {
-        cardH = Math.max(minCard, Math.floor((avail - extra * minPeek) / 3));
-      }
-    }
-    let peek = Math.round(cardW * 0.26);
-    if (extra > 0) {
-      const room = Math.floor((avail - cardH * 3) / extra);
-      if (isPhonePortrait()) {
-        const columnAvail = cardH + extra * Math.max(room, 1);
-        peek = fanPeek(peek, cardH, columnAvail, extra);
-        if (cardH * 3 + extra * peek > avail) peek = Math.max(1, room);
-      } else peek = Math.max(1, Math.min(peek, room));
-    }
+    const fitted = kingsBoardFit({
+      width,
+      avail,
+      extra,
+      innerWidth: window.innerWidth,
+      portrait: isPhonePortrait(),
+      colGap,
+      innerGap,
+    });
+    const { cardW, cardH, peek } = fitted;
 
     const style = document.body.style;
     style.setProperty("--card-w", `${cardW}px`);
@@ -728,7 +714,7 @@ export function mount(options = {}) {
     persist();
     render();
     refreshMeters();
-    setStatus("Build down by color. Kings belong in the corners.");
+    setStatus(KINGS_BUILD_STATUS);
   }
 
   function startDaily() {
@@ -1189,7 +1175,7 @@ export function mount(options = {}) {
     else if (session.state.stuck) {
       showStuck();
       setStatus("No more moves.");
-    } else setStatus("Build down by color. Kings belong in the corners.");
+    } else setStatus(KINGS_BUILD_STATUS);
   } else if (wantPick) startPick();
   else if (wantDaily) startDaily();
   else startDeal(honorSeed ? urlSeed : undefined);

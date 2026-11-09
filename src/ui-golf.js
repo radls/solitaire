@@ -9,6 +9,7 @@ import {
   continueClock,
   deal,
   elapsedMs,
+  golfHintTargets,
   hint as findHint,
   isCleared,
   listLegalMoves,
@@ -21,8 +22,8 @@ import { loadGolf, loadPrefs, markPickDone, saveGolf, savePrefs } from "./storag
 import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
-import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { creditHTML, roundEndTipHTML, tipEntryHTML, toggleTipPanel } from "./tip.js";
+import { creditDailyWin, dailyDoneText, dailySeed, golfClearedLabel, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { bumpWinStreak, coerceStreak, noteGolfRoundBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
@@ -401,17 +402,17 @@ export function mount(options = {}) {
 
   function applyHintHighlight() {
     const move = session.hintMove;
+    const board = root.table?.querySelector(".board.golf");
+    board?.classList.toggle("hinting", !!move);
     if (!move) return;
-    if (move.type === "draw") {
-      document.querySelector('[data-drop="stock"]')?.classList.add("hint-to");
-      return;
-    }
-    if (move.type === "play") {
+    const targets = golfHintTargets(move);
+    if (targets.includes("stock")) document.querySelector('[data-drop="stock"]')?.classList.add("hint-to");
+    if (targets.includes("card")) {
       document
         .querySelector(`.card[data-zone="column"][data-index="${move.col}"][data-count="1"]`)
         ?.classList.add("hint-from");
-      document.querySelector('[data-drop="waste"]')?.classList.add("hint-to");
     }
+    if (targets.includes("waste")) document.querySelector('[data-drop="waste"]')?.classList.add("hint-to");
   }
 
   function showEnd() {
@@ -435,12 +436,12 @@ export function mount(options = {}) {
         <li><span>Stock left</span>${state.stock.length}</li>
         <li data-testid="best-score"><span>Best score</span>${best == null ? "—" : best}</li>
       </ul>
-      <p data-testid="win-count">Courses cleared ${session.stats.cleared}</p>
+      <p data-testid="win-count">${golfClearedLabel(session.stats.cleared)}</p>
       ${personalBestHTML(session.bestNote)}
       ${dailyDoneHTML()}
       ${cleared && state.daily === todayKey() ? tomorrowDealHTML() : ""}
       ${pickResultHTML()}
-      ${winScreenTipHTML(session.stats.streak)}
+      ${roundEndTipHTML(cleared, session.stats.streak)}
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Close</button>
         <button type="button" class="btn" data-act="replay">Replay this deal</button>

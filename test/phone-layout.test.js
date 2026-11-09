@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   fanPeek,
   growKlondikePeeks,
+  kingsBoardFit,
   kbdTipsHTML,
   shrinkToFit,
   tightenUntilFit,
@@ -33,6 +34,34 @@ describe("fanPeek", () => {
 
   it("does not shrink below 1px", () => {
     expect(fanPeek(15, 62, 40, 12)).toBe(1);
+  });
+});
+
+describe("kingsBoardFit", () => {
+  it("keeps a readable strip of the card underneath at 390px", () => {
+    const fit = kingsBoardFit({ width: 360, avail: 640, extra: 6, innerWidth: 390, portrait: true });
+    expect(fit.peek).toBeGreaterThanOrEqual(18);
+    expect(fit.cardH * 3 + 6 * fit.peek).toBeLessThanOrEqual(640);
+  });
+
+  it("shrinks the card before it gives up the strip", () => {
+    const fit = kingsBoardFit({ width: 360, avail: 400, extra: 9, innerWidth: 390, portrait: true });
+    expect(fit.peek).toBeGreaterThanOrEqual(18);
+    expect(fit.cardW).toBeLessThan(86);
+    expect(fit.cardH * 3 + 9 * fit.peek).toBeLessThanOrEqual(400);
+  });
+
+  it("uses the room that remains when a long pile cannot keep 18px", () => {
+    const fit = kingsBoardFit({ width: 360, avail: 280, extra: 20, innerWidth: 390, portrait: true });
+    expect(fit.peek).toBeGreaterThanOrEqual(1);
+    expect(fit.peek).toBeLessThan(18);
+    expect(fit.cardH * 3 + 20 * fit.peek).toBeLessThanOrEqual(280);
+  });
+
+  it("does not force the phone strip on a wide board", () => {
+    const fit = kingsBoardFit({ width: 900, avail: 700, extra: 2, innerWidth: 1280, portrait: false });
+    expect(fit.cardW).toBeLessThanOrEqual(118);
+    expect(fit.peek).toBeGreaterThan(1);
   });
 });
 

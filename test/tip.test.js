@@ -7,6 +7,7 @@ import {
   readTipCtaDay,
   shouldShowTipCta,
   streakLine,
+  roundEndTipHTML,
   stuckTipHTML,
   TIP_STORE_KEY,
   creditHTML,
@@ -240,6 +241,24 @@ describe("tipSections", () => {
     expect(next).toContain('data-testid="tip-cta"');
     expect(winScreenTipHTML(1, "2026-10-11", storage)).not.toContain("tip-cta");
     expect(winScreenTipHTML(1, "2026-10-11", storage)).toContain('data-testid="btn-tip"');
+  });
+
+  it("does not show or claim the donate prompt after a loss", () => {
+    const box = {};
+    const storage = {
+      getItem(key) {
+        return Object.prototype.hasOwnProperty.call(box, key) ? box[key] : null;
+      },
+      setItem(key, value) {
+        box[key] = String(value);
+      },
+    };
+    expect(roundEndTipHTML(false, 2, "2026-10-12", storage)).toBe("");
+    expect(box).toEqual({});
+    const win = roundEndTipHTML(true, 2, "2026-10-12", storage);
+    expect(win).toContain('data-testid="tip-cta"');
+    expect(win).toContain("Donate BTC for tokens for Grok Bot");
+    expect(roundEndTipHTML(false, 0, "2026-10-13", storage)).toBe("");
   });
 
   it("keeps a quiet tip entry free of the address", () => {

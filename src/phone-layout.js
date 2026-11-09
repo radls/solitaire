@@ -78,6 +78,64 @@ export function shrinkToFit(start, min, fits) {
   return lo;
 }
 
+/**
+ * King's Corners card size and the strip of the card underneath.
+ * On a narrow window the strip stays readable, and the card shrinks first.
+ * FreeCell's overlap is a different layout.
+ */
+export function kingsBoardFit({
+  width = 0,
+  avail = 800,
+  extra = 0,
+  innerWidth = 1024,
+  portrait = false,
+  colGap = 6,
+  innerGap = 4,
+} = {}) {
+  const phone = innerWidth <= 600;
+  const narrow = innerWidth <= 480;
+  const minW = phone ? 22 : 26;
+  const minCard = phone ? 24 : 36;
+  let cardW = Math.floor((Number(width) || 0) - colGap * 2 - innerGap) / 4;
+  cardW = Math.floor(cardW);
+  if (!Number.isFinite(cardW) || cardW < 1) cardW = minW;
+  cardW = phone ? Math.max(minW, cardW) : Math.max(minW, Math.min(118, cardW));
+
+  const steps = Math.max(0, Math.round(Number(extra) || 0));
+  const safeAvail = Number.isFinite(avail) ? avail : 800;
+  const peekFloor = narrow ? 18 : 1;
+  const hardFloor = narrow ? 12 : 1;
+  const reserve = steps > 0 ? (narrow ? peekFloor : 1) : 0;
+  let cardH = Math.round(cardW * 1.42);
+  const used = (h, peek) => h * 3 + steps * peek;
+
+  if (used(cardH, reserve) > safeAvail) {
+    cardH = Math.max(minCard, Math.floor((safeAvail - steps * reserve) / 3));
+    cardW = Math.max(minW, Math.min(cardW, Math.floor(cardH / 1.42)));
+    cardH = Math.round(cardW * 1.42);
+    if (used(cardH, reserve) > safeAvail) {
+      cardH = Math.max(minCard, Math.floor((safeAvail - steps * reserve) / 3));
+    }
+  }
+
+  let peek = Math.round(cardW * 0.26);
+  if (steps > 0) {
+    const room = Math.floor((safeAvail - cardH * 3) / steps);
+    if (narrow) {
+      if (room >= peekFloor) peek = Math.max(peekFloor, Math.min(peek, room));
+      else if (room >= hardFloor) peek = room;
+      else peek = Math.max(1, room);
+    } else if (portrait) {
+      const columnAvail = cardH + steps * Math.max(room, 1);
+      peek = fanPeek(peek, cardH, columnAvail, steps);
+      if (used(cardH, peek) > safeAvail) peek = Math.max(1, room);
+    } else {
+      peek = Math.max(1, Math.min(peek, room));
+    }
+  }
+  return { cardW, cardH, peek: Math.max(steps > 0 ? 1 : 0, peek) };
+}
+
 /** Grow Klondike's face-up and face-down strips together, capped at 45% of card height. */
 export function growKlondikePeeks({ peekUp, peekDown, cardH, avail, piles }) {
   const baseUp = Math.max(1, Math.round(peekUp));

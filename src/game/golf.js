@@ -188,6 +188,14 @@ export function hint(state) {
   return null;
 }
 
+/** One hint's highlights. A play lights that card and the waste, never the stock. */
+export function golfHintTargets(move) {
+  if (!move) return [];
+  if (move.type === "draw") return ["stock"];
+  if (move.type === "play") return ["card", "waste"];
+  return [];
+}
+
 export function apply(state, action) {
   if (!state) return fail(state, "missing state");
   if (!action || typeof action !== "object") return fail(state, "unknown action");

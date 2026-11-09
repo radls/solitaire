@@ -184,6 +184,12 @@ export function winScreenTipHTML(streak, today, storage) {
   return winTipHTML(streak);
 }
 
+/** Round-over tip. A loss does not claim the once-a-day donate prompt. */
+export function roundEndTipHTML(won, streak, today, storage) {
+  if (!won) return "";
+  return winScreenTipHTML(streak, today, storage);
+}
+
 /** Klondike stuck panel. Empty except on the once-a-day showing. */
 export function stuckTipHTML(today, storage) {
   return claimTipCta(today, storage);

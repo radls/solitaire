@@ -201,3 +201,28 @@ export function listenLayout(listen, fit) {
   listen(window, "orientationchange", run);
   if (typeof window !== "undefined" && window.visualViewport) listen(window.visualViewport, "resize", run);
 }
+
+const SAME_TAP_MS = 700;
+const SAME_TAP_PX = 24;
+
+function nowMs() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+/** A pointer release that opens a dialog. The browser's follow-up click must not dismiss it. */
+export function armSameTapGuard(holder, point, now = nowMs()) {
+  if (!holder || point == null || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+  holder.sameTapGuard = { x: point.x, y: point.y, until: now + SAME_TAP_MS };
+}
+
+/** True for one click at the guarded point. That click is consumed. */
+export function sameTapShouldSwallow(holder, point, now = nowMs()) {
+  const guard = holder?.sameTapGuard;
+  if (!guard || point == null || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+  if (now > guard.until) return false;
+  const dx = point.x - guard.x;
+  const dy = point.y - guard.y;
+  if (dx * dx + dy * dy > SAME_TAP_PX * SAME_TAP_PX) return false;
+  holder.sameTapGuard = null;
+  return true;
+}

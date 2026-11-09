@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  armSameTapGuard,
   fanPeek,
   growKlondikePeeks,
   kingsBoardFit,
   kbdTipsHTML,
+  sameTapShouldSwallow,
   shrinkToFit,
   tightenUntilFit,
   touchTipsHTML,
@@ -139,5 +142,28 @@ describe("help tips", () => {
     const kbd = kbdTipsHTML("<li><kbd>U</kbd> undo</li>", false);
     expect(kbd).toContain('data-testid="kbd-tips"');
     expect(kbd).not.toContain("hidden");
+  });
+});
+
+describe("sameTapShouldSwallow", () => {
+  it("eats one click at the pointer release and leaves a later click", () => {
+    const holder = {};
+    armSameTapGuard(holder, { x: 40, y: 80 }, 1000);
+    expect(sameTapShouldSwallow(holder, { x: 48, y: 86 }, 1200)).toBe(true);
+    expect(sameTapShouldSwallow(holder, { x: 48, y: 86 }, 1300)).toBe(false);
+  });
+
+  it("ignores a click far from the release or after the window", () => {
+    const holder = {};
+    armSameTapGuard(holder, { x: 40, y: 80 }, 1000);
+    expect(sameTapShouldSwallow(holder, { x: 80, y: 80 }, 1100)).toBe(false);
+    expect(holder.sameTapGuard).toBeTruthy();
+    expect(sameTapShouldSwallow(holder, { x: 40, y: 80 }, 1000 + 701)).toBe(false);
+  });
+
+  it("Golf swallows the click that follows the tap which opened the dialog", () => {
+    const src = readFileSync(new URL("../src/ui-golf.js", import.meta.url), "utf8");
+    expect(src).toContain("armSameTapGuard(session,");
+    expect(src).toContain("sameTapShouldSwallow(session,");
   });
 });

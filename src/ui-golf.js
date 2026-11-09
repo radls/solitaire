@@ -38,6 +38,8 @@ import {
   shrinkToFit,
   syncThumbDisabled,
   touchTipsHTML,
+  armSameTapGuard,
+  sameTapShouldSwallow,
 } from "./phone-layout.js";
 
 const DRAG_THRESHOLD = 7;
@@ -757,6 +759,7 @@ export function mount(options = {}) {
         slides.prefer(ghosts);
         armCardSettle([played.id], tilt);
       }
+      armSameTapGuard(session, { x, y });
       const result = doApply({ type: "play", col: drag.from.index });
       if (!result?.ok) {
         cancelCardSettle();
@@ -837,6 +840,7 @@ export function mount(options = {}) {
       return;
     }
     session.drag = null;
+    armSameTapGuard(session, { x: event.clientX, y: event.clientY });
     if (drag.from?.zone === "stock") {
       doApply({ type: "draw" });
       return;
@@ -887,6 +891,7 @@ export function mount(options = {}) {
     updateMute();
   });
   listen(root.overlay, "click", (event) => {
+    if (sameTapShouldSwallow(session, { x: event.clientX, y: event.clientY })) return;
     if (event.target.closest(".tip-panel")) return;
     if (event.target === root.overlay) {
       hideOverlay();

@@ -11,6 +11,7 @@ import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { takeSlots } from "./slots.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
 import { tightenUntilFit } from "./phone-layout.js";
+import { bedtimeLine, bedtimeNoteHTML, syncPickerBedtimeNote } from "./bedtime-note.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -30,10 +31,6 @@ function applyTheme(theme) {
   btn.setAttribute("aria-pressed", next === "night" ? "true" : "false");
 }
 
-function bedtimeLine() {
-  return document.documentElement.dataset.theme === "classic" ? "" : "Bedtime mode · timer hidden, sound off unless you turn it on.";
-}
-
 bootInstallHint();
 wireShare();
 
@@ -43,7 +40,8 @@ document.getElementById("btn-theme")?.addEventListener("click", () => {
   savePrefs({ theme: next });
   applyTheme(next);
   const status = document.getElementById("status-text");
-  if (status) status.textContent = next === "night" ? bedtimeLine() : "Classic theme · timer shown.";
+  if (status) status.textContent = next === "night" ? bedtimeLine(next) : "Classic theme · timer shown.";
+  syncPickerBedtimeNote(document, next);
 });
 
 // On touch screens the click that follows the move's pointerup lands on the
@@ -166,7 +164,7 @@ function showPicker() {
   document.getElementById("game-kicker").textContent = "Games";
   showMeters(false);
   document.getElementById("status-text").textContent = "Choose a game. Progress is saved on this device.";
-  const bedtime = bedtimeLine();
+  const bedtime = bedtimeNoteHTML(document.documentElement.dataset.theme);
   document.getElementById("status-seed").textContent = "";
   document.body.style.removeProperty("--picker-gap");
   document.body.style.removeProperty("--picker-pad-top");
@@ -185,7 +183,7 @@ function showPicker() {
     <div class="picker" data-testid="picker">
       <p class="picker-promise" data-testid="no-dead-deals">Each new deal is checked so the stock can come into play. A game can still run out of moves later.</p>
       ${dailyDone ? tomorrowDealHTML() : ""}
-      ${bedtime ? `<p class="picker-bedtime" data-testid="bedtime-note">${bedtime}</p>` : ""}
+      ${bedtime}
       ${groksPickCard()}
       ${pickCard({
         game: "klondike",

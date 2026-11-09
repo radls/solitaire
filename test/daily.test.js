@@ -234,6 +234,15 @@ describe("picker copy", () => {
     expect(canResume({ moves: 41, startedAt: 1_000, pausedAt: 0 })).toBe(true);
     expect(resumeText({ moves: 41, startedAt: 1_000, pausedAt: 0 }, 1_000 + 192_000)).toBe("Resume · 3:12 · 41 moves");
     expect(resumeText({ moves: 2, startedAt: 0 }, 50_000)).toBe("Resume · 0:00 · 2 moves");
+    expect(
+      resumeText({ moves: 41, startedAt: 1_000, pausedAt: 0, daily: "2026-11-07" }, 1_000 + 192_000, "2026-11-09"),
+    ).toBe("Resume (Nov 7 deal) · 3:12 · 41 moves");
+    expect(
+      resumeText({ moves: 41, startedAt: 1_000, pausedAt: 0, daily: "2026-11-09" }, 1_000 + 192_000, "2026-11-09"),
+    ).toBe("Resume · 3:12 · 41 moves");
+    expect(resumeText({ moves: 1, startedAt: 0, daily: "2026-01-01" }, 0, "2026-11-09")).toBe(
+      "Resume (Jan 1 deal) · 0:00 · 1 move",
+    );
     expect(frozenElapsedMs({ startedAt: 0 }, 50_000)).toBe(0);
     expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000)).toBe(0);
     expect(frozenElapsedMs({ moves: 0, startedAt: 1_000 }, 61_000, 2)).toBe(60_000);

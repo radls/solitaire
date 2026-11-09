@@ -178,10 +178,12 @@ export function dailyButtonLabel(stats, key) {
   return `${base} · Streak ${buttonStreak(stats, key)}`;
 }
 
-export function resumeText(state, savedAt) {
+export function resumeText(state, savedAt, today = todayKey()) {
   const moves = state?.moves || 0;
   const word = moves === 1 ? "move" : "moves";
-  return `Resume · ${formatClock(frozenElapsedMs(state, savedAt))} · ${moves} ${word}`;
+  const clock = formatClock(frozenElapsedMs(state, savedAt));
+  const older = state?.daily && state.daily !== today ? ` (${formatDailyLabel(state.daily).replace(/^Daily · /, "")} deal)` : "";
+  return `Resume${older} · ${clock} · ${moves} ${word}`;
 }
 
 export function canResume(state) {

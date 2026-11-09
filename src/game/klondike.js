@@ -50,6 +50,36 @@ export function deal({ seed, drawCount = 1 } = {}) {
 }
 
 /**
+ * Draw 1 / Draw 3 toggle.
+ * The same count does nothing. A deal with moves asks before it is abandoned.
+ * An unplayed daily stays today's daily in the new draw mode.
+ */
+export function drawTogglePlan(state, drawCount) {
+  const next = drawCount === 3 ? 3 : 1;
+  const current = state?.drawCount === 3 ? 3 : 1;
+  if (state && next === current) return { action: "same", drawCount: current, keepDaily: false };
+  const inProgress = !!(state && state.moves > 0 && !state.won);
+  const daily = !!(state?.daily && !state?.pick);
+  if (inProgress) return { action: "confirm", drawCount: next, keepDaily: daily };
+  if (daily) return { action: "daily", drawCount: next, keepDaily: true };
+  return { action: "deal", drawCount: next, keepDaily: false };
+}
+
+/** Copy for the in-progress confirm. A daily redeal says it is still today's daily. */
+export function drawToggleConfirmCopy(plan) {
+  if (plan?.keepDaily) {
+    return {
+      heading: "Start a new deal?",
+      body: "The current deal will be abandoned. The new deal is still today's daily.",
+    };
+  }
+  return {
+    heading: "Start a new deal?",
+    body: "The current deal will be abandoned and your streak will reset.",
+  };
+}
+
+/**
  * Random deal that skips an opening which is already stuck, or whose hint
  * line dies before the stock can be played. `tries` is how many extra seeds
  * to draw. The first layout that passes is returned; if every attempt fails,

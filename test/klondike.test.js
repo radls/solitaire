@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { makeCard } from "../src/game/cards.js";
 import {
@@ -10,6 +11,8 @@ import {
   deal,
   dealPlayable,
   draw,
+  drawToggleConfirmCopy,
+  drawTogglePlan,
   elapsedMs,
   emptyState,
   hint,
@@ -730,5 +733,61 @@ describe("isStuck", () => {
     tableau[2] = [C("diamonds", 13)];
     tableau[3] = [C("clubs", 13)];
     expect(isStuck(game({ tableau, stock: [], waste: [] }))).toBe(true);
+  });
+});
+
+describe("draw toggle", () => {
+  const day = "2026-11-07";
+
+  it("asks before abandoning a deal that has moves, and cancel leaves it", () => {
+    const casual = emptyState({ drawCount: 1, moves: 4, score: 12, seed: 9 });
+    const plan = drawTogglePlan(casual, 3);
+    expect(plan).toEqual({ action: "confirm", drawCount: 3, keepDaily: false });
+    expect(casual.drawCount).toBe(1);
+    expect(casual.moves).toBe(4);
+    expect(drawToggleConfirmCopy(plan).heading).toBe("Start a new deal?");
+    expect(drawToggleConfirmCopy(plan).body).toMatch(/streak will reset/);
+  });
+
+  it("keeps today's daily when the confirmed redeal changes draw mode", () => {
+    const daily = emptyState({ drawCount: 1, moves: 6, daily: day, seed: 3 });
+    const plan = drawTogglePlan(daily, 3);
+    expect(plan).toEqual({ action: "confirm", drawCount: 3, keepDaily: true });
+    expect(daily.daily).toBe(day);
+    expect(daily.drawCount).toBe(1);
+    const copy = drawToggleConfirmCopy(plan);
+    expect(copy.heading).toBe("Start a new deal?");
+    expect(copy.body).toMatch(/still today's daily/);
+    expect(copy.body).not.toMatch(/streak will reset/);
+  });
+
+  it("does not confirm when nothing has been played", () => {
+    expect(drawTogglePlan(emptyState({ drawCount: 1, moves: 0 }), 3).action).toBe("deal");
+    expect(drawTogglePlan(emptyState({ drawCount: 1, moves: 0, daily: day }), 3)).toEqual({
+      action: "daily",
+      drawCount: 3,
+      keepDaily: true,
+    });
+    expect(drawTogglePlan(emptyState({ drawCount: 3, moves: 5 }), 3).action).toBe("same");
+  });
+
+  it("does not treat a Grok's pick as a plain daily redeal", () => {
+    const pick = emptyState({ drawCount: 1, moves: 2, daily: day, pick: day });
+    expect(drawTogglePlan(pick, 3)).toEqual({ action: "confirm", drawCount: 3, keepDaily: false });
+  });
+
+  it("redeals a finished game without asking", () => {
+    expect(drawTogglePlan(emptyState({ drawCount: 1, moves: 40, won: true }), 3).action).toBe("deal");
+  });
+
+  it("wires the header toggle through the plan and keeps a daily on OK", () => {
+    const src = readFileSync(new URL("../src/ui.js", import.meta.url), "utf8");
+    expect(src).toMatch(/listen\(root\.draw1, "click", \(\) => applyDrawToggle\(1\)\)/);
+    expect(src).toMatch(/listen\(root\.draw3, "click", \(\) => applyDrawToggle\(3\)\)/);
+    const confirm = src.slice(src.indexOf("function confirmDrawChange"), src.indexOf("function confirmNew"));
+    expect(confirm).toMatch(/data-testid="confirm-cancel"/);
+    expect(confirm).toMatch(/data-act="close"/);
+    expect(confirm).toMatch(/plan\.keepDaily \? ` data-daily="1"`/);
+    expect(confirm).toMatch(/drawToggleConfirmCopy\(plan\)/);
   });
 });

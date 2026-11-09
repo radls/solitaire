@@ -11,6 +11,8 @@ import {
   deal,
   dealPlayable,
   draw,
+  drawToggleConfirmCopy,
+  drawTogglePlan,
   elapsedMs,
   hint as findHint,
   isStuck,
@@ -718,6 +720,31 @@ export function mount(options = {}) {
     </div>`, { modal: "help" });
   }
 
+  function applyDrawToggle(drawCount) {
+    const plan = drawTogglePlan(session.state, drawCount);
+    if (plan.action === "same") return;
+    if (plan.action === "confirm") {
+      confirmDrawChange(plan);
+      return;
+    }
+    if (plan.action === "daily") startDaily(plan.drawCount);
+    else startNewGame(plan.drawCount);
+  }
+
+  function confirmDrawChange(plan) {
+    interruptMotion();
+    const copy = drawToggleConfirmCopy(plan);
+    const dailyAttr = plan.keepDaily ? ` data-daily="1"` : "";
+    showOverlay(`<div class="modal" data-testid="confirm-modal">
+      <h2>${copy.heading}</h2>
+      <p>${copy.body}</p>
+      <div class="modal-actions">
+        <button class="btn" data-act="close" data-testid="confirm-cancel">Keep playing</button>
+        <button class="btn primary" data-act="new" data-testid="confirm-ok" data-draw="${plan.drawCount}"${dailyAttr}>New deal</button>
+      </div>
+    </div>`, { modal: "confirm" });
+  }
+
   function confirmNew(drawCount, extra = {}) {
     interruptMotion();
     if (extra.daily) {
@@ -1145,7 +1172,7 @@ export function mount(options = {}) {
     const btn = event.target.closest("[data-testid='draw-choice'] [data-draw]");
     if (!btn) return;
     event.preventDefault();
-    confirmNew(Number(btn.dataset.draw));
+    applyDrawToggle(Number(btn.dataset.draw));
   });
   listen(window, "pointermove", onPointerMove);
   listen(window, "pointerup", onPointerUp);
@@ -1169,8 +1196,8 @@ export function mount(options = {}) {
     updateMuteButton();
   });
   listen(document.getElementById("btn-help"), "click", showHelp);
-  listen(root.draw1, "click", () => confirmNew(1));
-  listen(root.draw3, "click", () => confirmNew(3));
+  listen(root.draw1, "click", () => applyDrawToggle(1));
+  listen(root.draw3, "click", () => applyDrawToggle(3));
 
   listen(root.overlay, "click", (event) => {
     if (event.target.closest(".tip-panel")) return;

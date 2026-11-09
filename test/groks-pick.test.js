@@ -163,24 +163,30 @@ describe("pickOpenPlan", () => {
     needsConfirm: (state) => state.moves > 0 && !state.won && !state.over,
   };
 
-  it("resumes an in-progress save instead of asking to abandon it", () => {
+  it("resumes only today's unfinished pick and confirms before abandoning another game", () => {
     expect(pickOpenPlan({ pick: key, daily: key, moves: 4 }, key, rules)).toBe("resume");
     expect(pickOpenPlan({ pick: key, moves: 0 }, key, rules)).toBe("resume");
-    expect(pickOpenPlan({ daily: key, moves: 3 }, key, rules)).toBe("resume");
-    expect(pickOpenPlan({ moves: 2 }, key, rules)).toBe("resume");
-    expect(pickOpenPlan({ moves: 5, stuck: true }, key, rules)).toBe("resume");
+    expect(pickOpenPlan({ pick: key, moves: 5, stuck: true }, key, rules)).toBe("resume");
+    expect(pickOpenPlan({ daily: key, moves: 3 }, key, rules)).toBe("confirm");
+    expect(pickOpenPlan({ moves: 2 }, key, rules)).toBe("confirm");
+    expect(pickOpenPlan({ moves: 5, stuck: true }, key, rules)).toBe("confirm");
+    expect(pickOpenPlan({ pick: "2026-10-01", moves: 4 }, key, rules)).toBe("confirm");
     expect(pickOpenPlan(null, key, rules)).toBe("deal");
     expect(pickOpenPlan({ moves: 0 }, key, rules)).toBe("deal");
+    expect(pickOpenPlan({ daily: key, moves: 0 }, key, rules)).toBe("deal");
     expect(pickOpenPlan({ pick: key, moves: 8, won: true }, key, rules)).toBe("deal");
     expect(pickOpenPlan({ moves: 4, won: true }, key, rules)).toBe("deal");
     expect(pickOpenPlan({ moves: 4, over: true }, key, rules)).toBe("deal");
   });
 
-  it("labels the picker button Resume only when that save can resume", () => {
-    expect(groksPickButtonLabel(null)).toBe("Play");
-    expect(groksPickButtonLabel({ moves: 0 })).toBe("Play");
-    expect(groksPickButtonLabel({ moves: 3 })).toBe("Resume");
-    expect(groksPickButtonLabel({ moves: 3, won: true })).toBe("Play");
-    expect(groksPickButtonLabel({ moves: 3, over: true })).toBe("Play");
+  it("labels the picker button Resume only for today's unfinished pick", () => {
+    expect(groksPickButtonLabel(null, key)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 0 }, key)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3 }, key)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3, pick: key }, key)).toBe("Resume");
+    expect(groksPickButtonLabel({ moves: 0, pick: key }, key)).toBe("Resume");
+    expect(groksPickButtonLabel({ moves: 3, pick: "2026-01-01" }, key)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3, pick: key, won: true }, key)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3, pick: key, over: true }, key)).toBe("Play");
   });
 });

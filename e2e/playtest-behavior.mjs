@@ -31,7 +31,7 @@ async function openPage(vp = { viewport: { width: 1280, height: 800 } }, init) {
 }
 
 async function ready(page) {
-  await page.waitForFunction(() => window.__solitaire?.getState?.(), null, { timeout: 8000 });
+  await page.waitForFunction(() => typeof window.__solitaire?.getState === "function", null, { timeout: 8000 });
 }
 
 function stripClock(raw) {
@@ -219,6 +219,137 @@ for (const outcome of ["fail", "clear"]) {
   check(`golf ${outcome}: phone tap leaves dialog open`, end.overlay === true, end.text);
   check(`golf ${outcome}: undo disabled after end`, end.undoDisabled === true, end.undoDisabled);
   check(`golf ${outcome}: no console errors`, page.errs.length === 0, page.errs);
+  await ctx.close();
+}
+
+// Grok's pick: a casual in-progress game confirms. OK deals today's pick. Resume is only today's pick.
+{
+  const [ctx, page] = await openPage();
+  await page.goto(BASE);
+  await ready(page);
+  const pick = await page.evaluate(() => window.__solitaire.pickToday());
+  check("pick present today", !!pick?.game, pick && { game: pick.game, date: pick.date });
+  if (pick) {
+    await page.goto(`${BASE}?game=${pick.game}`);
+    await ready(page);
+    const moves = await page.evaluate(() => {
+      const api = window.__solitaire;
+      const list = api.listMoves?.() || [];
+      const play = list.find((item) => item && item.from && item.to && item.kind !== "draw" && item.type !== "draw");
+      if (play) api.move(play.from, play.to);
+      else if (api.apply) api.apply({ type: "draw" });
+      else if (api.draw) api.draw();
+      return api.getState()?.moves || 0;
+    });
+    await page.waitForTimeout(400);
+    const saved = await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      return {
+        seed: state?.seed ?? state?.dealNumber,
+        moves: state?.moves || 0,
+        pick: state?.pick || null,
+      };
+    });
+    check("pick setup has a casual move", moves > 0 && saved.moves > 0 && saved.pick == null, saved);
+
+    async function showPicker() {
+      await page.goto(BASE);
+      await page.waitForTimeout(400);
+      const play = page.locator('[data-testid="groks-pick-play"]');
+      if (!(await play.count())) {
+        await page.getByRole("button", { name: /^Games$/ }).first().click();
+        await page.waitForTimeout(400);
+      }
+      await play.waitFor({ state: "visible", timeout: 5000 });
+      return play;
+    }
+
+    const play = await showPicker();
+    const label = (await play.innerText()).trim();
+    await play.click();
+    await page.waitForTimeout(500);
+    const asked = await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      return {
+        seed: state?.seed ?? state?.dealNumber,
+        moves: state?.moves || 0,
+        pick: state?.pick || null,
+        confirm: !!document.querySelector('[data-testid="confirm-modal"]'),
+      };
+    });
+    check(
+      "pick: casual save asks instead of resuming",
+      label === "Play" && asked.confirm === true && asked.seed === saved.seed && asked.moves === saved.moves && asked.pick == null,
+      { label, saved, asked },
+    );
+    await page.locator('[data-testid="confirm-cancel"]').click();
+    await page.waitForTimeout(300);
+    const kept = await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      return {
+        seed: state?.seed ?? state?.dealNumber,
+        moves: state?.moves || 0,
+        pick: state?.pick || null,
+        confirm: !!document.querySelector('[data-testid="confirm-modal"]'),
+      };
+    });
+    check(
+      "pick: cancel keeps the casual save",
+      kept.confirm === false && kept.seed === saved.seed && kept.moves === saved.moves && kept.pick == null,
+      kept,
+    );
+
+    const again = await showPicker();
+    await again.click();
+    await page.waitForTimeout(400);
+    await page.locator('[data-testid="confirm-ok"]').click();
+    await page.waitForTimeout(500);
+    const dealt = await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      return {
+        game: window.__solitaire.game(),
+        seed: state?.seed ?? state?.dealNumber,
+        moves: state?.moves || 0,
+        pick: state?.pick || null,
+        daily: state?.daily || null,
+        confirm: !!document.querySelector('[data-testid="confirm-modal"]'),
+      };
+    });
+    check(
+      "pick: confirm deals today's pick",
+      dealt.confirm === false && dealt.game === pick.game && dealt.seed === pick.seed && dealt.pick === pick.date && dealt.daily === pick.date && dealt.moves === 0 && dealt.seed !== saved.seed,
+      { pick: { game: pick.game, date: pick.date, seed: pick.seed }, dealt },
+    );
+
+    await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      state.moves = Math.max(1, state.moves || 0);
+      state.won = false;
+      state.over = false;
+      window.__solitaire.setState(state);
+    });
+    await page.waitForTimeout(300);
+    const resumeSeed = await page.evaluate(() => window.__solitaire.getState().seed ?? window.__solitaire.getState().dealNumber);
+    const resumeBtn = await showPicker();
+    const resumeLabel = (await resumeBtn.innerText()).trim();
+    await resumeBtn.click();
+    await page.waitForTimeout(500);
+    const resumed = await page.evaluate(() => {
+      const state = window.__solitaire.getState();
+      return {
+        seed: state?.seed ?? state?.dealNumber,
+        moves: state?.moves || 0,
+        pick: state?.pick || null,
+        confirm: !!document.querySelector('[data-testid="confirm-modal"]'),
+      };
+    });
+    check(
+      "pick: today's pick resumes without confirm",
+      resumeLabel === "Resume" && resumed.confirm === false && resumed.seed === resumeSeed && resumed.moves >= 1 && resumed.pick === pick.date,
+      { resumeLabel, resumeSeed, resumed },
+    );
+  }
+  check("pick: no console errors", page.errs.length === 0, page.errs);
   await ctx.close();
 }
 

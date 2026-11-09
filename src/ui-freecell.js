@@ -24,6 +24,7 @@ import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import {
+  canResume,
   creditDailyWin,
   dailyDoneText,
   dailyFreeCellDeal,
@@ -154,6 +155,7 @@ export function mount(options = {}) {
   if (wantPick) {
     const casual = slots0.casual?.state && !doneFree(slots0.casual.state) ? slots0.casual : null;
     const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    // Resume only today's unfinished pick. Another in-progress save confirms first.
     if ((plan === "resume" || plan === "confirm") && casual) {
       adopt(casual);
       bootPickConfirm = plan === "confirm";
@@ -532,7 +534,8 @@ export function mount(options = {}) {
       else startDeal(dealNumber ?? randomDeal());
       return;
     }
-    if (!gameInProgress()) {
+    const ask = extra.pick ? canResume(session.state) : gameInProgress();
+    if (!ask) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
       else startDeal(dealNumber ?? randomDeal());

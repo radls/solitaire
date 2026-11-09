@@ -131,7 +131,7 @@ function groksPickCard(savedByGame) {
   if (!entry) return "";
   const name = PICK_GAME_NAMES[entry.game] || entry.game;
   const status = isPickDone(entry.date) ? "Done ✓" : "Not done yet";
-  const label = groksPickButtonLabel(savedByGame?.[entry.game]);
+  const label = groksPickButtonLabel(savedByGame?.[entry.game], entry.date);
   return `<article class="pick-tile groks-pick" data-testid="groks-pick">
       <div class="groks-pick-copy">
         <p class="groks-pick-badge" data-testid="groks-pick-badge">Grok's pick</p>

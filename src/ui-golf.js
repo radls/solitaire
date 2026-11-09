@@ -23,7 +23,7 @@ import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, roundEndTipHTML, tipEntryHTML, toggleTipPanel } from "./tip.js";
-import { creditDailyWin, dailyDoneText, dailySeed, golfClearedLabel, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { canResume, creditDailyWin, dailyDoneText, dailySeed, golfClearedLabel, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { bumpWinStreak, coerceStreak, noteGolfRoundBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
@@ -144,6 +144,7 @@ export function mount(options = {}) {
   if (wantPick) {
     const casual = slots0.casual?.state && !doneGolf(slots0.casual.state) ? slots0.casual : null;
     const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    // Resume only today's unfinished pick. Another in-progress save confirms first.
     if ((plan === "resume" || plan === "confirm") && casual) {
       adopt(casual);
       bootPickConfirm = plan === "confirm";
@@ -491,7 +492,8 @@ export function mount(options = {}) {
       else startDeal(undefined);
       return;
     }
-    if (!gameInProgress()) {
+    const ask = extra.pick ? canResume(session.state) : gameInProgress();
+    if (!ask) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
       else startDeal(undefined);

@@ -33,7 +33,7 @@ import { offerInstallHint } from "./install-hint.js";
 import { paintDragTilt, shakeMoved } from "./motion.js";
 import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
-import { creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
+import { canResume, creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
 import { hintFromSelector } from "./hint-target.js";
 import { scheduleGlowClear, stopBoardPaint } from "./board-timers.js";
@@ -162,6 +162,7 @@ export function mount(options = {}) {
   if (wantPick) {
     const casual = slots0.casual?.state && !slots0.casual.state.won ? slots0.casual : null;
     const plan = pickOpenPlan(casual?.state ?? null, today, openRules);
+    // Resume only today's unfinished pick. Another in-progress save confirms first.
     if ((plan === "resume" || plan === "confirm") && casual) {
       adopt(casual);
       bootPickConfirm = plan === "confirm";
@@ -757,7 +758,8 @@ export function mount(options = {}) {
       startNewGame(drawCount);
       return;
     }
-    if (session.state.moves > 0 && !session.state.won) {
+    const abandoning = extra.pick ? canResume(session.state) : session.state.moves > 0 && !session.state.won;
+    if (abandoning) {
       const dailyAttr = extra.daily ? ` data-daily="1"` : "";
       const pickAttr = extra.pick ? ` data-pick="1"` : "";
       showOverlay(`<div class="modal" data-testid="confirm-modal">

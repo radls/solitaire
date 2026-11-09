@@ -2,6 +2,7 @@
 // GITHUB_PAGES=true npm run build && GITHUB_PAGES=true npx vite preview --host 127.0.0.1 --port 4173
 // BASE=http://127.0.0.1:4173/solitaire/ node e2e/playtest-behavior.mjs
 import { chromium } from "playwright-core";
+import { dailySeed, formatDailyLabel } from "../src/daily.js";
 
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
 let bad = 0;
@@ -350,6 +351,94 @@ for (const outcome of ["fail", "clear"]) {
     );
   }
   check("pick: no console errors", page.errs.length === 0, page.errs);
+  await ctx.close();
+}
+
+// Draw 1/3 on an unplayed or in-progress older daily keeps that day's deal.
+{
+  const older = yesterday();
+  const expectedSeed = dailySeed("klondike", older);
+  const dayLabel = formatDailyLabel(older).replace(/^Daily · /, "");
+  const [ctx, page] = await openPage();
+  await page.goto(`${BASE}?game=klondike&seed=12345&draw=1`);
+  await ready(page);
+  async function dismissOverlay() {
+    if (await page.locator("#overlay:not([hidden]) .modal").count()) {
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(200);
+    }
+  }
+  await dismissOverlay();
+  await page.evaluate((key) => {
+    const state = window.__solitaire.getState();
+    state.daily = key;
+    state.pick = null;
+    state.moves = 0;
+    state.won = false;
+    state.drawCount = 1;
+    window.__solitaire.setState(state);
+  }, older);
+  await page.waitForTimeout(200);
+  await dismissOverlay();
+  await page.locator("#btn-draw-3").click();
+  await page.waitForTimeout(400);
+  const switched = await page.evaluate(() => {
+    const state = window.__solitaire.getState();
+    return {
+      daily: state.daily,
+      seed: state.seed,
+      draw: state.drawCount,
+      moves: state.moves,
+      pick: state.pick || null,
+      confirm: !!document.querySelector('[data-testid="confirm-modal"]'),
+    };
+  });
+  check(
+    "unplayed older daily keeps that day when draw changes",
+    older !== today() && switched.confirm === false && switched.daily === older && switched.seed === expectedSeed && switched.draw === 3 && switched.moves === 0 && switched.pick == null,
+    { older, expectedSeed, switched },
+  );
+
+  await page.evaluate((key) => {
+    const state = window.__solitaire.getState();
+    state.daily = key;
+    state.pick = null;
+    state.moves = 4;
+    state.won = false;
+    state.drawCount = 3;
+    window.__solitaire.setState(state);
+  }, older);
+  await page.waitForTimeout(200);
+  await dismissOverlay();
+  const beforeSeed = await page.evaluate(() => window.__solitaire.getState().seed);
+  await page.locator("#btn-draw-1").click();
+  await page.waitForTimeout(250);
+  const modalText = ((await page.locator('[data-testid="confirm-modal"]').innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  await page.locator('[data-testid="confirm-cancel"]').click();
+  await page.waitForTimeout(200);
+  const cancelled = await page.evaluate(() => {
+    const state = window.__solitaire.getState();
+    return { daily: state.daily, seed: state.seed, draw: state.drawCount, moves: state.moves };
+  });
+  check(
+    "older daily confirm names that day and cancel keeps it",
+    modalText.includes(dayLabel) && !/today's daily/.test(modalText) && cancelled.daily === older && cancelled.seed === beforeSeed && cancelled.draw === 3 && cancelled.moves === 4,
+    { dayLabel, modalText, cancelled },
+  );
+  await page.locator("#btn-draw-1").click();
+  await page.waitForTimeout(250);
+  await page.locator('[data-testid="confirm-ok"]').click();
+  await page.waitForTimeout(400);
+  const confirmed = await page.evaluate(() => {
+    const state = window.__solitaire.getState();
+    return { daily: state.daily, seed: state.seed, draw: state.drawCount, moves: state.moves, pick: state.pick || null };
+  });
+  check(
+    "older daily confirm keeps that day and seed",
+    confirmed.daily === older && confirmed.seed === expectedSeed && confirmed.draw === 1 && confirmed.moves === 0 && confirmed.pick == null,
+    { older, expectedSeed, confirmed },
+  );
+  check("older daily: no console errors", page.errs.length === 0, page.errs);
   await ctx.close();
 }
 

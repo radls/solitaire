@@ -1,5 +1,6 @@
 import { buildDeck, cardName, mulberry32, oppositeColor, shuffle } from "./cards.js";
 import { elapsed, startClock, transferClock } from "./clock.js";
+import { formatDailyLabel, todayKey } from "../daily.js";
 
 export const TABLEAU_COUNT = 7;
 export const FOUNDATION_COUNT = 4;
@@ -52,25 +53,27 @@ export function deal({ seed, drawCount = 1 } = {}) {
 /**
  * Draw 1 / Draw 3 toggle.
  * The same count does nothing. A deal with moves asks before it is abandoned.
- * An unplayed daily stays today's daily in the new draw mode.
+ * An unplayed daily redeals that same day's seed in the new draw mode.
  */
 export function drawTogglePlan(state, drawCount) {
   const next = drawCount === 3 ? 3 : 1;
   const current = state?.drawCount === 3 ? 3 : 1;
-  if (state && next === current) return { action: "same", drawCount: current, keepDaily: false };
+  const dailyKey = state?.daily && !state.pick ? state.daily : null;
+  if (state && next === current) return { action: "same", drawCount: current, keepDaily: false, dailyKey: null };
   const inProgress = !!(state && state.moves > 0 && !state.won);
-  const daily = !!(state?.daily && !state?.pick);
-  if (inProgress) return { action: "confirm", drawCount: next, keepDaily: daily };
-  if (daily) return { action: "daily", drawCount: next, keepDaily: true };
-  return { action: "deal", drawCount: next, keepDaily: false };
+  if (inProgress) return { action: "confirm", drawCount: next, keepDaily: !!dailyKey, dailyKey };
+  if (dailyKey) return { action: "daily", drawCount: next, keepDaily: true, dailyKey };
+  return { action: "deal", drawCount: next, keepDaily: false, dailyKey: null };
 }
 
-/** Copy for the in-progress confirm. A daily redeal says it is still today's daily. */
-export function drawToggleConfirmCopy(plan) {
+/** Copy for the in-progress confirm. A daily redeal stays on that same day. */
+export function drawToggleConfirmCopy(plan, today = todayKey()) {
   if (plan?.keepDaily) {
+    const key = plan.dailyKey;
+    const which = key && key !== today ? `the ${formatDailyLabel(key).replace(/^Daily · /, "")} daily` : "today's daily";
     return {
       heading: "Start a new deal?",
-      body: "The current deal will be abandoned. The new deal is still today's daily.",
+      body: `The current deal will be abandoned. The new deal is still ${which}.`,
     };
   }
   return {

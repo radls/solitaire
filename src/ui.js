@@ -730,14 +730,16 @@ export function mount(options = {}) {
       confirmDrawChange(plan);
       return;
     }
-    if (plan.action === "daily") startDaily(plan.drawCount);
+    if (plan.action === "daily") startDaily(plan.drawCount, plan.dailyKey || todayKey());
     else startNewGame(plan.drawCount);
   }
 
   function confirmDrawChange(plan) {
     interruptMotion();
     const copy = drawToggleConfirmCopy(plan);
-    const dailyAttr = plan.keepDaily ? ` data-daily="1"` : "";
+    const dailyAttr = plan.keepDaily
+      ? ` data-daily="1"${plan.dailyKey ? ` data-daily-key="${plan.dailyKey}"` : ""}`
+      : "";
     showOverlay(`<div class="modal" data-testid="confirm-modal">
       <h2>${copy.heading}</h2>
       <p>${copy.body}</p>
@@ -810,10 +812,10 @@ export function mount(options = {}) {
     }
   }
 
-  function startDaily(drawCount = session.state?.drawCount) {
-    const key = todayKey();
+  function startDaily(drawCount = session.state?.drawCount, key) {
+    const day = key || todayKey();
     const draw = drawCount === 3 ? 3 : 1;
-    startNewGame(draw, dailySeed("klondike", key), { dailyKey: key });
+    startNewGame(draw, dailySeed("klondike", day), { dailyKey: day });
   }
 
   function startPick() {
@@ -1214,7 +1216,7 @@ export function mount(options = {}) {
     else if (act === "again" || act === "new") {
       const drawCount = Number(btn.dataset.draw || session.state.drawCount);
       if (btn.dataset.pick === "1") startPick();
-      else if (btn.dataset.daily === "1") startDaily(drawCount);
+      else if (btn.dataset.daily === "1") startDaily(drawCount, btn.dataset.dailyKey || undefined);
       else startNewGame(drawCount);
     }
   });

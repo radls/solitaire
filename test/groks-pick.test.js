@@ -5,7 +5,7 @@ import { deal as dealGolf, listLegalMoves as listGolf } from "../src/game/golf.j
 import { MOVE_GOAL, deal as dealKings, listLegalMoves as listKings } from "../src/game/kings.js";
 import { deal as dealKlondike, isStuck, listLegalMoves as listKlondike } from "../src/game/klondike.js";
 import { GROKS_PICK } from "../src/groks-pick-data.js";
-import { evaluateGoal, pickForDate, pickOpenPlan } from "../src/groks-pick.js";
+import { evaluateGoal, groksPickButtonLabel, pickForDate, pickOpenPlan } from "../src/groks-pick.js";
 
 const GAMES = ["klondike", "freecell", "golf", "kings"];
 
@@ -163,12 +163,24 @@ describe("pickOpenPlan", () => {
     needsConfirm: (state) => state.moves > 0 && !state.won && !state.over,
   };
 
-  it("resumes today's unfinished pick and confirms a different in-progress deal", () => {
+  it("resumes an in-progress save instead of asking to abandon it", () => {
     expect(pickOpenPlan({ pick: key, daily: key, moves: 4 }, key, rules)).toBe("resume");
     expect(pickOpenPlan({ pick: key, moves: 0 }, key, rules)).toBe("resume");
-    expect(pickOpenPlan({ daily: key, moves: 3 }, key, rules)).toBe("confirm");
-    expect(pickOpenPlan({ moves: 2 }, key, rules)).toBe("confirm");
+    expect(pickOpenPlan({ daily: key, moves: 3 }, key, rules)).toBe("resume");
+    expect(pickOpenPlan({ moves: 2 }, key, rules)).toBe("resume");
+    expect(pickOpenPlan({ moves: 5, stuck: true }, key, rules)).toBe("resume");
     expect(pickOpenPlan(null, key, rules)).toBe("deal");
+    expect(pickOpenPlan({ moves: 0 }, key, rules)).toBe("deal");
     expect(pickOpenPlan({ pick: key, moves: 8, won: true }, key, rules)).toBe("deal");
+    expect(pickOpenPlan({ moves: 4, won: true }, key, rules)).toBe("deal");
+    expect(pickOpenPlan({ moves: 4, over: true }, key, rules)).toBe("deal");
+  });
+
+  it("labels the picker button Resume only when that save can resume", () => {
+    expect(groksPickButtonLabel(null)).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 0 })).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3 })).toBe("Resume");
+    expect(groksPickButtonLabel({ moves: 3, won: true })).toBe("Play");
+    expect(groksPickButtonLabel({ moves: 3, over: true })).toBe("Play");
   });
 });

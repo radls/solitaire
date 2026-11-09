@@ -7,7 +7,7 @@ import { isPickDone, load, loadFreeCell, loadGolf, loadKings, loadPrefs, savePre
 import { bootInstallHint } from "./install-hint.js";
 import { wireShare } from "./share.js";
 import { canResume, dailyButtonLabel, pickerStatsText, resumeText, startupTarget, todayKey, tomorrowDealHTML } from "./daily.js";
-import { PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
+import { groksPickButtonLabel, PICK_GAME_NAMES, pickForDate } from "./groks-pick.js";
 import { takeSlots } from "./slots.js";
 import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
 import { tightenUntilFit } from "./phone-layout.js";
@@ -126,11 +126,12 @@ function dailyButton(game, stats) {
   return `<button type="button" class="daily-btn" data-testid="daily-${game}" data-daily="${game}">${badge}${copy}</button>`;
 }
 
-function groksPickCard() {
+function groksPickCard(savedByGame) {
   const entry = pickForDate(todayKey());
   if (!entry) return "";
   const name = PICK_GAME_NAMES[entry.game] || entry.game;
   const status = isPickDone(entry.date) ? "Done ✓" : "Not done yet";
+  const label = groksPickButtonLabel(savedByGame?.[entry.game]);
   return `<article class="pick-tile groks-pick" data-testid="groks-pick">
       <div class="groks-pick-copy">
         <p class="groks-pick-badge" data-testid="groks-pick-badge">Grok's pick</p>
@@ -139,7 +140,7 @@ function groksPickCard() {
         <p class="groks-pick-status" data-testid="groks-pick-status">${status}</p>
         <p class="groks-pick-byline">Made by Grok Bot</p>
       </div>
-      <button type="button" class="btn primary groks-pick-play" data-testid="groks-pick-play">Play</button>
+      <button type="button" class="btn primary groks-pick-play" data-testid="groks-pick-play">${label}</button>
     </article>`;
 }
 
@@ -184,7 +185,12 @@ function showPicker() {
       <p class="picker-promise" data-testid="no-dead-deals">Each new deal is checked so the stock can come into play. A game can still run out of moves later.</p>
       ${dailyDone ? tomorrowDealHTML() : ""}
       ${bedtime}
-      ${groksPickCard()}
+      ${groksPickCard({
+        klondike: klondikeCasual?.state,
+        freecell: freecellCasual?.state,
+        golf: golfCasual?.state,
+        kings: kingsCasual?.state,
+      })}
       ${pickCard({
         game: "klondike",
         testid: "pick-klondike",

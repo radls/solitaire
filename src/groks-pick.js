@@ -1,4 +1,4 @@
-import { dailyOpenPlan } from "./daily.js";
+import { canResume } from "./daily.js";
 import { GROKS_PICK } from "./groks-pick-data.js";
 
 export const PICK_GAME_NAMES = {
@@ -50,11 +50,19 @@ export function formatPickResult(entry, result) {
 }
 
 /**
- * Resume / confirm / deal for a pick, using the daily plan.
- * An unfinished board resumes only when `state.pick` is this date.
+ * Resume or deal a Grok's pick.
+ * An in-progress save of this game resumes, including a casual deal that is not the pick.
+ * An unplayed board deals the pick. A finished board deals it again.
  */
 export function pickOpenPlan(state, key, rules) {
-  if (!state) return dailyOpenPlan(null, key, rules);
-  const daily = state.pick === key ? key : state.daily === key ? null : state.daily;
-  return dailyOpenPlan({ ...state, daily }, key, rules);
+  if (!state) return "deal";
+  const finished = rules?.isFinished?.(state) === true;
+  if (!finished && state.pick === key) return "resume";
+  if (canResume(state)) return "resume";
+  return "deal";
+}
+
+/** Picker button. Resume when the game card would offer Resume for this save. */
+export function groksPickButtonLabel(state) {
+  return canResume(state) ? "Resume" : "Play";
 }

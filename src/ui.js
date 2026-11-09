@@ -14,6 +14,7 @@ import {
   drawToggleConfirmCopy,
   drawTogglePlan,
   elapsedMs,
+  flipStatus,
   hint as findHint,
   isStuck,
   isWon,
@@ -844,7 +845,7 @@ export function mount(options = {}) {
   function statusForSuccess(result, to) {
     if (result.recycled) return `Recycled the waste. ${recycleNote(session.state.drawCount)}`;
     if (result.drawn != null) return "Drew from the stock.";
-    if (result.flipped) return "Card turned over.";
+    if (result.flipped) return flipStatus(result.flippedNames);
     if (to?.zone === "foundation" || result.foundationIndex != null) return "Moved to the foundation.";
     if (to?.zone === "tableau" && Number.isInteger(to.index)) return `Moved to column ${to.index + 1}.`;
     return "Moved the card.";

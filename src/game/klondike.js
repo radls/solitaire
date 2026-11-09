@@ -1,4 +1,4 @@
-import { buildDeck, mulberry32, oppositeColor, shuffle } from "./cards.js";
+import { buildDeck, cardName, mulberry32, oppositeColor, shuffle } from "./cards.js";
 import { elapsed, startClock, transferClock } from "./clock.js";
 
 export const TABLEAU_COUNT = 7;
@@ -180,6 +180,7 @@ export function elapsedMs(state, now = Date.now()) {
 
 function flipExposed(state) {
   const revealed = [];
+  const names = [];
   let any = false;
   for (let index = 0; index < state.tableau.length; index++) {
     const pile = state.tableau[index];
@@ -189,10 +190,19 @@ function flipExposed(state) {
       card.faceUp = true;
       state.score += 5;
       any = true;
+      names.push(cardName(card));
       if (faceDown === 1) revealed.push(index);
     }
   }
-  return { any, revealed };
+  return { any, revealed, names };
+}
+
+/** Status after a flip. No name means no dangling colon. */
+export function flipStatus(names) {
+  const list = (names || []).filter(Boolean);
+  if (list.length === 0) return "Card turned over.";
+  if (list.length === 1) return `Card turned over: ${list[0]}.`;
+  return `Cards turned over: ${list.join(", ")}.`;
 }
 
 function finish(state) {
@@ -359,6 +369,7 @@ export function moveCards(state, from, to) {
     ok: true,
     state: next,
     flipped: flipped.any,
+    flippedNames: flipped.names,
     revealedColumns: flipped.revealed,
     completedFoundations,
     foundationIndex: placed.index,

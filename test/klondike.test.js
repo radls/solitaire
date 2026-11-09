@@ -15,6 +15,7 @@ import {
   drawTogglePlan,
   elapsedMs,
   emptyState,
+  flipStatus,
   hint,
   hintMoves,
   isStuck,
@@ -228,12 +229,20 @@ describe("moves", () => {
     expect(result.state.tableau[0]).toHaveLength(1);
     expect(result.state.tableau[0][0].faceUp).toBe(true);
     expect(result.flipped).toBe(true);
+    expect(result.flippedNames).toEqual(["6 of clubs"]);
+    expect(flipStatus(result.flippedNames)).toBe("Card turned over: 6 of clubs.");
     expect(result.state.score).toBe(5);
     expect(result.state.tableau[1].map((c) => c.id)).toEqual([
       "clubs-6",
       "hearts-5",
       "spades-4",
     ]);
+  });
+
+  it("names every turned card and drops the colon when a name is missing", () => {
+    expect(flipStatus([])).toBe("Card turned over.");
+    expect(flipStatus(null)).toBe("Card turned over.");
+    expect(flipStatus(["A of spades", "10 of hearts"])).toBe("Cards turned over: A of spades, 10 of hearts.");
   });
 
   it("refuses to move face-down cards", () => {

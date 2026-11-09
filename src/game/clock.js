@@ -93,3 +93,12 @@ export function transferClock(current, next) {
   next.pausedAt = current?.pausedAt || 0;
   return next;
 }
+
+/**
+ * Undo is closed once a round has been recorded.
+ * Pass only the flags that mean a recorded end for that game.
+ * A stuck deal is not an end: leave these unset when Undo is still offered.
+ */
+export function undoAfterEndBlocked(flags = {}) {
+  return !!(flags?.won || flags?.over || flags?.notedEnd);
+}

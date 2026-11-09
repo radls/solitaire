@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   elapsed,
@@ -8,6 +9,7 @@ import {
   startClock,
   syncClock,
   transferClock,
+  undoAfterEndBlocked,
 } from "../src/game/clock.js";
 
 function board(partial = {}) {
@@ -118,5 +120,50 @@ describe("fair play clock", () => {
     expect(snapshot.startedAt).toBe(8_000);
     expect(snapshot.pausedAt).toBe(12_000);
     expect(live.startedAt).toBe(8_000);
+  });
+});
+
+describe("undo after a recorded end", () => {
+  it("blocks a win, a Golf round-over, and a noted end", () => {
+    expect(undoAfterEndBlocked({ won: true })).toBe(true);
+    expect(undoAfterEndBlocked({ over: true })).toBe(true);
+    expect(undoAfterEndBlocked({ notedEnd: true })).toBe(true);
+  });
+
+  it("stays open during play and when a deal is only stuck", () => {
+    expect(undoAfterEndBlocked({})).toBe(false);
+    expect(undoAfterEndBlocked({ won: false, over: false, notedEnd: false })).toBe(false);
+    expect(undoAfterEndBlocked({ stuck: true })).toBe(false);
+  });
+
+  it("leaves a paused clock frozen when undo is blocked", () => {
+    const live = board({ startedAt: 1_000, pausedAt: 5_000, over: true });
+    const history = [board({ startedAt: 1_000, pausedAt: 0, moves: 3 })];
+    expect(undoAfterEndBlocked({ over: live.over, notedEnd: true })).toBe(true);
+    expect(history).toHaveLength(1);
+    expect(live.pausedAt).toBe(5_000);
+    expect(elapsed(live, 9_000)).toBe(4_000);
+  });
+
+  it("gates each game's undo before the clock continues, and still allows a stuck undo", () => {
+    const files = ["src/ui.js", "src/ui-golf.js", "src/ui-freecell.js", "src/ui-kings.js"];
+    for (const file of files) {
+      const src = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+      const start = src.indexOf("function doUndo()");
+      const body = src.slice(start, src.indexOf("\n  function ", start + 10));
+      const gate = body.indexOf("undoClosed()");
+      const clock = body.indexOf("continueClock");
+      expect(gate, file).toBeGreaterThan(-1);
+      expect(clock, file).toBeGreaterThan(gate);
+      expect(src, file).toMatch(/history\.length === 0 \|\| undoClosed\(\)/);
+    }
+    const klondike = readFileSync(new URL("../src/ui.js", import.meta.url), "utf8");
+    const stuck = klondike.slice(klondike.indexOf("function showStuck"), klondike.indexOf("function showIfStuck"));
+    expect(stuck).toMatch(/data-act="undo"/);
+    expect(stuck).not.toMatch(/undoClosed/);
+    const kings = readFileSync(new URL("../src/ui-kings.js", import.meta.url), "utf8");
+    const kingsStuck = kings.slice(kings.indexOf("function showStuck"), kings.indexOf("function showHelp"));
+    expect(kingsStuck).toMatch(/data-act="undo"/);
+    expect(kingsStuck).not.toMatch(/undoClosed/);
   });
 });

@@ -16,7 +16,7 @@ import {
   listLegalMoves,
   moveCards,
 } from "./game/freecell.js";
-import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock, undoAfterEndBlocked } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadFreeCell, loadPrefs, markPickDone, saveFreeCell, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
@@ -417,7 +417,7 @@ export function mount(options = {}) {
     session.landedId = null;
     root.moves.textContent = String(state.moves);
     root.seed.textContent = seedStatusText(state);
-    root.undo.disabled = session.history.length === 0;
+    root.undo.disabled = session.history.length === 0 || undoClosed();
     syncThumbDisabled();
     if (root.finish) {
       const home = state.won || isWon(state);
@@ -837,10 +837,15 @@ export function mount(options = {}) {
     }
   }
 
+  function undoClosed() {
+    const state = session.state;
+    return undoAfterEndBlocked({ won: !!(state?.won || (state && isWon(state))) });
+  }
+
   function doUndo() {
     interruptMotion();
     session.landedId = null;
-    if (!session.history.length) return;
+    if (!session.history.length || undoClosed()) return;
     const wasWin = session.countedWin && session.state.won;
     session.state = continueClock(session.state, session.history.pop());
     session.state.undoUsed = true;

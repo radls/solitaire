@@ -15,7 +15,7 @@ import {
   nearMissLine,
   score,
 } from "./game/golf.js";
-import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock, undoAfterEndBlocked } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadGolf, loadPrefs, markPickDone, saveGolf, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
@@ -352,7 +352,7 @@ export function mount(options = {}) {
     root.moves.textContent = String(state.moves);
     if (root.left) root.left.textContent = String(cardsLeft(state));
     if (root.seed) root.seed.textContent = seedStatusText(state);
-    if (root.undo) root.undo.disabled = session.history.length === 0;
+    if (root.undo) root.undo.disabled = session.history.length === 0 || undoClosed();
     syncThumbDisabled();
     applyHintHighlight();
     updateMute();
@@ -672,9 +672,16 @@ export function mount(options = {}) {
     return { ok: true, state: session.state };
   }
 
+  function undoClosed() {
+    return undoAfterEndBlocked({
+      over: !!session.state?.over,
+      notedEnd: !!session.notedEnd,
+    });
+  }
+
   function doUndo() {
     interruptMotion();
-    if (!session.history.length) return;
+    if (!session.history.length || undoClosed()) return;
     const wasOver = session.state.over;
     const wasCleared = wasOver && session.countedClear && isCleared(session.state);
     session.state = continueClock(session.state, session.history.pop());

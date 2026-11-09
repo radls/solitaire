@@ -14,6 +14,7 @@ import {
   elapsedMs,
   hint as findHint,
   isStuck,
+  isWon,
   listLegalMoves,
   moveCards,
   recycleNote,
@@ -21,7 +22,7 @@ import {
   timePenaltyNote,
   timedScore,
 } from "./game/klondike.js";
-import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock, undoAfterEndBlocked } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { load, loadPrefs, markPickDone, save, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
@@ -375,7 +376,7 @@ export function mount(options = {}) {
 
     root.moves.textContent = String(state.moves);
     root.seed.textContent = seedStatusText(state);
-    root.undo.disabled = session.history.length === 0;
+    root.undo.disabled = session.history.length === 0 || undoClosed();
     syncThumbDisabled();
     root.draw1.classList.toggle("active", state.drawCount === 1);
     root.draw3.classList.toggle("active", state.drawCount === 3);
@@ -851,9 +852,14 @@ export function mount(options = {}) {
     commit(result, result.recycled ? "recycle" : "draw", null, { zone: "stock" });
   }
 
+  function undoClosed() {
+    const state = session.state;
+    return undoAfterEndBlocked({ won: !!(state?.won || (state && isWon(state))) });
+  }
+
   function doUndo() {
     interruptMotion();
-    if (!session.history.length || session.state.won) return;
+    if (!session.history.length || undoClosed()) return;
     session.state = continueClock(session.state, session.history.pop());
     session.state.undoUsed = true;
     session.selected = null;

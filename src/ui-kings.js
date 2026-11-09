@@ -14,7 +14,7 @@ import {
   listLegalMoves,
   MOVE_GOAL,
 } from "./game/kings.js";
-import { meterElapsed, restoreClock, syncClock } from "./game/clock.js";
+import { meterElapsed, restoreClock, syncClock, undoAfterEndBlocked } from "./game/clock.js";
 import { resumeAudio, sounds } from "./audio.js";
 import { loadKings, loadPrefs, markPickDone, saveKings, savePrefs } from "./storage.js";
 import { offerInstallHint } from "./install-hint.js";
@@ -452,7 +452,7 @@ export function mount(options = {}) {
     if (root.moves) root.moves.textContent = String(state.moves);
     if (root.home) root.home.textContent = cornerProgressLabel(state);
     if (root.seed) root.seed.textContent = seedStatusText(state);
-    if (root.undo) root.undo.disabled = session.history.length === 0;
+    if (root.undo) root.undo.disabled = session.history.length === 0 || undoClosed();
     syncThumbDisabled();
     updateMute();
     applyHintHighlight();
@@ -790,9 +790,14 @@ export function mount(options = {}) {
     return doApply({ type: "move", from: src, to });
   }
 
+  function undoClosed() {
+    const state = session.state;
+    return undoAfterEndBlocked({ won: !!(state?.won || (state && isWon(state))) });
+  }
+
   function doUndo() {
     interruptMotion();
-    if (!session.history.length) return;
+    if (!session.history.length || undoClosed()) return;
     const wasWin = session.countedWin && session.state.won;
     session.state = continueClock(session.state, session.history.pop());
     session.state.undoUsed = true;

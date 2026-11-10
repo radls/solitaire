@@ -240,6 +240,52 @@ await page.locator(".card.face-down").first().screenshot({ path: `${SHOTS}/sheen
 await page.screenshot({ path: `${SHOTS}/board-waves.png` });
 
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+await page.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
+await ready(page);
+if (await page.locator("#overlay:not([hidden]) .modal").isVisible().catch(() => false)) {
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+}
+await page.evaluate(() => {
+  document.documentElement.dataset.theme = "classic";
+  document.documentElement.dataset.sheen = "idle";
+  delete document.documentElement.dataset.sheenPaused;
+});
+const shimmer = await page.evaluate(() => {
+  const downs = [...document.querySelectorAll("#table .card.face-down")];
+  const ups = [...document.querySelectorAll("#table .card.face-up")];
+  const name = (el, pseudo) => (el ? getComputedStyle(el, pseudo).animationName : "");
+  return {
+    down: downs.slice(0, 8).map((el) => name(el, "::before")),
+    upBack: ups.slice(0, 8).map((el) => name(el.querySelector(".card-face.back"), "::before")),
+  };
+});
+check(
+  "idle shimmer runs on visible face-down cards",
+  shimmer.down.length > 1 && shimmer.down.every((name) => name.includes("back-shimmer")),
+  JSON.stringify(shimmer.down),
+);
+check(
+  "idle shimmer does not run on hidden face-up backs",
+  shimmer.upBack.length > 1 && shimmer.upBack.every((name) => name === "none" || name === ""),
+  JSON.stringify(shimmer.upBack),
+);
+await page.evaluate(() => {
+  document.documentElement.dataset.sheenPaused = "1";
+});
+const paused = await page.evaluate(() =>
+  [...document.querySelectorAll("#table .card.face-down")].slice(0, 6).map((el) => getComputedStyle(el, "::before").animationPlayState),
+);
+check("idle shimmer pauses when the tab is marked hidden", paused.length > 1 && paused.every((state) => state === "paused"), JSON.stringify(paused));
+await page.evaluate(() => {
+  delete document.documentElement.dataset.sheenPaused;
+});
+
+await page.locator("#btn-help").click();
+const desktopHelp = await page.evaluate(() => !!document.querySelector("[data-testid='tilt-sheen']"));
+check("desktop Help hides the tilt control", desktopHelp === false);
+await page.keyboard.press("Escape");
+
 check("desktop board does not scroll sideways", overflow <= 1, String(overflow));
 check("desktop page has no script errors", page.errs.length === 0, page.errs.join(" | "));
 await ctx.close();
@@ -268,6 +314,38 @@ check(
   phoneDrag.landed?.zone === "tableau" && phoneDrag.landed?.index === "3",
   JSON.stringify({ pose: phoneDrag.pose, landed: phoneDrag.landed }),
 );
+await phonePage.evaluate(() => {
+  document.documentElement.dataset.theme = "classic";
+  document.documentElement.dataset.sheen = "idle";
+});
+await phonePage.locator("#btn-help").click();
+const phoneHelp = await phonePage.evaluate(() => {
+  const help = document.querySelector("[data-testid='help-modal']");
+  const wrap = help?.querySelector("[data-testid='tilt-sheen-wrap']");
+  const stats = [...(help?.querySelectorAll("p") || [])].find((node) => /Won /.test(node.textContent || ""));
+  return {
+    shown: !!wrap,
+    copy: wrap?.querySelector("p")?.textContent || "",
+    beforeStats: !!(wrap && stats && wrap.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING),
+  };
+});
+check(
+  "phone Help explains tilt above the stats",
+  phoneHelp.shown && phoneHelp.copy.includes("Tilt the phone") && phoneHelp.beforeStats,
+  JSON.stringify(phoneHelp),
+);
+await phonePage.keyboard.press("Escape");
+await phonePage.waitForTimeout(50);
+await phonePage.evaluate(() => {
+  window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 90 }));
+});
+const afterTouch = await phonePage.evaluate(() => document.documentElement.dataset.sheen);
+check("a touch move turns the sheen to pointer", afterTouch === "pointer", afterTouch);
+await phonePage.evaluate(() => {
+  window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 90 }));
+});
+const afterRelease = await phonePage.evaluate(() => document.documentElement.dataset.sheen);
+check("the sheen returns to idle when the touch ends", afterRelease === "idle", afterRelease);
 check("390px page has no script errors", phonePage.errs.length === 0, phonePage.errs.join(" | "));
 await phoneCtx.close();
 
@@ -276,20 +354,26 @@ const reducePage = await reduceCtx.newPage();
 await reducePage.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
 await ready(reducePage);
 const reduced = await reducePage.evaluate(() => {
-  const card = document.querySelector(".card.face-down");
-  const sheen = card ? getComputedStyle(card, "::before") : null;
+  const downs = [...document.querySelectorAll(".card.face-down")];
   return {
     motion: document.documentElement.dataset.motion,
     reduceClass: document.documentElement.classList.contains("reduce-motion"),
     media: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    animation: sheen?.animationName || "",
-    transform: sheen?.transform || "",
+    count: downs.length,
+    cards: downs.map((card) => {
+      const sheen = getComputedStyle(card, "::before");
+      return { animation: sheen.animationName || "", transform: sheen.transform || "" };
+    }),
   };
 });
 check(
-  "reduced motion turns the sheen animation off",
-  reduced.media && reduced.motion === "reduce" && reduced.reduceClass && (reduced.animation === "none" || reduced.animation === ""),
-  JSON.stringify(reduced),
+  "reduced motion turns the sheen animation off on every face-down card",
+  reduced.media &&
+    reduced.motion === "reduce" &&
+    reduced.reduceClass &&
+    reduced.count > 1 &&
+    reduced.cards.every((card) => card.animation === "none" || card.animation === ""),
+  JSON.stringify({ count: reduced.count, motion: reduced.motion, sample: reduced.cards.slice(0, 4) }),
 );
 await layoutKlondike(reducePage, {
   tableau: [
@@ -307,7 +391,7 @@ check(
 );
 await reduceCtx.close();
 
-const tiltCtx = await browser.newContext(desktop);
+const tiltCtx = await browser.newContext({ ...desktop, hasTouch: true });
 await tiltCtx.addInitScript(() => {
   window.__tiltCalls = 0;
   function DeviceOrientationEvent() {}

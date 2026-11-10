@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyCardBack,
@@ -15,14 +14,15 @@ import {
   sheenStyleHosts,
   sheenVars,
   syncMotionFlag,
+  syncSheenPaused,
+  tiltControlAvailable,
   tiltSheenPressed,
+  tiltToggleHTML,
   writeSheenVars,
 } from "../src/card-backs.js";
 import { motionPolicy } from "../src/motion.js";
 import { flattenSlots, placeBoard, takeSlots } from "../src/slots.js";
 import { load, loadFreeCell, loadGolf, loadKings, loadPrefs, save, saveFreeCell, saveGolf, saveKings, savePrefs } from "../src/storage.js";
-
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 function memoryStorage() {
   const store = {};
@@ -75,6 +75,8 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
   const layer = { id: "drag-layer", style: styleBag() };
   const doc = {
     documentElement: root,
+    hidden: false,
+    visibilityState: "visible",
     getElementById(id) {
       if (id === "table") return table;
       if (id === "drag-layer") return layer;
@@ -102,7 +104,10 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
       fn();
       return 1;
     },
-    matchMedia() {
+    cancelAnimationFrame() {},
+    navigator: { maxTouchPoints: 0 },
+    matchMedia(query) {
+      if (String(query).includes("pointer: coarse")) return { matches: false, addEventListener() {} };
       return { matches: reduce, addEventListener() {} };
     },
   };
@@ -234,7 +239,26 @@ describe("sheen and tilt permission", () => {
     expect(loadPrefs().tiltSheen).toBe(false);
   });
 
-  it("listens without a prompt when the browser has no permission API and the pref is on", async () => {
+  it("does not listen on load in Chromium when requestPermission exists and the pref is on", async () => {
+    memoryStorage();
+    savePrefs({ tiltSheen: true });
+    // Chrome 157 exposes DeviceOrientationEvent.requestPermission, including on desktop.
+    const env = fakeEnv({ ios: true, tiltWanted: true });
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: true,
+    });
+    expect(typeof env.DOE.requestPermission).toBe("function");
+    expect(env.calls()).toBe(0);
+    expect(isTiltListening()).toBe(false);
+    expect(tiltSheenPressed()).toBe(true);
+    await expect(requestTiltPermission(env.DOE)).resolves.toBe("granted");
+    expect(env.calls()).toBe(1);
+  });
+
+  it("listens without a prompt when requestPermission is absent and the pref is on", async () => {
     memoryStorage();
     savePrefs({ tiltSheen: true });
     const env = fakeEnv({ ios: false, tiltWanted: true });
@@ -244,9 +268,43 @@ describe("sheen and tilt permission", () => {
       DeviceOrientationEvent: env.DOE,
       tiltWanted: true,
     });
+    expect(env.DOE.requestPermission).toBeUndefined();
     expect(isTiltListening()).toBe(true);
     expect(listener(env, "deviceorientation")).toBeTruthy();
-    await expect(requestTiltPermission(env.DOE)).resolves.toBe("granted");
+  });
+
+  it("hides the tilt control on desktop and explains it on a phone", () => {
+    const desktop = fakeEnv();
+    expect(tiltControlAvailable({ window: desktop.win, DeviceOrientationEvent: desktop.DOE, navigator: desktop.win.navigator })).toBe(false);
+    expect(tiltToggleHTML(false, { window: desktop.win, DeviceOrientationEvent: desktop.DOE, navigator: desktop.win.navigator })).toBe("");
+    expect(tiltToggleHTML(false, { DeviceOrientationEvent: undefined, window: { navigator: { maxTouchPoints: 2 }, matchMedia: () => ({ matches: true }) } })).toBe("");
+
+    const phone = {
+      window: { navigator: { maxTouchPoints: 5 }, matchMedia: (q) => ({ matches: String(q).includes("coarse") }) },
+      DeviceOrientationEvent: function DeviceOrientationEvent() {},
+      navigator: { maxTouchPoints: 5 },
+    };
+    expect(tiltControlAvailable(phone)).toBe(true);
+    const html = tiltToggleHTML(false, phone);
+    expect(html).toContain('data-testid="tilt-sheen"');
+    expect(html).toContain("Tilt the phone to slide the light across the card backs.");
+    expect(html).toContain("help-tilt");
+  });
+
+  it("returns the sheen to idle after a touch move ends", () => {
+    const env = fakeEnv();
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: false,
+    });
+    listener(env, "pointermove").fn({ clientX: 20, clientY: 20, pointerType: "touch" });
+    expect(env.doc.documentElement.dataset.sheen).toBe("pointer");
+    listener(env, "pointerup").fn({ pointerType: "mouse" });
+    expect(env.doc.documentElement.dataset.sheen).toBe("pointer");
+    listener(env, "pointerup").fn({ pointerType: "touch" });
+    expect(env.doc.documentElement.dataset.sheen).toBe("idle");
   });
 
   it("re-requests tilt from the first board tap when the pref is on", async () => {
@@ -319,21 +377,7 @@ describe("reduced motion", () => {
     expect(root.dataset.cardBack).toBe("waves");
   });
 
-  it("turns sheen animation off in CSS for reduced motion and bedtime stays quiet", () => {
-    const open = css.match(/{/g).length;
-    const close = css.match(/}/g).length;
-    expect(open).toBe(close);
-    expect(css).toContain("@keyframes back-shimmer");
-    expect(css).toContain('html[data-card-back="herringbone"]');
-    expect(css).toContain('html[data-motion="reduce"]');
-    expect(css).toContain('html[data-theme="night"] .card.face-down::before');
-    const night = css.slice(css.indexOf('html[data-theme="night"] .card.face-down::before'));
-    expect(night).toContain("animation: none !important");
-    const media = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(media).toContain(".card.face-down::before");
-    expect(media).toContain("animation: none !important");
-    expect(css).toMatch(/--sheen-ms:\s*12s/);
-    expect(css).toMatch(/--sheen-ms:\s*5\.4s/);
+  it("turns sheen, wobble, and bounce off for reduced motion and bedtime", () => {
     expect(motionPolicy({ reduce: true, bedtime: true })).toMatchObject({
       dragWobble: false,
       settleBounce: false,
@@ -346,5 +390,21 @@ describe("reduced motion", () => {
       sheenMotion: false,
       sheenQuiet: true,
     });
+  });
+
+  it("pauses the idle sheen when the tab is hidden", () => {
+    const env = fakeEnv();
+    env.doc.hidden = false;
+    env.doc.visibilityState = "visible";
+    expect(syncSheenPaused(env.doc)).toBe(false);
+    expect(env.doc.documentElement.dataset.sheenPaused).toBeUndefined();
+    env.doc.hidden = true;
+    env.doc.visibilityState = "hidden";
+    expect(syncSheenPaused(env.doc)).toBe(true);
+    expect(env.doc.documentElement.dataset.sheenPaused).toBe("1");
+    env.doc.hidden = false;
+    env.doc.visibilityState = "visible";
+    expect(syncSheenPaused(env.doc)).toBe(false);
+    expect(env.doc.documentElement.dataset.sheenPaused).toBeUndefined();
   });
 });

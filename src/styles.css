@@ -534,16 +534,18 @@ html[data-theme="night"] .pile {
   --pile-amt: 0.62;
 }
 
-/* Skew lives on the card, and only while it is not flipping. A transform on
-   .card during the turn flattens preserve-3d and WebKit paints the back flat.
+/* Skew lives on the rotator, not on .card. A transform on the card box
+   flattens preserve-3d, and the slide tests require .card transform to stay
+   none. Skip while flipping, lifted, or settling so those transforms win.
    Values are unitless so narrow screens and bedtime can scale them down. */
-.pile .card:not(.is-turning) {
+.pile .card:not(.is-turning):not(.selected):not(.is-settling) .card-rotator {
   transform: translate3d(
       calc(var(--pile-dx, 0) * var(--pile-amt, 1) * 1px),
       calc(var(--pile-dy, 0) * var(--pile-amt, 1) * 1px),
       0
     )
-    rotate(calc(var(--pile-rot, 0) * var(--pile-amt, 1) * 1deg));
+    rotate(calc(var(--pile-rot, 0) * var(--pile-amt, 1) * 1deg))
+    rotateY(0deg);
 }
 
 @media (max-width: 640px) {

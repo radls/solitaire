@@ -248,8 +248,12 @@ for (const outcome of ["fail", "clear"]) {
       const list = api.listMoves?.() || [];
       const play = list.find((item) => item && item.from && item.to && item.kind !== "draw" && item.type !== "draw");
       if (play) api.move(play.from, play.to);
-      else if (api.apply) api.apply({ type: "draw" });
-      else if (api.draw) api.draw();
+      else {
+        // The hook always exposes apply(), but Klondike has no apply
+        // implementation, so apply({type:"draw"}) is a no-op there.
+        const applied = api.apply?.({ type: "draw" });
+        if (!applied?.ok) api.draw?.();
+      }
       return api.getState()?.moves || 0;
     });
     await page.waitForTimeout(400);

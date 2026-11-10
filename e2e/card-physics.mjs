@@ -331,7 +331,57 @@ const afterTap = await tiltPage.evaluate(() => ({
   pressed: document.querySelector("[data-testid='tilt-sheen']")?.getAttribute("aria-pressed"),
 }));
 check("iOS tilt permission runs after the Help tap", afterTap.calls === 1 && afterTap.pressed === "true", JSON.stringify(afterTap));
+await tiltPage.reload({ waitUntil: "domcontentloaded" });
+await ready(tiltPage);
+const reloaded = await tiltPage.evaluate(() => ({
+  calls: window.__tiltCalls,
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+}));
+check("a saved tilt opt-in does not prompt on reload", reloaded.calls === 0 && reloaded.pref === true, JSON.stringify(reloaded));
+await tiltPage.locator("#btn-help").click();
+const pressedAfterReload = await tiltPage.locator("[data-testid='tilt-sheen']").getAttribute("aria-pressed");
+check("Help still shows tilt on after reload", pressedAfterReload === "true", pressedAfterReload);
+await tiltPage.keyboard.press("Escape");
+await tiltPage.waitForTimeout(50);
+await tiltPage.locator("#table .card").first().click();
+await tiltPage.waitForTimeout(50);
+const afterBoard = await tiltPage.evaluate(() => window.__tiltCalls);
+check("the first board tap re-requests tilt after reload", afterBoard === 1, String(afterBoard));
 await tiltCtx.close();
+
+const bedCtx = await browser.newContext(desktop);
+const bedPage = await bedCtx.newPage();
+await bedPage.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
+await ready(bedPage);
+await bedPage.evaluate(() => {
+  document.documentElement.dataset.theme = "night";
+});
+const bedtime = await bedPage.evaluate(() => {
+  const card = document.querySelector(".card.face-down");
+  const sheen = card ? getComputedStyle(card, "::before") : null;
+  return {
+    theme: document.documentElement.dataset.theme,
+    animation: sheen?.animationName || "",
+  };
+});
+check(
+  "bedtime turns the sheen animation off",
+  bedtime.theme === "night" && (bedtime.animation === "none" || bedtime.animation === ""),
+  JSON.stringify(bedtime),
+);
+await layoutKlondike(bedPage, {
+  tableau: [
+    { index: 0, suit: "spades", rank: 7 },
+    { index: 3, suit: "hearts", rank: 8 },
+  ],
+});
+const calm = await dragOnto(bedPage, '#table .card[data-id="spades-7"]', '[data-drop="tableau:3"]');
+check(
+  "bedtime drag stays level and still lands",
+  calm.landed?.zone === "tableau" && calm.landed?.index === "3" && Number.parseFloat(calm.pose?.tilt || "1") === 0,
+  JSON.stringify({ pose: calm.pose, landed: calm.landed }),
+);
+await bedCtx.close();
 
 await browser.close();
 console.log(failed ? `FAILED ${failed}` : "ALL PASS");

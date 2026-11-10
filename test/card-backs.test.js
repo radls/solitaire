@@ -12,8 +12,11 @@ import {
   requestTiltPermission,
   sheenPointFromOrientation,
   sheenPointFromPointer,
+  sheenStyleHosts,
   sheenVars,
   syncMotionFlag,
+  tiltSheenPressed,
+  writeSheenVars,
 } from "../src/card-backs.js";
 import { motionPolicy } from "../src/motion.js";
 import { flattenSlots, placeBoard, takeSlots } from "../src/slots.js";
@@ -60,8 +63,23 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
       },
     },
   };
+  function styleBag() {
+    return {
+      props: {},
+      setProperty(key, value) {
+        this.props[key] = value;
+      },
+    };
+  }
+  const table = { id: "table", style: styleBag() };
+  const layer = { id: "drag-layer", style: styleBag() };
   const doc = {
     documentElement: root,
+    getElementById(id) {
+      if (id === "table") return table;
+      if (id === "drag-layer") return layer;
+      return null;
+    },
     addEventListener(type, fn) {
       listeners.push({ type, fn, target: "document" });
     },
@@ -80,6 +98,10 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
       const index = listeners.findIndex((entry) => entry.type === type && entry.fn === fn);
       if (index >= 0) listeners.splice(index, 1);
     },
+    requestAnimationFrame(fn) {
+      fn();
+      return 1;
+    },
     matchMedia() {
       return { matches: reduce, addEventListener() {} };
     },
@@ -96,6 +118,8 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
   return {
     win,
     doc,
+    table,
+    layer,
     DOE,
     calls: () => calls,
     listeners,
@@ -183,14 +207,24 @@ describe("sheen and tilt permission", () => {
     expect(isTiltListening()).toBe(false);
     expect(listener(env, "deviceorientation")).toBeUndefined();
 
+    expect(tiltSheenPressed()).toBe(true);
     const click = listener(env, "click").fn;
     await click({ target: { closest: () => null }, preventDefault() {} });
     expect(env.calls()).toBe(0);
 
     const button = { closest: (sel) => (sel === "[data-testid='tilt-sheen']" ? button : null) };
+    // Pref is on but the listener is waiting for a gesture, so Help shows on
+    // and a press turns it off without prompting.
+    await click({ target: button, preventDefault() {} });
+    expect(env.calls()).toBe(0);
+    expect(isTiltListening()).toBe(false);
+    expect(tiltSheenPressed()).toBe(false);
+    expect(loadPrefs().tiltSheen).toBe(false);
+
     await click({ target: button, preventDefault() {} });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(true);
+    expect(tiltSheenPressed()).toBe(true);
     expect(listener(env, "deviceorientation")).toBeTruthy();
     expect(loadPrefs().tiltSheen).toBe(true);
 
@@ -214,6 +248,49 @@ describe("sheen and tilt permission", () => {
     expect(listener(env, "deviceorientation")).toBeTruthy();
     await expect(requestTiltPermission(env.DOE)).resolves.toBe("granted");
   });
+
+  it("re-requests tilt from the first board tap when the pref is on", async () => {
+    memoryStorage();
+    savePrefs({ tiltSheen: true });
+    const env = fakeEnv({ ios: true, tiltWanted: true });
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: true,
+    });
+    expect(env.calls()).toBe(0);
+    expect(isTiltListening()).toBe(false);
+    expect(tiltSheenPressed()).toBe(true);
+
+    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    expect(env.calls()).toBe(1);
+    expect(isTiltListening()).toBe(true);
+    expect(tiltSheenPressed()).toBe(true);
+    expect(loadPrefs().tiltSheen).toBe(true);
+  });
+
+  it("writes sheen variables on the board hosts and skips them while dragging", () => {
+    const env = fakeEnv();
+    const written = writeSheenVars(env.doc, { x: 1, y: -1 });
+    expect(written).toEqual({ "--sheen-x": "70.0%", "--sheen-y": "-12.0%" });
+    expect(sheenStyleHosts(env.doc)).toEqual([env.table, env.layer]);
+    expect(env.table.style.props["--sheen-x"]).toBe("70.0%");
+    expect(env.layer.style.props["--sheen-y"]).toBe("-12.0%");
+    expect(env.doc.documentElement.style.props["--sheen-x"]).toBeUndefined();
+
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: false,
+    });
+    env.table.style.props = {};
+    env.doc.documentElement.classList.toggle("is-dragging", true);
+    listener(env, "pointermove").fn({ clientX: 20, clientY: 20 });
+    expect(env.table.style.props["--sheen-x"]).toBeUndefined();
+    expect(env.doc.documentElement.dataset.sheen).toBe("idle");
+  });
 });
 
 describe("reduced motion", () => {
@@ -232,6 +309,7 @@ describe("reduced motion", () => {
     expect(env.doc.documentElement.dataset.sheen).toBe("idle");
     listener(env, "pointermove").fn({ clientX: 20, clientY: 20 });
     expect(env.doc.documentElement.dataset.sheen).toBe("idle");
+    expect(env.table.style.props["--sheen-x"]).toBeUndefined();
     expect(env.doc.documentElement.style.props["--sheen-x"]).toBeUndefined();
 
     const root = { dataset: {}, classList: classList() };
@@ -248,6 +326,9 @@ describe("reduced motion", () => {
     expect(css).toContain("@keyframes back-shimmer");
     expect(css).toContain('html[data-card-back="herringbone"]');
     expect(css).toContain('html[data-motion="reduce"]');
+    expect(css).toContain('html[data-theme="night"] .card.face-down::before');
+    const night = css.slice(css.indexOf('html[data-theme="night"] .card.face-down::before'));
+    expect(night).toContain("animation: none !important");
     const media = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(media).toContain(".card.face-down::before");
     expect(media).toContain("animation: none !important");
@@ -260,9 +341,9 @@ describe("reduced motion", () => {
       sheenQuiet: true,
     });
     expect(motionPolicy({ reduce: false, bedtime: true })).toMatchObject({
-      dragWobble: true,
+      dragWobble: false,
       settleBounce: false,
-      sheenMotion: true,
+      sheenMotion: false,
       sheenQuiet: true,
     });
   });

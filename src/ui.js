@@ -3,7 +3,7 @@ import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
-import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
+import { applyCardBack, ensureDealBack, nextCardBack, tiltSheenPressed, tiltToggleHTML } from "./card-backs.js";
 import {
   autoCompleteStep,
   autoMove,
@@ -726,7 +726,7 @@ export function mount(options = {}) {
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
       <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
-      ${tiltToggleHTML(isTiltListening())}
+      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>

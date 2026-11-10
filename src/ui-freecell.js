@@ -3,7 +3,7 @@ import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
-import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
+import { applyCardBack, ensureDealBack, nextCardBack, tiltSheenPressed, tiltToggleHTML } from "./card-backs.js";
 import {
   cloneState,
   continueClock,
@@ -524,7 +524,7 @@ export function mount(options = {}) {
         <button type="submit" class="btn primary">Deal</button>
       </form>
       ${kbdTipsHTML(shortcuts)}
-      ${tiltToggleHTML(isTiltListening())}
+      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

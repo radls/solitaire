@@ -2,7 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
-import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
+import { applyCardBack, ensureDealBack, nextCardBack, tiltSheenPressed, tiltToggleHTML } from "./card-backs.js";
 import {
   apply,
   canPlay,
@@ -483,7 +483,7 @@ export function mount(options = {}) {
       <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
       <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
       ${kbdTipsHTML(shortcuts)}
-      ${tiltToggleHTML(isTiltListening())}
+      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

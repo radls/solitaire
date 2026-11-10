@@ -2,7 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
-import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
+import { applyCardBack, ensureDealBack, nextCardBack, tiltSheenPressed, tiltToggleHTML } from "./card-backs.js";
 import {
   apply,
   cardsInCorners,
@@ -582,7 +582,7 @@ export function mount(options = {}) {
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
       ${kbdTipsHTML(shortcuts)}
       </details>
-      ${tiltToggleHTML(isTiltListening())}
+      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

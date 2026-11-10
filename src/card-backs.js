@@ -75,12 +75,42 @@ export function sheenVars(point) {
   };
 }
 
+/** Visible face-down cards first, so a sheen write does not restyle the page. */
+export function sheenStyleHosts(doc) {
+  if (!doc) return [];
+  const visible = doc.querySelectorAll?.("#table .card.face-down, #drag-layer .card.face-down");
+  if (visible && visible.length) return [...visible];
+  const hosts = [];
+  for (const id of ["table", "drag-layer"]) {
+    const el = doc.getElementById?.(id);
+    if (el) hosts.push(el);
+  }
+  if (!hosts.length && doc.documentElement) hosts.push(doc.documentElement);
+  return hosts;
+}
+
+export function writeSheenVars(doc, point) {
+  const vars = sheenVars(point);
+  const hosts = sheenStyleHosts(doc);
+  for (const host of hosts) {
+    host.style?.setProperty?.("--sheen-x", vars["--sheen-x"]);
+    host.style?.setProperty?.("--sheen-y", vars["--sheen-y"]);
+  }
+  return vars;
+}
+
 let tiltOn = false;
+let tiltWanted = false;
 let oriHandler = null;
 let oriWin = null;
 
 export function isTiltListening() {
   return tiltOn;
+}
+
+/** True when tilt is on, or the saved opt-in is waiting for a user gesture. */
+export function tiltSheenPressed() {
+  return tiltOn || tiltWanted;
 }
 
 function unlistenTilt() {
@@ -138,7 +168,11 @@ function motionReduced(root) {
   return !currentMotionPolicy().sheenMotion;
 }
 
-/** Pointer sheen, optional device tilt, and the Help toggle. Does not request permission. */
+function isDragging(doc) {
+  return doc?.documentElement?.classList?.contains?.("is-dragging") === true;
+}
+
+/** Pointer sheen, optional device tilt, and the Help toggle. Does not request permission on load. */
 export function bootCardMotion(env = {}) {
   const win = env.window ?? globalThis.window;
   const doc = env.document ?? globalThis.document;
@@ -164,43 +198,91 @@ export function bootCardMotion(env = {}) {
   }
   if (!doc.documentElement.dataset.sheen) doc.documentElement.dataset.sheen = "idle";
 
+  let pending = null;
+  let raf = 0;
   const paint = (point, mode) => {
-    if (motionReduced(doc.documentElement)) return;
-    const vars = sheenVars(point);
-    doc.documentElement.style.setProperty("--sheen-x", vars["--sheen-x"]);
-    doc.documentElement.style.setProperty("--sheen-y", vars["--sheen-y"]);
-    doc.documentElement.dataset.sheen = mode;
+    if (motionReduced(doc.documentElement) || isDragging(doc)) return;
+    writeSheenVars(doc, point);
+    if (doc.documentElement.dataset.sheen !== mode) doc.documentElement.dataset.sheen = mode;
+  };
+  const schedule = (point, mode) => {
+    pending = { point, mode };
+    if (raf) return;
+    const flush = () => {
+      raf = 0;
+      const next = pending;
+      pending = null;
+      if (next) paint(next.point, next.mode);
+    };
+    if (typeof win.requestAnimationFrame === "function") {
+      raf = win.requestAnimationFrame(flush);
+    } else {
+      flush();
+    }
   };
   const onPointer = (event) => {
-    if (tiltOn) return;
-    paint(
+    if (tiltOn || isDragging(doc)) return;
+    schedule(
       sheenPointFromPointer(event.clientX, event.clientY, win.innerWidth, win.innerHeight),
       "pointer",
     );
   };
   const onOrientation = (event) => {
-    paint(sheenPointFromOrientation(event), "tilt");
+    schedule(sheenPointFromOrientation(event), "tilt");
   };
   win.addEventListener("pointermove", onPointer);
 
-  const ios = typeof DOE?.requestPermission === "function";
-  let wanted = env.tiltWanted;
-  if (wanted == null) {
+  const needsGesture = typeof DOE?.requestPermission === "function";
+  if (env.tiltWanted == null) {
     try {
-      wanted = loadPrefs().tiltSheen === true;
+      tiltWanted = loadPrefs().tiltSheen === true;
     } catch {
-      wanted = false;
+      tiltWanted = false;
     }
+  } else {
+    tiltWanted = env.tiltWanted === true;
   }
   // A saved opt-in can listen immediately only when the browser has no permission prompt.
-  if (!ios && wanted) listenTilt(win, onOrientation);
+  if (!needsGesture && tiltWanted) listenTilt(win, onOrientation);
+
+  const enableTilt = async () => {
+    const result = await requestTiltPermission(DOE);
+    if (result === "granted") {
+      listenTilt(win, onOrientation);
+      tiltWanted = true;
+      try {
+        savePrefs({ tiltSheen: true });
+      } catch {
+        /* private mode */
+      }
+      paintTiltButtons(doc, true);
+      return true;
+    }
+    tiltWanted = false;
+    try {
+      savePrefs({ tiltSheen: false });
+    } catch {
+      /* private mode */
+    }
+    paintTiltButtons(doc, false);
+    return false;
+  };
+
+  // Chrome exposes requestPermission too, so a saved opt-in cannot listen on
+  // load. Re-request from the first board tap and keep the Help button in sync.
+  doc.addEventListener("pointerdown", (event) => {
+    if (!tiltWanted || tiltOn || !needsGesture) return;
+    if (event.target?.closest?.("[data-testid='tilt-sheen']")) return;
+    return enableTilt();
+  });
 
   doc.addEventListener("click", async (event) => {
     const btn = event.target?.closest?.("[data-testid='tilt-sheen']");
     if (!btn) return;
     event.preventDefault?.();
-    if (tiltOn) {
+    if (tiltOn || tiltWanted) {
       unlistenTilt();
+      tiltWanted = false;
       try {
         savePrefs({ tiltSheen: false });
       } catch {
@@ -210,22 +292,6 @@ export function bootCardMotion(env = {}) {
       if (doc.documentElement.dataset.sheen === "tilt") doc.documentElement.dataset.sheen = "idle";
       return;
     }
-    const result = await requestTiltPermission(DOE);
-    if (result === "granted") {
-      listenTilt(win, onOrientation);
-      try {
-        savePrefs({ tiltSheen: true });
-      } catch {
-        /* private mode */
-      }
-      paintTiltButtons(doc, true);
-    } else {
-      try {
-        savePrefs({ tiltSheen: false });
-      } catch {
-        /* private mode */
-      }
-      paintTiltButtons(doc, false);
-    }
+    await enableTilt();
   });
 }

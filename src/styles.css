@@ -644,7 +644,9 @@ html[data-sheen="tilt"] .card-face.back::before {
 
 html[data-theme="night"] .card.face-down::before,
 html[data-theme="night"] .card-face.back::before {
-  opacity: var(--sheen-opacity, 0.2);
+  animation: none !important;
+  transform: none !important;
+  opacity: var(--sheen-opacity, 0.12);
 }
 
 .card.face-down::after {

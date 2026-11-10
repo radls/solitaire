@@ -37,15 +37,16 @@ export function isBedtimeTheme() {
   }
 }
 
-/** What card motion is allowed. Bedtime stays quieter; reduced motion turns it off. */
+/** What card motion is allowed. Bedtime is fully quiet; reduced motion is too. */
 export function motionPolicy({ reduce = false, bedtime = false } = {}) {
+  const calm = !!reduce || !!bedtime;
   return {
     reduce: !!reduce,
     bedtime: !!bedtime,
-    dragWobble: !reduce,
-    settleBounce: !reduce && !bedtime,
-    sheenMotion: !reduce,
-    sheenQuiet: !!reduce || !!bedtime,
+    dragWobble: !calm,
+    settleBounce: !calm,
+    sheenMotion: !calm,
+    sheenQuiet: calm,
   };
 }
 

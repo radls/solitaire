@@ -62,7 +62,7 @@ describe("drag physics", () => {
     expect(el.props["--card-drag-ry"]).toBe("0.00deg");
   });
 
-  it("turns bounce off for bedtime and reduced motion, and wobble off only when reduced", () => {
+  it("turns bounce, wobble, and sheen off for bedtime and reduced motion", () => {
     expect(motionPolicy({ reduce: false, bedtime: false })).toMatchObject({
       dragWobble: true,
       settleBounce: true,
@@ -70,8 +70,9 @@ describe("drag physics", () => {
       sheenQuiet: false,
     });
     expect(motionPolicy({ reduce: false, bedtime: true })).toMatchObject({
-      dragWobble: true,
+      dragWobble: false,
       settleBounce: false,
+      sheenMotion: false,
       sheenQuiet: true,
     });
     expect(motionPolicy({ reduce: true, bedtime: false })).toMatchObject({

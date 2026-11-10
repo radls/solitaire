@@ -264,6 +264,15 @@ export function bootCardMotion(env = {}) {
   };
   win.addEventListener("pointermove", onPointer);
 
+  // A finger leaves no hover, so return to the idle shimmer when a touch ends.
+  const onPointerEnd = (event) => {
+    if (event?.pointerType !== "touch" || tiltOn) return;
+    pending = null;
+    if (doc.documentElement.dataset.sheen === "pointer") doc.documentElement.dataset.sheen = "idle";
+  };
+  win.addEventListener("pointerup", onPointerEnd);
+  win.addEventListener("pointercancel", onPointerEnd);
+
   syncSheenPaused(doc);
   doc.addEventListener("visibilitychange", () => syncSheenPaused(doc));
 

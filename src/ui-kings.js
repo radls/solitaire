@@ -2,6 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
+import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
 import {
   apply,
   cardsInCorners,
@@ -105,6 +106,7 @@ export function mount(options = {}) {
     countedWin: false,
     clockPlayed: false,
     modal: null,
+    cardBack: null,
   };
 
   const slides = createSlides();
@@ -134,6 +136,8 @@ export function mount(options = {}) {
     session.state = structuredClone(pack.state);
     session.history = structuredClone(pack.history ?? []).slice(-HISTORY_CAP);
     if (!session.state.startedAt || typeof pack.savedAt === "number") restoreClock(session.state, pack.savedAt);
+    session.cardBack = nextCardBack(pack?.cardBack, "resume");
+    applyCardBack(session.cardBack);
     resume = true;
   }
 
@@ -158,7 +162,11 @@ export function mount(options = {}) {
   let observer = null;
 
   function persist() {
-    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now());
+    session.cardBack = ensureDealBack(session.cardBack);
+    applyCardBack(session.cardBack);
+    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now(), {
+      cardBack: session.cardBack,
+    });
     saveKings(flattenSlots(session.slots, { stats: session.stats }));
   }
 
@@ -419,6 +427,7 @@ export function mount(options = {}) {
     const slideFrom = root.table ? slides.capture(root.table) : new Map();
     const state = session.state;
     setPileSeed(state?.seed ?? state?.dealNumber ?? 0);
+    applyCardBack(session.cardBack);
     if (!state || !root.table) return;
     const board = document.createElement("div");
     board.className = "board kings";
@@ -573,6 +582,7 @@ export function mount(options = {}) {
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
       ${kbdTipsHTML(shortcuts)}
       </details>
+      ${tiltToggleHTML(isTiltListening())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -697,7 +707,13 @@ export function mount(options = {}) {
   function startDeal(seed, extra = {}) {
     const startingDaily = !!(extra.daily || extra.dailyKey) && !extra.pick;
     if (session.state && abandonsStreak(session.state, { toDaily: startingDaily })) session.stats.streak = 0;
-    if (session.state) session.slots = placeBoard(session.slots, session.state, session.history, Date.now());
+    if (session.state) {
+      session.slots = placeBoard(session.slots, session.state, session.history, Date.now(), {
+        cardBack: session.cardBack,
+      });
+    }
+    session.cardBack = nextCardBack(session.cardBack, "deal");
+    applyCardBack(session.cardBack);
     hideOverlay();
     const todayNow = todayKey();
     const entry = extra.pick ? pickForDate(todayNow) : null;

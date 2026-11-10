@@ -2,6 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
+import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
 import {
   apply,
   canPlay,
@@ -110,6 +111,7 @@ export function mount(options = {}) {
     clockPlayed: false,
     streakBeforeMiss: 0,
     bestSnapshot: saved.stats.bestScore,
+    cardBack: null,
   };
 
   const slides = createSlides();
@@ -139,6 +141,8 @@ export function mount(options = {}) {
     session.state = structuredClone(pack.state);
     session.history = structuredClone(pack.history ?? []).slice(-HISTORY_CAP);
     if (!session.state.startedAt || typeof pack.savedAt === "number") restoreClock(session.state, pack.savedAt);
+    session.cardBack = nextCardBack(pack?.cardBack, "resume");
+    applyCardBack(session.cardBack);
     resume = true;
   }
 
@@ -162,7 +166,11 @@ export function mount(options = {}) {
   let alive = true;
 
   function persist() {
-    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now());
+    session.cardBack = ensureDealBack(session.cardBack);
+    applyCardBack(session.cardBack);
+    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now(), {
+      cardBack: session.cardBack,
+    });
     saveGolf(flattenSlots(session.slots, { stats: session.stats }));
   }
 
@@ -296,6 +304,7 @@ export function mount(options = {}) {
     const slideFrom = slides.capture(root.table);
     const state = session.state;
     setPileSeed(state?.seed ?? state?.dealNumber ?? 0);
+    applyCardBack(session.cardBack);
     const board = document.createElement("div");
     board.className = "board golf";
 
@@ -474,6 +483,7 @@ export function mount(options = {}) {
       <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
       <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
       ${kbdTipsHTML(shortcuts)}
+      ${tiltToggleHTML(isTiltListening())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -605,8 +615,12 @@ export function mount(options = {}) {
     const startingDaily = !!(extra.daily || extra.dailyKey) && !extra.pick;
     if (abandonsStreak(session.state, { toDaily: startingDaily })) session.stats.streak = 0;
     if (session.state) {
-      session.slots = placeBoard(session.slots, session.state, session.history, Date.now());
+      session.slots = placeBoard(session.slots, session.state, session.history, Date.now(), {
+        cardBack: session.cardBack,
+      });
     }
+    session.cardBack = nextCardBack(session.cardBack, "deal");
+    applyCardBack(session.cardBack);
     hideOverlay();
     const todayNow = todayKey();
     const entry = extra.pick ? pickForDate(todayNow) : null;

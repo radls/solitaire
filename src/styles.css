@@ -69,6 +69,8 @@ html[data-theme="night"] {
   --slide-fast-ms: 120ms;
   --slide-gentle: 0;
   --slide-ease: cubic-bezier(0.16, 0.84, 0.3, 1.12);
+  --sheen-ms: 12s;
+  --sheen-opacity: 0.22;
 }
 
 html[data-theme="night"] {
@@ -136,6 +138,64 @@ html[data-theme="classic"] {
   --back-cross:
     linear-gradient(135deg, transparent 46%, rgba(212, 180, 106, 0.7) 49.5%, transparent 53%),
     linear-gradient(-135deg, transparent 46%, rgba(212, 180, 106, 0.7) 49.5%, transparent 53%);
+  --sheen-ms: 5.4s;
+  --sheen-opacity: 0.72;
+}
+
+/* Lattice keeps the theme back above. The other five are local gradients only. */
+html[data-card-back="diamond"] {
+  --back-image:
+    linear-gradient(45deg, transparent 46%, rgba(212, 180, 106, 0.55) 50%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, rgba(212, 180, 106, 0.38) 50%, transparent 54%),
+    linear-gradient(160deg, #1b3358, #10192e);
+  --back-size: 16px 16px, 16px 16px, 100% 100%;
+  --back-position: 0 0, 0 0, 0 0;
+  --back-cross:
+    linear-gradient(45deg, transparent 42%, rgba(212, 180, 106, 0.75) 49%, transparent 56%),
+    linear-gradient(-45deg, transparent 42%, rgba(212, 180, 106, 0.75) 49%, transparent 56%);
+}
+
+html[data-card-back="waves"] {
+  --back-image:
+    radial-gradient(ellipse 130% 42% at 50% 18%, rgba(255, 255, 255, 0.16), transparent 58%),
+    radial-gradient(ellipse 130% 48% at 50% 52%, rgba(212, 180, 106, 0.2), transparent 60%),
+    radial-gradient(ellipse 140% 42% at 50% 86%, rgba(255, 255, 255, 0.12), transparent 62%),
+    linear-gradient(180deg, #16324f, #0c1c30);
+  --back-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  --back-position: 0 0;
+  --back-cross: none;
+}
+
+html[data-card-back="medallion"] {
+  --back-image:
+    radial-gradient(circle at 50% 46%, rgba(212, 180, 106, 0.62) 0 7%, transparent 8.5%),
+    radial-gradient(circle at 50% 46%, transparent 26%, rgba(212, 180, 106, 0.75) 28.5% 31%, transparent 33%),
+    radial-gradient(circle at 50% 46%, transparent 40%, rgba(212, 180, 106, 0.45) 42% 44%, transparent 46%),
+    linear-gradient(165deg, #243056, #141a30);
+  --back-size: 100% 100%;
+  --back-position: 0 0;
+  --back-cross: none;
+}
+
+html[data-card-back="stars"] {
+  --back-image:
+    radial-gradient(circle, rgba(255, 248, 220, 0.95) 0.85px, transparent 1.35px),
+    radial-gradient(circle, rgba(212, 180, 106, 0.8) 0.7px, transparent 1.15px),
+    linear-gradient(180deg, #14243c, #0c1626);
+  --back-size: 14px 18px, 14px 18px, 100% 100%;
+  --back-position: 0 0, 7px 9px, 0 0;
+  --back-cross:
+    radial-gradient(circle at 50% 48%, transparent 34%, rgba(212, 180, 106, 0.5) 36% 38%, transparent 40%);
+}
+
+html[data-card-back="herringbone"] {
+  --back-image:
+    repeating-linear-gradient(135deg, rgba(212, 180, 106, 0.28) 0 3px, transparent 3px 9px),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0 3px, transparent 3px 9px),
+    linear-gradient(160deg, #1e3048, #121a28);
+  --back-size: 100% 100%;
+  --back-position: 0 0;
+  --back-cross: none;
 }
 
 *,
@@ -549,15 +609,47 @@ html[data-theme="night"] .pile {
 .card.face-down {
   background-color: var(--navy);
   background-image: var(--back-image);
-  background-size: 7px 7px, 100% 100%, 100% 100%;
+  background-size: var(--back-size, 7px 7px, 100% 100%, 100% 100%);
+  background-position: var(--back-position, 0 0);
   border: var(--back-border-width) solid var(--back-border);
   cursor: default;
+  overflow: hidden;
+}
+
+.card.face-down::before,
+.card-face.back::before {
+  content: "";
+  position: absolute;
+  top: -12%;
+  bottom: -12%;
+  left: 0;
+  width: 42%;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  opacity: var(--sheen-opacity, 0.4);
+  transform: translate3d(-20%, 0, 0);
+  animation: back-shimmer var(--sheen-ms, 8s) ease-in-out infinite;
+}
+
+html[data-sheen="pointer"] .card.face-down::before,
+html[data-sheen="tilt"] .card.face-down::before,
+html[data-sheen="pointer"] .card-face.back::before,
+html[data-sheen="tilt"] .card-face.back::before {
+  animation: none;
+  transform: translate3d(var(--sheen-x, 0%), var(--sheen-y, 0%), 0);
+}
+
+html[data-theme="night"] .card.face-down::before,
+html[data-theme="night"] .card-face.back::before {
+  opacity: var(--sheen-opacity, 0.2);
 }
 
 .card.face-down::after {
   content: "";
   position: absolute;
   inset: 8px;
+  z-index: 2;
   border: 1px solid var(--back-frame);
   border-radius: 4px;
   background: var(--back-cross);
@@ -601,15 +693,18 @@ html[data-theme="night"] .pile {
 .card-face.back {
   transform: rotateY(180deg) translateZ(0.1px);
   opacity: 0;
+  overflow: hidden;
   background-color: var(--navy);
   background-image: var(--back-image);
-  background-size: 7px 7px, 100% 100%, 100% 100%;
+  background-size: var(--back-size, 7px 7px, 100% 100%, 100% 100%);
+  background-position: var(--back-position, 0 0);
 }
 
 .card-face.back::after {
   content: "";
   position: absolute;
   inset: 8px;
+  z-index: 2;
   border: 1px solid var(--back-frame);
   border-radius: 4px;
   background: var(--back-cross);
@@ -958,6 +1053,12 @@ html[data-theme="night"] #meter-time-wrap {
   29.4%, 100% { opacity: 0; }
 }
 
+@keyframes back-shimmer {
+  0%,
+  100% { transform: translate3d(-24%, -4%, 0); }
+  50% { transform: translate3d(155%, 6%, 0); }
+}
+
 @keyframes card-settle {
   0% {
     transform: translateY(var(--card-lift-y)) rotateX(calc(var(--card-curl-rx) + var(--card-drag-rx, 0deg))) rotateY(var(--card-drag-ry, 0deg)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
@@ -1026,10 +1127,26 @@ html[data-theme="night"] .card.is-settling .card-lift {
     opacity: 0 !important;
   }
 
+  .card.face-down::before,
+  .card-face.back::before {
+    animation: none !important;
+    transform: none !important;
+    opacity: 0.12;
+  }
+
   .slot.pile-glow,
   .celebrate[data-glow="1"] {
     box-shadow: 0 0 0 2px rgba(156, 138, 92, 0.55), 0 0 14px rgba(156, 138, 92, 0.28);
   }
+}
+
+html.reduce-motion .card.face-down::before,
+html[data-motion="reduce"] .card.face-down::before,
+html.reduce-motion .card-face.back::before,
+html[data-motion="reduce"] .card-face.back::before {
+  animation: none !important;
+  transform: none !important;
+  opacity: 0.12;
 }
 
 .score-note {

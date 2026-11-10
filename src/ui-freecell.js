@@ -3,6 +3,7 @@ import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
+import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
 import {
   cloneState,
   continueClock,
@@ -125,6 +126,7 @@ export function mount(options = {}) {
     clockPlayed: false,
     animating: false,
     landedId: null,
+    cardBack: null,
   };
 
   const slides = createSlides();
@@ -151,6 +153,8 @@ export function mount(options = {}) {
     session.history = structuredClone(pack.history ?? []).slice(-HISTORY_CAP);
     session.countedPlay = session.state.moves > 0;
     if (!session.state.startedAt || typeof pack.savedAt === "number") restoreClock(session.state, pack.savedAt);
+    session.cardBack = nextCardBack(pack?.cardBack, "resume");
+    applyCardBack(session.cardBack);
   }
 
   if (wantPick) {
@@ -185,7 +189,11 @@ export function mount(options = {}) {
   let alive = true;
 
   function persist() {
-    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now());
+    session.cardBack = ensureDealBack(session.cardBack);
+    applyCardBack(session.cardBack);
+    session.slots = placeBoard(session.slots, session.state, session.history.slice(-HISTORY_CAP), Date.now(), {
+      cardBack: session.cardBack,
+    });
     saveFreeCell(flattenSlots(session.slots, { stats: session.stats }));
   }
 
@@ -363,6 +371,7 @@ export function mount(options = {}) {
     const slideFrom = slides.capture(root.table);
     const state = session.state;
     setPileSeed(state?.seed ?? state?.dealNumber ?? 0);
+    applyCardBack(session.cardBack);
     const board = document.createElement("div");
     board.className = "board freecell";
 
@@ -515,6 +524,7 @@ export function mount(options = {}) {
         <button type="submit" class="btn primary">Deal</button>
       </form>
       ${kbdTipsHTML(shortcuts)}
+      ${tiltToggleHTML(isTiltListening())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>
@@ -623,7 +633,11 @@ export function mount(options = {}) {
   function startDeal(dealNumber, extra = {}) {
     const startingDaily = !!(extra.daily || extra.dailyKey) && !extra.pick;
     if (abandonsStreak(session.state, { toDaily: startingDaily })) session.stats.streak = 0;
-    session.slots = placeBoard(session.slots, session.state, session.history, Date.now());
+    session.slots = placeBoard(session.slots, session.state, session.history, Date.now(), {
+      cardBack: session.cardBack,
+    });
+    session.cardBack = nextCardBack(session.cardBack, "deal");
+    applyCardBack(session.cardBack);
     stopAuto();
     hideOverlay();
     const todayNow = todayKey();

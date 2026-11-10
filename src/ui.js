@@ -3,6 +3,7 @@ import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
 import { setPileSeed } from "./pile-skew.js";
+import { applyCardBack, ensureDealBack, isTiltListening, nextCardBack, tiltToggleHTML } from "./card-backs.js";
 import {
   autoCompleteStep,
   autoMove,
@@ -127,6 +128,7 @@ export function mount(options = {}) {
     glowTimer: 0,
     finishing: false,
     finishFast: false,
+    cardBack: null,
   };
 
   const slides = createSlides();
@@ -158,6 +160,8 @@ export function mount(options = {}) {
     session.state = structuredClone(pack.state);
     session.history = structuredClone(pack.history ?? []);
     restoreClock(session.state, pack.savedAt);
+    session.cardBack = nextCardBack(pack?.cardBack, "resume");
+    applyCardBack(session.cardBack);
   }
 
   if (wantPick) {
@@ -195,8 +199,11 @@ export function mount(options = {}) {
   session.countedPlay = session.state.moves > 0;
 
   function persist() {
+    session.cardBack = ensureDealBack(session.cardBack);
+    applyCardBack(session.cardBack);
     session.slots = placeBoard(session.slots, session.state, session.history, Date.now(), {
       dropCasual: (state) => !!state?.won,
+      cardBack: session.cardBack,
     });
     save(
       flattenSlots(session.slots, {
@@ -277,6 +284,7 @@ export function mount(options = {}) {
   function render() {
     if (session.alive === false) return;
     setPileSeed(session.state?.seed ?? session.state?.dealNumber ?? 0);
+    applyCardBack(session.cardBack);
     const slideFrom = slides.capture(root.table);
     const state = session.state;
     const table = root.table;
@@ -718,6 +726,7 @@ export function mount(options = {}) {
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
       <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
+      ${tiltToggleHTML(isTiltListening())}
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>
@@ -794,7 +803,10 @@ export function mount(options = {}) {
     if (abandonsStreak(previous, { toDaily: startingDaily })) session.stats.streak = 0;
     session.slots = placeBoard(session.slots, previous, session.history, Date.now(), {
       dropCasual: (state) => !!state?.won,
+      cardBack: session.cardBack,
     });
+    session.cardBack = nextCardBack(session.cardBack, "deal");
+    applyCardBack(session.cardBack);
     hideOverlay();
     session.history = [];
     session.clockPlayed = false;

@@ -74,6 +74,7 @@ export function loadFreeCell() {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
       dailySaved: parsed.dailySaved ?? null,
       active: parsed.active === "daily" ? "daily" : "casual",
+      cardBack: typeof parsed.cardBack === "string" ? parsed.cardBack : null,
     };
   } catch {
     return defaultFreeCell();
@@ -92,6 +93,7 @@ export function saveFreeCell(data) {
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
         dailySaved: data.dailySaved ?? null,
         active: data.active === "daily" ? "daily" : "casual",
+        cardBack: typeof data.cardBack === "string" ? data.cardBack : null,
       }),
     );
   } catch {
@@ -118,6 +120,7 @@ export function loadGolf() {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
       dailySaved: parsed.dailySaved ?? null,
       active: parsed.active === "daily" ? "daily" : "casual",
+      cardBack: typeof parsed.cardBack === "string" ? parsed.cardBack : null,
     };
   } catch {
     return defaultGolf();
@@ -136,6 +139,7 @@ export function saveGolf(data) {
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
         dailySaved: data.dailySaved ?? null,
         active: data.active === "daily" ? "daily" : "casual",
+        cardBack: typeof data.cardBack === "string" ? data.cardBack : null,
       }),
     );
   } catch {
@@ -172,6 +176,7 @@ export function loadKings() {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : null,
       dailySaved: parsed.dailySaved ?? null,
       active: parsed.active === "daily" ? "daily" : "casual",
+      cardBack: typeof parsed.cardBack === "string" ? parsed.cardBack : null,
     };
   } catch {
     return defaultKings();
@@ -190,6 +195,7 @@ export function saveKings(data) {
         savedAt: typeof data.savedAt === "number" ? data.savedAt : Date.now(),
         dailySaved: data.dailySaved ?? null,
         active: data.active === "daily" ? "daily" : "casual",
+        cardBack: typeof data.cardBack === "string" ? data.cardBack : null,
       }),
     );
   } catch {
@@ -200,7 +206,7 @@ export function saveKings(data) {
 const GAMES = new Set(["klondike", "freecell", "golf", "kings"]);
 
 function defaultPrefs() {
-  return { lastGame: null, theme: "night", sound: false, installHint: null };
+  return { lastGame: null, theme: "night", sound: false, installHint: null, tiltSheen: false };
 }
 
 function normalizeInstallHint(value) {
@@ -214,7 +220,13 @@ export function loadPrefs() {
     const parsed = JSON.parse(raw);
     const lastGame = GAMES.has(parsed.lastGame) ? parsed.lastGame : null;
     const theme = parsed.theme === "classic" ? "classic" : "night";
-    return { lastGame, theme, sound: parsed.sound === true, installHint: normalizeInstallHint(parsed.installHint) };
+    return {
+      lastGame,
+      theme,
+      sound: parsed.sound === true,
+      installHint: normalizeInstallHint(parsed.installHint),
+      tiltSheen: parsed.tiltSheen === true,
+    };
   } catch {
     return defaultPrefs();
   }
@@ -260,7 +272,7 @@ export function savePrefs(partial) {
     if (next.theme !== "classic") next.theme = "night";
     next.sound = next.sound === true;
     const installHint = normalizeInstallHint(next.installHint);
-    const stored = { lastGame: next.lastGame, theme: next.theme, sound: next.sound };
+    const stored = { lastGame: next.lastGame, theme: next.theme, sound: next.sound, tiltSheen: next.tiltSheen === true };
     if (installHint) stored.installHint = installHint;
     localStorage.setItem(PREFS_KEY, JSON.stringify(stored));
   } catch {

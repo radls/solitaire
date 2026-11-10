@@ -14,6 +14,7 @@ export function takeSlots(record, { nested = false } = {}) {
       history: Array.isArray(record.history) ? record.history : [],
       savedAt: typeof record.savedAt === "number" ? record.savedAt : null,
     };
+    if (typeof record.cardBack === "string" && record.cardBack) casual.cardBack = record.cardBack;
   }
   let daily = record?.dailySaved?.state ? record.dailySaved : null;
   let active = record?.active === "daily" ? "daily" : "casual";
@@ -30,7 +31,7 @@ export function takeSlots(record, { nested = false } = {}) {
  * `dropCasual` drops a finished casual board (Klondike clears a won save).
  * A finished daily stays, so the same day can be shown again.
  */
-export function placeBoard(slots, state, history, savedAt, { dropCasual } = {}) {
+export function placeBoard(slots, state, history, savedAt, { dropCasual, cardBack } = {}) {
   const next = {
     casual: slots?.casual ?? null,
     daily: slots?.daily ?? null,
@@ -42,6 +43,7 @@ export function placeBoard(slots, state, history, savedAt, { dropCasual } = {}) 
     history: Array.isArray(history) ? history : [],
     savedAt: typeof savedAt === "number" ? savedAt : Date.now(),
   };
+  if (typeof cardBack === "string" && cardBack) pack.cardBack = cardBack;
   if (isDailyBoard(state)) {
     next.daily = pack;
     next.active = "daily";
@@ -68,6 +70,7 @@ export function flattenSlots(slots, { nested = false, stats, extra = {} } = {}) 
     state: casual?.state ?? null,
     history: casual?.history ?? [],
     savedAt: casual?.savedAt ?? null,
+    cardBack: casual?.cardBack ?? null,
     dailySaved: daily,
     active,
   };

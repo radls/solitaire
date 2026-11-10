@@ -289,26 +289,39 @@ export function bootCardMotion(env = {}) {
   // A saved opt-in can listen immediately only when the browser has no permission prompt.
   if (!needsGesture && tiltWanted) listenTilt(win, onOrientation);
 
+  const keepWanted = (on) => {
+    tiltWanted = on;
+    try {
+      savePrefs({ tiltSheen: on });
+    } catch {
+      /* private mode */
+    }
+    paintTiltButtons(doc, on);
+  };
+
   const enableTilt = async () => {
     const result = await requestTiltPermission(DOE);
     if (result === "granted") {
       listenTilt(win, onOrientation);
-      tiltWanted = true;
-      try {
-        savePrefs({ tiltSheen: true });
-      } catch {
-        /* private mode */
-      }
+      keepWanted(true);
+      return true;
+    }
+    keepWanted(false);
+    return false;
+  };
+
+  // A saved opt-in that cannot listen on load is retried from the first board
+  // tap. If the prompt is denied or throws, keep the preference and fall back
+  // to pointer or idle sheen.
+  const resumeTilt = async () => {
+    const result = await requestTiltPermission(DOE);
+    if (result === "granted") {
+      listenTilt(win, onOrientation);
       paintTiltButtons(doc, true);
       return true;
     }
-    tiltWanted = false;
-    try {
-      savePrefs({ tiltSheen: false });
-    } catch {
-      /* private mode */
-    }
-    paintTiltButtons(doc, false);
+    paintTiltButtons(doc, true);
+    if (doc.documentElement.dataset.sheen === "tilt") doc.documentElement.dataset.sheen = "idle";
     return false;
   };
 
@@ -317,7 +330,7 @@ export function bootCardMotion(env = {}) {
   doc.addEventListener("pointerdown", (event) => {
     if (!tiltWanted || tiltOn || !needsGesture) return;
     if (event.target?.closest?.("[data-testid='tilt-sheen']")) return;
-    return enableTilt();
+    return resumeTilt();
   });
 
   doc.addEventListener("click", async (event) => {

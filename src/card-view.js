@@ -190,7 +190,7 @@ export function makeCardElement(card, loc, count, playable, selected) {
   if (settleIds.has(card.id)) {
     const tilt = settleTilt;
     settleIds.delete(card.id);
-    if (currentMotionPolicy().settleBounce) armSettle(el, tilt);
+    if (!currentMotionPolicy().reduce) armSettle(el, tilt);
   }
   applyPileSkew(el, card, loc);
   return el;
@@ -205,7 +205,7 @@ function armSettle(el, tilt) {
     delete el.dataset.settling;
   };
   const onEnd = (event) => {
-    if (event.animationName !== "card-settle") return;
+    if (event.animationName !== "card-settle" && event.animationName !== "card-settle-plain") return;
     clear();
   };
   el.addEventListener("animationend", onEnd);

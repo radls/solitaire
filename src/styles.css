@@ -81,7 +81,7 @@ html[data-theme="night"] {
   --card-curl-skew: 0.6deg;
   --card-motion-ms: 320ms;
   --card-flip-ms: 680ms;
-  --card-settle-ms: 0ms;
+  --card-settle-ms: 280ms;
   --card-perspective: 1400px;
   --card-lift-shadow: 0 8px 14px rgba(0, 0, 0, 0.26), 0 2px 5px rgba(0, 0, 0, 0.18);
   --card-drag-shadow: 0 12px 18px rgba(0, 0, 0, 0.3), 0 3px 6px rgba(0, 0, 0, 0.18);
@@ -94,6 +94,8 @@ html[data-theme="night"] {
   --slide-fast-ms: 160ms;
   --slide-gentle: 1;
   --slide-ease: cubic-bezier(0.37, 0, 0.25, 1);
+  --sheen-ms: 12s;
+  --sheen-opacity: 0.22;
 }
 
 html[data-theme="classic"] {
@@ -653,9 +655,7 @@ html[data-sheen="tilt"] .card-face.back::before {
 
 html[data-theme="night"] .card.face-down::before,
 html[data-theme="night"] .card-face.back::before {
-  animation: none !important;
-  transform: none !important;
-  opacity: var(--sheen-opacity, 0.12);
+  opacity: var(--sheen-opacity, 0.22);
 }
 
 .card.face-down::after {
@@ -1087,14 +1087,24 @@ html[data-theme="night"] #meter-time-wrap {
   }
 }
 
+/* Bedtime settle: the same start pose, then a plain ease to rest. No bounce. */
+@keyframes card-settle-plain {
+  0% {
+    transform: translateY(var(--card-lift-y)) rotateX(calc(var(--card-curl-rx) + var(--card-drag-rx, 0deg))) rotateY(var(--card-drag-ry, 0deg)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotateZ(0deg) scale(1);
+  }
+}
+
 .card.is-settling .card-lift {
   animation: card-settle var(--card-settle-ms, 280ms) ease-out;
   transition: none;
 }
 
 html[data-theme="night"] .card.is-settling .card-lift {
-  animation: none;
-  transform: none;
+  animation: card-settle-plain var(--card-settle-ms, 280ms) ease-out;
+  transition: none;
 }
 
 .card.shake,

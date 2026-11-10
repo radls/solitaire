@@ -62,7 +62,19 @@ describe("drag physics", () => {
     expect(el.props["--card-drag-ry"]).toBe("0.00deg");
   });
 
-  it("turns bounce, wobble, and sheen off for bedtime and reduced motion", () => {
+  it("keeps a bedtime drag level, with no velocity tilt", () => {
+    globalThis.window = { matchMedia: () => ({ matches: false }) };
+    globalThis.document = { documentElement: { dataset: { theme: "night" } } };
+    const drag = { tilt: 5, vx: 2, tiltX: 0, tiltT: 0 };
+    const el = ghost();
+    expect(paintDragTilt(el, drag, 40, 16, 10)).toBe(0);
+    expect(el.dataset.tilt).toBe("0.00");
+    expect(el.props["--card-tilt"]).toBe("0.00deg");
+    expect(el.props["--card-drag-ry"]).toBe("0.00deg");
+    expect(el.props["--card-drag-rx"]).toBe("0.00deg");
+  });
+
+  it("turns wobble and bounce off in bedtime, keeps a quiet sheen, and turns all motion off when reduced", () => {
     expect(motionPolicy({ reduce: false, bedtime: false })).toMatchObject({
       dragWobble: true,
       settleBounce: true,
@@ -72,13 +84,20 @@ describe("drag physics", () => {
     expect(motionPolicy({ reduce: false, bedtime: true })).toMatchObject({
       dragWobble: false,
       settleBounce: false,
-      sheenMotion: false,
+      sheenMotion: true,
       sheenQuiet: true,
     });
     expect(motionPolicy({ reduce: true, bedtime: false })).toMatchObject({
       dragWobble: false,
       settleBounce: false,
       sheenMotion: false,
+      sheenQuiet: true,
+    });
+    expect(motionPolicy({ reduce: true, bedtime: true })).toMatchObject({
+      dragWobble: false,
+      settleBounce: false,
+      sheenMotion: false,
+      sheenQuiet: true,
     });
     const eased = smoothAxis(2, 0);
     expect(eased).toBeGreaterThan(0.8);

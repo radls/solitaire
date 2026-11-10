@@ -51,7 +51,7 @@ function classList() {
   };
 }
 
-function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
+function fakeEnv({ reduce = false, ios = false, tiltWanted = false, permission = "granted" } = {}) {
   const listeners = [];
   const root = {
     dataset: {},
@@ -116,7 +116,8 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false } = {}) {
     ? {
         requestPermission() {
           calls += 1;
-          return Promise.resolve("granted");
+          if (permission === "throw") return Promise.reject(new Error("orientation"));
+          return Promise.resolve(permission);
         },
       }
     : function DeviceOrientationEvent() {};
@@ -328,6 +329,43 @@ describe("sheen and tilt permission", () => {
     expect(loadPrefs().tiltSheen).toBe(true);
   });
 
+  it("keeps the saved tilt pref and falls back to pointer sheen when a re-request is denied", async () => {
+    memoryStorage();
+    savePrefs({ tiltSheen: true });
+    const env = fakeEnv({ ios: true, tiltWanted: true, permission: "denied" });
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: true,
+    });
+    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    expect(env.calls()).toBe(1);
+    expect(isTiltListening()).toBe(false);
+    expect(tiltSheenPressed()).toBe(true);
+    expect(loadPrefs().tiltSheen).toBe(true);
+    listener(env, "pointermove").fn({ clientX: 20, clientY: 20, pointerType: "mouse" });
+    expect(env.doc.documentElement.dataset.sheen).toBe("pointer");
+  });
+
+  it("keeps the saved tilt pref when a re-request throws", async () => {
+    memoryStorage();
+    savePrefs({ tiltSheen: true });
+    const env = fakeEnv({ ios: true, tiltWanted: true, permission: "throw" });
+    bootCardMotion({
+      window: env.win,
+      document: env.doc,
+      DeviceOrientationEvent: env.DOE,
+      tiltWanted: true,
+    });
+    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    expect(env.calls()).toBe(1);
+    expect(isTiltListening()).toBe(false);
+    expect(tiltSheenPressed()).toBe(true);
+    expect(loadPrefs().tiltSheen).toBe(true);
+    expect(env.doc.documentElement.dataset.sheen).toBe("idle");
+  });
+
   it("writes sheen variables on the board hosts and skips them while dragging", () => {
     const env = fakeEnv();
     const written = writeSheenVars(env.doc, { x: 1, y: -1 });
@@ -377,7 +415,7 @@ describe("reduced motion", () => {
     expect(root.dataset.cardBack).toBe("waves");
   });
 
-  it("turns sheen, wobble, and bounce off for reduced motion and bedtime", () => {
+  it("keeps a quiet sheen in bedtime and turns all sheen off when motion is reduced", () => {
     expect(motionPolicy({ reduce: true, bedtime: true })).toMatchObject({
       dragWobble: false,
       settleBounce: false,
@@ -387,7 +425,7 @@ describe("reduced motion", () => {
     expect(motionPolicy({ reduce: false, bedtime: true })).toMatchObject({
       dragWobble: false,
       settleBounce: false,
-      sheenMotion: false,
+      sheenMotion: true,
       sheenQuiet: true,
     });
   });

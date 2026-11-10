@@ -433,6 +433,35 @@ const afterBoard = await tiltPage.evaluate(() => window.__tiltCalls);
 check("the first board tap re-requests tilt after reload", afterBoard === 1, String(afterBoard));
 await tiltCtx.close();
 
+const denyCtx = await browser.newContext({ ...desktop, hasTouch: true });
+await denyCtx.addInitScript(() => {
+  try {
+    localStorage.setItem("grok-solitaire:prefs", JSON.stringify({ tiltSheen: true }));
+  } catch {}
+  window.__tiltCalls = 0;
+  function DeviceOrientationEvent() {}
+  DeviceOrientationEvent.requestPermission = () => {
+    window.__tiltCalls += 1;
+    return Promise.resolve("denied");
+  };
+  window.DeviceOrientationEvent = DeviceOrientationEvent;
+});
+const denyPage = await denyCtx.newPage();
+await denyPage.goto(`${BASE}?game=klondike&seed=7`, { waitUntil: "domcontentloaded" });
+await ready(denyPage);
+await denyPage.locator("#table .card").first().click();
+await denyPage.waitForTimeout(50);
+const denied = await denyPage.evaluate(() => ({
+  calls: window.__tiltCalls,
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+  sheen: document.documentElement.dataset.sheen,
+}));
+check("a denied re-request keeps the tilt pref and stays off tilt", denied.calls === 1 && denied.pref === true && denied.sheen !== "tilt", JSON.stringify(denied));
+await denyPage.locator("#btn-help").click();
+const deniedPressed = await denyPage.locator("[data-testid='tilt-sheen']").getAttribute("aria-pressed");
+check("Help still shows tilt on after a denied re-request", deniedPressed === "true", deniedPressed);
+await denyCtx.close();
+
 const bedCtx = await browser.newContext(desktop);
 const bedPage = await bedCtx.newPage();
 await bedPage.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
@@ -443,14 +472,34 @@ await bedPage.evaluate(() => {
 const bedtime = await bedPage.evaluate(() => {
   const card = document.querySelector(".card.face-down");
   const sheen = card ? getComputedStyle(card, "::before") : null;
+  const up = document.querySelector(".card.face-up");
+  const liftEl = up?.querySelector(".card-lift");
+  if (liftEl) liftEl.style.transition = "none";
+  up?.classList.add("selected");
+  const lift = liftEl ? getComputedStyle(liftEl) : null;
+  const selected = {
+    transform: lift?.transform || "",
+    shadow: lift?.boxShadow || "",
+  };
+  up?.classList.remove("selected");
+  if (liftEl) liftEl.style.transition = "";
   return {
     theme: document.documentElement.dataset.theme,
     animation: sheen?.animationName || "",
+    duration: parseFloat(sheen?.animationDuration || "0"),
+    opacity: parseFloat(sheen?.opacity || "1"),
+    selected,
   };
 });
 check(
-  "bedtime turns the sheen animation off",
-  bedtime.theme === "night" && (bedtime.animation === "none" || bedtime.animation === ""),
+  "bedtime keeps a dim, slow sheen and a pickup lift",
+  bedtime.theme === "night" &&
+    bedtime.animation.includes("back-shimmer") &&
+    bedtime.duration >= 10 &&
+    bedtime.opacity > 0 &&
+    bedtime.opacity <= 0.3 &&
+    bedtime.selected.transform !== "none" &&
+    bedtime.selected.shadow !== "none" && !bedtime.selected.shadow.includes("0px 0px 0px 0px"),
   JSON.stringify(bedtime),
 );
 await layoutKlondike(bedPage, {
@@ -461,8 +510,12 @@ await layoutKlondike(bedPage, {
 });
 const calm = await dragOnto(bedPage, '#table .card[data-id="spades-7"]', '[data-drop="tableau:3"]');
 check(
-  "bedtime drag stays level and still lands",
-  calm.landed?.zone === "tableau" && calm.landed?.index === "3" && Number.parseFloat(calm.pose?.tilt || "1") === 0,
+  "bedtime drag stays level, keeps a lift, and still lands",
+  calm.landed?.zone === "tableau" &&
+    calm.landed?.index === "3" &&
+    Number.parseFloat(calm.pose?.tilt || "1") === 0 &&
+    calm.pose?.transform &&
+    calm.pose.transform !== "none",
   JSON.stringify({ pose: calm.pose, landed: calm.landed }),
 );
 await bedCtx.close();

@@ -254,8 +254,11 @@ for (const P of ["desktop", "phone"]) {
       Math.abs(night.liftY) < Math.abs(classic.liftY) &&
       night.curl < classic.curl &&
       night.motionMs > classic.motionMs &&
-      night.settle === "none" &&
-      classic.settle.includes("card-settle"),
+      night.settle.includes("card-settle-plain") &&
+      night.settleMs > 0 &&
+      classic.settle.includes("card-settle") &&
+      !classic.settle.includes("plain") &&
+      classic.settleMs > 0,
     JSON.stringify({ night, classic }),
   );
 

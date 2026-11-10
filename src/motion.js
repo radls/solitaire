@@ -37,16 +37,18 @@ export function isBedtimeTheme() {
   }
 }
 
-/** What card motion is allowed. Bedtime is fully quiet; reduced motion is too. */
+/** What card motion is allowed.
+ * Bedtime keeps a dim, slow sheen and the pickup lift, but drops velocity
+ * wobble and any settle overshoot. Reduced motion turns everything off.
+ */
 export function motionPolicy({ reduce = false, bedtime = false } = {}) {
-  const calm = !!reduce || !!bedtime;
   return {
     reduce: !!reduce,
     bedtime: !!bedtime,
-    dragWobble: !calm,
-    settleBounce: !calm,
-    sheenMotion: !calm,
-    sheenQuiet: calm,
+    dragWobble: !reduce && !bedtime,
+    settleBounce: !reduce && !bedtime,
+    sheenMotion: !reduce,
+    sheenQuiet: !!reduce || !!bedtime,
   };
 }
 

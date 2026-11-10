@@ -326,7 +326,9 @@ describe("sheen and tilt permission", () => {
     expect(isTiltListening()).toBe(false);
     expect(tiltSheenPressed()).toBe(true);
 
-    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    const down = listener(env, "pointerdown");
+    expect(down).toBeUndefined();
+    await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(true);
     expect(tiltSheenPressed()).toBe(true);
@@ -343,13 +345,15 @@ describe("sheen and tilt permission", () => {
       DeviceOrientationEvent: env.DOE,
       tiltWanted: true,
     });
-    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(false);
     expect(tiltSheenPressed()).toBe(true);
     expect(loadPrefs().tiltSheen).toBe(true);
     listener(env, "pointermove").fn({ clientX: 20, clientY: 20, pointerType: "mouse" });
     expect(env.doc.documentElement.dataset.sheen).toBe("pointer");
+    await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
+    expect(env.calls()).toBe(1);
   });
 
   it("keeps the saved tilt pref when a re-request throws", async () => {
@@ -362,12 +366,14 @@ describe("sheen and tilt permission", () => {
       DeviceOrientationEvent: env.DOE,
       tiltWanted: true,
     });
-    await listener(env, "pointerdown").fn({ target: { closest: () => null } });
+    await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(false);
     expect(tiltSheenPressed()).toBe(true);
     expect(loadPrefs().tiltSheen).toBe(true);
     expect(env.doc.documentElement.dataset.sheen).toBe("idle");
+    await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
+    expect(env.calls()).toBe(2);
   });
 
   it("reapplies the last sheen point after face-down cards are replaced", () => {
@@ -400,7 +406,6 @@ describe("sheen and tilt permission", () => {
   });
 
   it("writes sheen variables on the board hosts and skips them while dragging", () => {
-
     const env = fakeEnv();
     const written = writeSheenVars(env.doc, { x: 1, y: -1 });
     expect(written).toEqual({ "--sheen-x": "70.0%", "--sheen-y": "-12.0%" });

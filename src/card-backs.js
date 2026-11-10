@@ -163,7 +163,7 @@ export async function requestTiltPermission(DOE = globalThis.DeviceOrientationEv
     const result = await DOE.requestPermission();
     return result === "granted" ? "granted" : "denied";
   } catch {
-    return "denied";
+    return "error";
   }
 }
 
@@ -289,7 +289,6 @@ export function bootCardMotion(env = {}) {
     pending = null;
     if (doc.documentElement.dataset.sheen === "pointer") doc.documentElement.dataset.sheen = "idle";
   };
-  win.addEventListener("pointerup", onPointerEnd);
   win.addEventListener("pointercancel", onPointerEnd);
 
   syncSheenPaused(doc);
@@ -330,27 +329,37 @@ export function bootCardMotion(env = {}) {
   };
 
   // A saved opt-in that cannot listen on load is retried from the first board
-  // tap. If the prompt is denied or throws, keep the preference and fall back
-  // to pointer or idle sheen.
+  // gesture. WebKit only treats pointerup/click as a user activation, not
+  // pointerdown. Keep the preference on deny or error; after an explicit
+  // denied this session, do not prompt again.
+  let resumeBusy = false;
+  let resumeDenied = false;
   const resumeTilt = async () => {
-    const result = await requestTiltPermission(DOE);
-    if (result === "granted") {
-      listenTilt(win, onOrientation);
+    if (resumeBusy || resumeDenied || tiltOn || !tiltWanted) return false;
+    resumeBusy = true;
+    try {
+      const result = await requestTiltPermission(DOE);
+      if (result === "granted") {
+        listenTilt(win, onOrientation);
+        paintTiltButtons(doc, true);
+        return true;
+      }
+      if (result === "denied") resumeDenied = true;
       paintTiltButtons(doc, true);
-      return true;
+      if (doc.documentElement.dataset.sheen === "tilt") doc.documentElement.dataset.sheen = "idle";
+      return false;
+    } finally {
+      resumeBusy = false;
     }
-    paintTiltButtons(doc, true);
-    if (doc.documentElement.dataset.sheen === "tilt") doc.documentElement.dataset.sheen = "idle";
-    return false;
   };
 
-  // Chrome exposes requestPermission too, so a saved opt-in cannot listen on
-  // load. Re-request from the first board tap and keep the Help button in sync.
-  doc.addEventListener("pointerdown", (event) => {
-    if (!tiltWanted || tiltOn || !needsGesture) return;
-    if (event.target?.closest?.("[data-testid='tilt-sheen']")) return;
+  const onPointerUp = (event) => {
+    onPointerEnd(event);
+    if (!tiltWanted || tiltOn || !needsGesture || resumeDenied || resumeBusy) return;
+    if (!event?.target?.closest?.("#table, #drag-layer")) return;
     return resumeTilt();
-  });
+  };
+  win.addEventListener("pointerup", onPointerUp);
 
   doc.addEventListener("click", async (event) => {
     const btn = event.target?.closest?.("[data-testid='tilt-sheen']");

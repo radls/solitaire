@@ -502,15 +502,22 @@ const reloaded = await tiltPage.evaluate(() => ({
   pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
 }));
 check("a saved tilt opt-in does not prompt on reload", reloaded.calls === 0 && reloaded.pref === true, JSON.stringify(reloaded));
+const downCalls = await tiltPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+  return window.__tiltCalls;
+});
+check("a board pointerdown does not request tilt", downCalls === 0, String(downCalls));
+const upCalls = await tiltPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+  return window.__tiltCalls;
+});
+check("the first board pointerup re-requests tilt after reload", upCalls === 1, String(upCalls));
 await tiltPage.locator("#btn-help").click();
 const pressedAfterReload = await tiltPage.locator("[data-testid='tilt-sheen']").getAttribute("aria-pressed");
 check("Help still shows tilt on after reload", pressedAfterReload === "true", pressedAfterReload);
 await tiltPage.keyboard.press("Escape");
-await tiltPage.waitForTimeout(50);
-await tiltPage.locator("#table .card").first().click();
-await tiltPage.waitForTimeout(50);
-const afterBoard = await tiltPage.evaluate(() => window.__tiltCalls);
-check("the first board tap re-requests tilt after reload", afterBoard === 1, String(afterBoard));
 await tiltCtx.close();
 
 const denyCtx = await browser.newContext({ ...desktop, hasTouch: true });
@@ -529,7 +536,16 @@ await denyCtx.addInitScript(() => {
 const denyPage = await denyCtx.newPage();
 await denyPage.goto(`${BASE}?game=klondike&seed=7`, { waitUntil: "domcontentloaded" });
 await ready(denyPage);
-await denyPage.locator("#table .card").first().click();
+await denyPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+});
+const denyDown = await denyPage.evaluate(() => window.__tiltCalls);
+check("a denied path does not request tilt on pointerdown", denyDown === 0, String(denyDown));
+await denyPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+});
 await denyPage.waitForTimeout(50);
 const denied = await denyPage.evaluate(() => ({
   calls: window.__tiltCalls,
@@ -537,6 +553,12 @@ const denied = await denyPage.evaluate(() => ({
   sheen: document.documentElement.dataset.sheen,
 }));
 check("a denied re-request keeps the tilt pref and stays off tilt", denied.calls === 1 && denied.pref === true && denied.sheen !== "tilt", JSON.stringify(denied));
+await denyPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+});
+const deniedAgain = await denyPage.evaluate(() => window.__tiltCalls);
+check("an explicit deny is not retried later in the session", deniedAgain === 1, String(deniedAgain));
 await denyPage.locator("#btn-help").click();
 const deniedPressed = await denyPage.locator("[data-testid='tilt-sheen']").getAttribute("aria-pressed");
 check("Help still shows tilt on after a denied re-request", deniedPressed === "true", deniedPressed);

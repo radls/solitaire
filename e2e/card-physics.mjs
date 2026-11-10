@@ -502,6 +502,18 @@ const reloaded = await tiltPage.evaluate(() => ({
   pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
 }));
 check("a saved tilt opt-in does not prompt on reload", reloaded.calls === 0 && reloaded.pref === true, JSON.stringify(reloaded));
+const chromeCalls = await tiltPage.evaluate(() => {
+  const help = document.querySelector("#btn-help");
+  const toolbar = document.querySelector("#btn-new") || document.querySelector("#btn-home");
+  help?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 10, clientY: 10 }));
+  toolbar?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 20, clientY: 10 }));
+  return { calls: window.__tiltCalls, help: !!help, toolbar: !!toolbar };
+});
+check(
+  "Help or toolbar pointerup does not request tilt",
+  chromeCalls.calls === 0 && chromeCalls.help && chromeCalls.toolbar,
+  JSON.stringify(chromeCalls),
+);
 const downCalls = await tiltPage.evaluate(() => {
   const card = document.querySelector("#table .card");
   card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
@@ -560,9 +572,88 @@ await denyPage.evaluate(() => {
 const deniedAgain = await denyPage.evaluate(() => window.__tiltCalls);
 check("an explicit deny is not retried later in the session", deniedAgain === 1, String(deniedAgain));
 await denyPage.locator("#btn-help").click();
-const deniedPressed = await denyPage.locator("[data-testid='tilt-sheen']").getAttribute("aria-pressed");
-check("Help still shows tilt on after a denied re-request", deniedPressed === "true", deniedPressed);
+const deniedHelp = await denyPage.evaluate(() => {
+  const btn = document.querySelector("[data-testid='tilt-sheen']");
+  return {
+    pressed: btn?.getAttribute("aria-pressed") || null,
+    label: (btn?.textContent || "").trim(),
+    pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+    calls: window.__tiltCalls,
+  };
+});
+check(
+  "Help reflects a denied re-request for the session and keeps the pref",
+  deniedHelp.pressed === "false" &&
+    deniedHelp.label === "Use device tilt for card backs" &&
+    deniedHelp.pref === true &&
+    deniedHelp.calls === 1,
+  JSON.stringify(deniedHelp),
+);
+await denyPage.locator("[data-testid='tilt-sheen']").click();
+const deniedClick = await denyPage.evaluate(() => ({
+  calls: window.__tiltCalls,
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+  pressed: document.querySelector("[data-testid='tilt-sheen']")?.getAttribute("aria-pressed"),
+}));
+check(
+  "a Help tap after an explicit deny does not retry or clear the pref",
+  deniedClick.calls === 1 && deniedClick.pref === true && deniedClick.pressed === "false",
+  JSON.stringify(deniedClick),
+);
 await denyCtx.close();
+
+const errorCtx = await browser.newContext({ ...desktop, hasTouch: true });
+await errorCtx.addInitScript(() => {
+  try {
+    localStorage.setItem("grok-solitaire:prefs", JSON.stringify({ tiltSheen: true }));
+  } catch {}
+  window.__tiltCalls = 0;
+  function DeviceOrientationEvent() {}
+  DeviceOrientationEvent.requestPermission = () => {
+    window.__tiltCalls += 1;
+    return Promise.reject(new Error("orientation failed"));
+  };
+  window.DeviceOrientationEvent = DeviceOrientationEvent;
+});
+const errorPage = await errorCtx.newPage();
+await errorPage.goto(`${BASE}?game=klondike&seed=7`, { waitUntil: "domcontentloaded" });
+await ready(errorPage);
+await errorPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+});
+await errorPage.waitForTimeout(50);
+const errored = await errorPage.evaluate(() => ({
+  calls: window.__tiltCalls,
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+  sheen: document.documentElement.dataset.sheen,
+}));
+check(
+  "an error keeps the tilt setting and stays off tilt",
+  errored.calls === 1 && errored.pref === true && errored.sheen !== "tilt",
+  JSON.stringify(errored),
+);
+await errorPage.evaluate(() => {
+  const card = document.querySelector("#table .card");
+  card.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: 40, clientY: 80 }));
+});
+await errorPage.waitForTimeout(50);
+const erroredAgain = await errorPage.evaluate(() => window.__tiltCalls);
+check("an error can retry later in the session", erroredAgain === 2, String(erroredAgain));
+await errorPage.locator("#btn-help").click();
+const errorHelp = await errorPage.evaluate(() => {
+  const btn = document.querySelector("[data-testid='tilt-sheen']");
+  return {
+    pressed: btn?.getAttribute("aria-pressed") || null,
+    pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").tiltSheen,
+  };
+});
+check(
+  "Help still shows tilt on after a re-request error",
+  errorHelp.pressed === "true" && errorHelp.pref === true,
+  JSON.stringify(errorHelp),
+);
+await errorCtx.close();
 
 const bedCtx = await browser.newContext(desktop);
 const bedPage = await bedCtx.newPage();

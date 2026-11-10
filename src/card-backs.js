@@ -119,6 +119,7 @@ export function syncSheenVars(doc, point = lastSheenPoint) {
 
 let tiltOn = false;
 let tiltWanted = false;
+let resumeDenied = false;
 let oriHandler = null;
 let oriWin = null;
 
@@ -126,8 +127,10 @@ export function isTiltListening() {
   return tiltOn;
 }
 
-/** True when tilt is on, or the saved opt-in is waiting for a user gesture. */
+/** True when tilt is on, or the saved opt-in is waiting for a user gesture.
+ *  An explicit deny this session keeps the saved pref but shows Help off. */
 export function tiltSheenPressed() {
+  if (resumeDenied) return false;
   return tiltOn || tiltWanted;
 }
 
@@ -233,6 +236,7 @@ export function bootCardMotion(env = {}) {
 
   unlistenTilt();
   lastSheenPoint = null;
+  resumeDenied = false;
   let reduce = false;
   try {
     reduce = win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -333,7 +337,6 @@ export function bootCardMotion(env = {}) {
   // pointerdown. Keep the preference on deny or error; after an explicit
   // denied this session, do not prompt again.
   let resumeBusy = false;
-  let resumeDenied = false;
   const resumeTilt = async () => {
     if (resumeBusy || resumeDenied || tiltOn || !tiltWanted) return false;
     resumeBusy = true;
@@ -345,7 +348,7 @@ export function bootCardMotion(env = {}) {
         return true;
       }
       if (result === "denied") resumeDenied = true;
-      paintTiltButtons(doc, true);
+      paintTiltButtons(doc, tiltSheenPressed());
       if (doc.documentElement.dataset.sheen === "tilt") doc.documentElement.dataset.sheen = "idle";
       return false;
     } finally {
@@ -365,6 +368,7 @@ export function bootCardMotion(env = {}) {
     const btn = event.target?.closest?.("[data-testid='tilt-sheen']");
     if (!btn) return;
     event.preventDefault?.();
+    if (resumeDenied) return;
     if (tiltOn || tiltWanted) {
       unlistenTilt();
       tiltWanted = false;

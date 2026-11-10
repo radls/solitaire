@@ -328,6 +328,8 @@ describe("sheen and tilt permission", () => {
 
     const down = listener(env, "pointerdown");
     expect(down).toBeUndefined();
+    await listener(env, "pointerup").fn({ target: { closest: () => null }, pointerType: "mouse" });
+    expect(env.calls()).toBe(0);
     await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(true);
@@ -348,12 +350,17 @@ describe("sheen and tilt permission", () => {
     await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
     expect(isTiltListening()).toBe(false);
-    expect(tiltSheenPressed()).toBe(true);
+    expect(tiltSheenPressed()).toBe(false);
     expect(loadPrefs().tiltSheen).toBe(true);
     listener(env, "pointermove").fn({ clientX: 20, clientY: 20, pointerType: "mouse" });
     expect(env.doc.documentElement.dataset.sheen).toBe("pointer");
     await listener(env, "pointerup").fn({ target: { closest: (sel) => (/#table|#drag-layer/.test(String(sel)) ? {} : null) }, pointerType: "mouse" });
     expect(env.calls()).toBe(1);
+    const button = { closest: (sel) => (sel === "[data-testid='tilt-sheen']" ? button : null) };
+    await listener(env, "click").fn({ target: button, preventDefault() {} });
+    expect(env.calls()).toBe(1);
+    expect(loadPrefs().tiltSheen).toBe(true);
+    expect(tiltSheenPressed()).toBe(false);
   });
 
   it("keeps the saved tilt pref when a re-request throws", async () => {

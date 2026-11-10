@@ -18,6 +18,19 @@ const jitters = {
   phone: [0],
 };
 
+// Classic's faster slide leaves too little time to land a mid-slide press
+// (QA r3: 20/120 caught, under MIN_CAUGHT). This check was written against
+// Bedtime's slower, no-overshoot motion, the way batch5-8 pin night now.
+function pinBedtime() {
+  try {
+    const key = "grok-solitaire:prefs";
+    const prev = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...prev, theme: "night" }));
+  } catch {
+    /* private mode */
+  }
+}
+
 const viewports = [
   { name: "desktop", touch: false, ctx: { viewport: { width: 1280, height: 800 }, reducedMotion: "no-preference" } },
   {
@@ -106,9 +119,14 @@ try {
       const ctx = await browser.newContext(vp.ctx);
       const page = await ctx.newPage();
       await page.addInitScript(installPressCapture);
+      await page.addInitScript(pinBedtime);
       await page.goto(url);
       await page.waitForSelector("[data-drop='stock']");
       await page.waitForTimeout(400);
+      if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+        await page.locator("#btn-theme").click();
+        await page.waitForTimeout(40);
+      }
       const nStock = await page.evaluate(setupBoard);
       await page.waitForFunction(() => !window.__solitaire?.isAnimating?.(), null, { timeout: 3000 }).catch(() => {});
       const layout = await page.evaluate(() => {

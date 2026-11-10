@@ -280,11 +280,10 @@ for (const P of ["desktop", "phone"]) {
   const tilt = { classicTilt, nightTilt };
   ok(
     P,
-    "drag tilt stays inside the theme clamp",
+    "bedtime drag stays level and classic tilt stays inside the clamp",
     Math.abs(tilt.classicTilt.value) <= tilt.classicTilt.max + 0.05 &&
-      Math.abs(tilt.nightTilt.value) <= tilt.nightTilt.max + 0.05 &&
-      Math.abs(tilt.classicTilt.value) > Math.abs(tilt.nightTilt.value) &&
-      Math.abs(tilt.nightTilt.value) > 0.5,
+      Math.abs(tilt.classicTilt.value) > 0.5 &&
+      Math.abs(tilt.nightTilt.value) < 0.05,
     JSON.stringify(tilt),
   );
   ok(P, "no console errors", !page.errs.length, page.errs.join("|"));

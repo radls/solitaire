@@ -1,4 +1,5 @@
 import { cardName, rankLabel, SUIT_GLYPH, suitColor } from "./game/cards.js";
+import { applyPileSkew } from "./pile-skew.js";
 
 const PIP = {
   2: [
@@ -191,5 +192,6 @@ export function makeCardElement(card, loc, count, playable, selected) {
     el.style.setProperty("--card-tilt", `${settleTilt}deg`);
     settleIds.delete(card.id);
   }
+  applyPileSkew(el, card, loc);
   return el;
 }

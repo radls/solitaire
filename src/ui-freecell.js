@@ -2,6 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
+import { setPileSeed } from "./pile-skew.js";
 import {
   cloneState,
   continueClock,
@@ -361,6 +362,7 @@ export function mount(options = {}) {
   function render() {
     const slideFrom = slides.capture(root.table);
     const state = session.state;
+    setPileSeed(state?.seed ?? state?.dealNumber ?? 0);
     const board = document.createElement("div");
     board.className = "board freecell";
 

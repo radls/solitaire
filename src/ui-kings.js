@@ -1,6 +1,7 @@
 import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
+import { setPileSeed } from "./pile-skew.js";
 import {
   apply,
   cardsInCorners,
@@ -417,6 +418,7 @@ export function mount(options = {}) {
   function render() {
     const slideFrom = root.table ? slides.capture(root.table) : new Map();
     const state = session.state;
+    setPileSeed(state?.seed ?? state?.dealNumber ?? 0);
     if (!state || !root.table) return;
     const board = document.createElement("div");
     board.className = "board kings";

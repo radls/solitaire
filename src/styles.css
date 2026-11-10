@@ -465,6 +465,33 @@ body[data-game="picker"] .meters {
 .pile {
   position: relative;
   min-height: var(--card-h);
+  --pile-amt: 1;
+}
+
+html[data-theme="night"] .pile {
+  --pile-amt: 0.62;
+}
+
+/* Skew lives on the card, and only while it is not flipping. A transform on
+   .card during the turn flattens preserve-3d and WebKit paints the back flat.
+   Values are unitless so narrow screens and bedtime can scale them down. */
+.pile .card:not(.is-turning) {
+  transform: translate3d(
+      calc(var(--pile-dx, 0) * var(--pile-amt, 1) * 1px),
+      calc(var(--pile-dy, 0) * var(--pile-amt, 1) * 1px),
+      0
+    )
+    rotate(calc(var(--pile-rot, 0) * var(--pile-amt, 1) * 1deg));
+}
+
+@media (max-width: 640px) {
+  .pile {
+    --pile-amt: 0.48;
+  }
+
+  html[data-theme="night"] .pile {
+    --pile-amt: 0.34;
+  }
 }
 
 .card {

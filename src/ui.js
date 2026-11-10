@@ -2,6 +2,7 @@ import { shareCardHTML } from "./share.js";
 import { formatDailyLabel } from "./daily.js";
 import { SUIT_GLYPH } from "./game/cards.js";
 import { armCardSettle, cancelCardSettle, makeCardElement } from "./card-view.js";
+import { setPileSeed } from "./pile-skew.js";
 import {
   autoCompleteStep,
   autoMove,
@@ -275,6 +276,7 @@ export function mount(options = {}) {
 
   function render() {
     if (session.alive === false) return;
+    setPileSeed(session.state?.seed ?? session.state?.dealNumber ?? 0);
     const slideFrom = slides.capture(root.table);
     const state = session.state;
     const table = root.table;

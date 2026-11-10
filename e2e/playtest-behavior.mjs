@@ -33,6 +33,16 @@ async function openPage(vp = { viewport: { width: 1280, height: 800 } }, init) {
 
 async function ready(page) {
   await page.waitForFunction(() => typeof window.__solitaire?.getState === "function", null, { timeout: 8000 });
+  // The hook appears as soon as a game mounts, which can be mid-deal. Wait
+  // until opening slides have finished so a fallback draw is not dropped.
+  await page.waitForFunction(() => {
+    const api = window.__solitaire;
+    if (typeof api?.getState !== "function") return false;
+    if (!api.game?.()) return true;
+    if (!api.getState()) return false;
+    if (api.isAnimating?.()) return false;
+    return !!document.querySelector("#table .card");
+  }, null, { timeout: 8000 });
 }
 
 function stripClock(raw) {

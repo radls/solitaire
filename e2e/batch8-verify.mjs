@@ -507,6 +507,10 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
     JSON.stringify(flip),
   );
 
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+    await page.evaluate(() => document.getElementById("btn-theme").click());
+    await page.waitForTimeout(40);
+  }
   const theme = await page.evaluate(() => document.documentElement.dataset.theme);
   await layoutKlondike(page, {
     tableau: [
@@ -587,6 +591,12 @@ async function runEngine(name, browser, contextOptions, { shots = false } = {}) 
   const tapPage = await tapCtx.newPage();
   await boot(tapPage);
   await openGame(tapPage, "klondike");
+  // These press-during-slide checks were written against Bedtime's slower,
+  // no-overshoot motion, which was the default when they landed.
+  if ((await tapPage.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+    await tapPage.click("#btn-theme");
+    await tapPage.waitForTimeout(80);
+  }
   await layoutKlondike(tapPage, { tableau: [{ index: 0, suit: "hearts", rank: 1 }] });
   const fromBox = await tapPage.locator('#table .card[data-id="hearts-1"]').boundingBox();
   const startTap = await tapPage.evaluate(() => {

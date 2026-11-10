@@ -164,7 +164,7 @@ async function tipCheck(page, G, P) {
 
 async function common(page, P) {
   const theme = await H(page, () => document.documentElement.dataset.theme);
-  ok("shell", P, "night theme is default", theme === "night", theme);
+  ok("shell", P, "classic theme is default", theme === "classic", theme);
   const vp = await H(page, () => document.querySelector('meta[name=viewport]').content);
   ok("shell", P, "viewport blocks zoom", /user-scalable=no/.test(vp) && /maximum-scale=1/.test(vp), vp);
   ok("shell", P, "picker shows 4 games", (await page.locator('[data-testid^="pick-"][data-pick]').count()) === 4);
@@ -1042,7 +1042,7 @@ async function batch2(vp) {
   const pulse = await H(page, () => { const e = document.querySelector(".hint-from, .hint-to"); if (!e) return null; const cs = getComputedStyle(e); return { anim: cs.animationName, n: document.querySelectorAll(".hint-from, .hint-to").length }; });
   ok(B, P, "Hint pulses source + target", pulse && pulse.n >= 2 && pulse.anim && pulse.anim !== "none", JSON.stringify(pulse));
   const bedtime = await H(page, () => ({ theme: document.documentElement.dataset.theme, sound: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").sound }));
-  ok(B, P, "night theme + sound off kept", bedtime.theme === "night" && bedtime.sound !== true, JSON.stringify(bedtime));
+  ok(B, P, "classic theme + sound off kept", bedtime.theme === "classic" && bedtime.sound !== true, JSON.stringify(bedtime));
   ok(B, P, "no 'surprise' copy", !(await H(page, () => /surprise/i.test(document.body.innerText))));
   ok(B, P, "no page errors", errs.length === 0, errs.slice(0, 2).join(" | "));
   await ctx.close();
@@ -1107,6 +1107,11 @@ async function batch3(vp) {
   ok(B, P, "no Install button without an install event", !(await vis(page, '[data-testid="install-go"]')));
   await page.locator('[data-testid="install-dismiss"]').click().catch(() => {});
   // 5) softer night card faces
+  const currentTheme = await H(page, () => document.documentElement.dataset.theme);
+  if (currentTheme !== "night") {
+    await page.locator("#btn-theme").click();
+    await page.waitForTimeout(150);
+  }
   const face = await H(page, () => {
     const card = document.querySelector(".card.face-up.red") || document.querySelector(".card.face-up");
     if (!card) return null;
@@ -1273,7 +1278,7 @@ for (const vp of [
   const t2 = await H(page, () => document.documentElement.dataset.theme);
   await page.reload(); await page.waitForTimeout(500);
   const t3 = await H(page, () => document.documentElement.dataset.theme);
-  ok("shell", vp.P, "theme toggle to classic persists", t2 === "classic" && t3 === "classic", `${t2}/${t3}`);
+  ok("shell", vp.P, "theme toggle to night persists", t2 === "night" && t3 === "night", `${t2}/${t3}`);
   await page.screenshot({ path: `${SHOTS}/${vp.P}-classic-theme.png` });
   await page.locator('[data-testid="btn-theme"]').first().click(); await page.waitForTimeout(200);
   ok("shell", vp.P, "no console errors", errs.length === 0, errs.slice(0, 3).join(" | "));

@@ -233,6 +233,10 @@ for (const P of ["desktop", "phone"]) {
   );
   await page.screenshot({ path: `${SH}/${P}-flip.png` });
 
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+    await page.click("#btn-theme");
+    await page.waitForTimeout(80);
+  }
   const night = await readMotion(page);
   ok(P, "bedtime theme is night", night.theme === "night", night.theme);
   await page.click("#btn-theme");
@@ -513,7 +517,8 @@ async function verifyFlip(engine, page) {
   await page.waitForTimeout(400);
   await page.evaluate(() => document.fonts.ready);
   for (const theme of ["night", "classic"]) {
-    if (theme === "classic") {
+    const current = await page.evaluate(() => document.documentElement.dataset.theme);
+    if (current !== theme) {
       await page.click("#btn-theme");
       await page.waitForTimeout(80);
     }

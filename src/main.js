@@ -19,7 +19,7 @@ const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
 const SUN = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 3.2v2.2M12 18.6V20.8M3.2 12h2.2M18.6 12h2.2M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>`;
 
 function applyTheme(theme) {
-  const next = theme === "classic" ? "classic" : "night";
+  const next = theme === "night" ? "night" : "classic";
   document.documentElement.dataset.theme = next;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", THEME_COLOR[next]);

@@ -206,7 +206,7 @@ export function saveKings(data) {
 const GAMES = new Set(["klondike", "freecell", "golf", "kings"]);
 
 function defaultPrefs() {
-  return { lastGame: null, theme: "night", sound: false, installHint: null, tiltSheen: false };
+  return { lastGame: null, theme: "classic", sound: false, installHint: null, tiltSheen: false };
 }
 
 function normalizeInstallHint(value) {
@@ -219,7 +219,7 @@ export function loadPrefs() {
     if (!raw) return defaultPrefs();
     const parsed = JSON.parse(raw);
     const lastGame = GAMES.has(parsed.lastGame) ? parsed.lastGame : null;
-    const theme = parsed.theme === "classic" ? "classic" : "night";
+    const theme = parsed.theme === "night" ? "night" : "classic";
     return {
       lastGame,
       theme,
@@ -269,7 +269,7 @@ export function savePrefs(partial) {
     const prev = loadPrefs();
     const next = { ...prev, ...partial };
     if (!GAMES.has(next.lastGame)) next.lastGame = null;
-    if (next.theme !== "classic") next.theme = "night";
+    if (next.theme !== "night") next.theme = "classic";
     next.sound = next.sound === true;
     const installHint = normalizeInstallHint(next.installHint);
     const stored = { lastGame: next.lastGame, theme: next.theme, sound: next.sound, tiltSheen: next.tiltSheen === true };

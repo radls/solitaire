@@ -118,6 +118,54 @@ async function dragOnto(page, cardSel, dropSel, { shot } = {}) {
 const desktop = { viewport: { width: 1280, height: 800 } };
 const phone = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 };
 
+const freshThemeCtx = await browser.newContext(desktop);
+const freshThemePage = await freshThemeCtx.newPage();
+await freshThemePage.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
+await ready(freshThemePage);
+const freshTheme = await freshThemePage.evaluate(() => ({
+  theme: document.documentElement.dataset.theme,
+  color: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") || "",
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").theme,
+}));
+check(
+  "a fresh profile starts in Classic",
+  freshTheme.theme === "classic" && freshTheme.color === "#0a3324" && (freshTheme.pref == null || freshTheme.pref === "classic"),
+  JSON.stringify(freshTheme),
+);
+await freshThemeCtx.close();
+
+const savedNightCtx = await browser.newContext(desktop);
+await savedNightCtx.addInitScript(() => {
+  try {
+    localStorage.setItem("grok-solitaire:prefs", JSON.stringify({ theme: "night", sound: false }));
+  } catch {}
+});
+const savedNightPage = await savedNightCtx.newPage();
+await savedNightPage.goto(`${BASE}?game=klondike&seed=42`, { waitUntil: "domcontentloaded" });
+await ready(savedNightPage);
+const savedNight = await savedNightPage.evaluate(() => ({
+  theme: document.documentElement.dataset.theme,
+  color: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") || "",
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").theme,
+}));
+check(
+  "a saved night theme is still night after load",
+  savedNight.theme === "night" && savedNight.color === "#080c0b" && savedNight.pref === "night",
+  JSON.stringify(savedNight),
+);
+await savedNightPage.reload({ waitUntil: "domcontentloaded" });
+await ready(savedNightPage);
+const savedNightReload = await savedNightPage.evaluate(() => ({
+  theme: document.documentElement.dataset.theme,
+  pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").theme,
+}));
+check(
+  "a saved night theme stays night after reload",
+  savedNightReload.theme === "night" && savedNightReload.pref === "night",
+  JSON.stringify(savedNightReload),
+);
+await savedNightCtx.close();
+
 const ctx = await browser.newContext(desktop);
 const page = await ctx.newPage();
 page.on("pageerror", (error) => page.errs.push(String(error)));

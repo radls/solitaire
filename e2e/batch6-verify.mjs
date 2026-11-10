@@ -131,6 +131,10 @@ for (const P of ["desktop", "phone"]) {
   ok(P, "B hint lights the waste top", wasteHint.id === "hearts-7" && wasteHint.top === "1" && !wasteHint.queenLit, JSON.stringify(wasteHint));
   await page.screenshot({ path: `${SH}/${P}-waste-top.png` });
 
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+    await page.click("#btn-theme");
+    await page.waitForTimeout(150);
+  }
   await page.evaluate(() => {
     const s = window.__solitaire.getState();
     s.moves = 12;
@@ -227,6 +231,10 @@ for (const P of ["desktop", "phone"]) {
   [ctx, page] = await newPage(P);
   await page.goto(`${BASE}?game=klondike`);
   await page.waitForTimeout(400);
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "night") {
+    await page.click("#btn-theme");
+    await page.waitForTimeout(150);
+  }
   const won = await winKlondike(page);
   await page.waitForTimeout(300);
   const win = await page.evaluate(() => {
@@ -249,8 +257,10 @@ for (const P of ["desktop", "phone"]) {
   [ctx, page] = await newPage(P, { reducedMotion: "reduce" });
   await page.goto(`${BASE}?game=klondike`);
   await page.waitForTimeout(300);
-  await page.click("#btn-theme");
-  await page.waitForTimeout(150);
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) === "night") {
+    await page.click("#btn-theme");
+    await page.waitForTimeout(150);
+  }
   await winKlondike(page);
   await page.waitForTimeout(250);
   const reducedWin = await page.evaluate(() => {
@@ -268,8 +278,10 @@ for (const P of ["desktop", "phone"]) {
   [ctx, page] = await newPage(P);
   await page.goto(`${BASE}?game=klondike`);
   await page.waitForTimeout(300);
-  await page.click("#btn-theme");
-  await page.waitForTimeout(150);
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "classic") {
+    await page.click("#btn-theme");
+    await page.waitForTimeout(150);
+  }
   await winKlondike(page);
   await page.waitForTimeout(250);
   const classicN = await page.locator("[data-testid='celebrate'] .cascade-card").count();

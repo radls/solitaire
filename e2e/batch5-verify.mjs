@@ -14,8 +14,8 @@ for (const P of ["desktop","phone"]) {
   let [ctx,p]=await newPage(P); await p.goto(BASE); await p.waitForTimeout(700);
   ok(P,"#3 No dead deals promise on picker", await p.locator('[data-testid="no-dead-deals"]').isVisible(), await p.locator('[data-testid="no-dead-deals"]').textContent());
   ok(P,"daily: Grok's pick card on picker", await p.locator('[data-testid="groks-pick"]').isVisible());
-  ok(P,"#4 bedtime mode named on picker (night default)", await p.locator('[data-testid="bedtime-note"]').isVisible());
-  ok(P,"#4 theme button names Bedtime mode", (await p.getAttribute("#btn-theme","aria-label")).includes("Bedtime"));
+  ok(P,"#4 classic default hides the bedtime note on the picker", !(await p.locator('[data-testid="bedtime-note"]').isVisible()));
+  ok(P,"#4 theme button names Bedtime mode", /bedtime/i.test(await p.getAttribute("#btn-theme","aria-label") || ""));
   await p.screenshot({path:`${SH}/${P}-03-04-picker.png`, fullPage:true});
   await p.goto(BASE+"changelog.html"); await p.waitForTimeout(300);
   const cl=await p.textContent("body"); ok(P,"#2 changelog has Made by Grok Bot + real shas", cl.includes("Made by Grok Bot")&&cl.includes("af06660")&&cl.includes("QA: PASS"));
@@ -23,17 +23,17 @@ for (const P of ["desktop","phone"]) {
   ok(P,"no console errors (picker/changelog)", !p.errs.length, p.errs.join("|")); await ctx.close();
   // #4 timer hidden in night, shown in classic; sound off by default
   [ctx,p]=await newPage(P); await p.goto(BASE+"?game=klondike"); await p.waitForTimeout(700);
-  ok(P,"#4 night: timer hidden", !(await p.locator("#meter-time").isVisible()));
+  ok(P,"#4 classic: timer shown", await p.locator("#meter-time").isVisible());
   ok(P,"#4 sound off by default", (await p.getAttribute("#btn-mute","aria-pressed").catch(()=>null))!=="true", String(await p.getAttribute("#btn-mute","aria-label").catch(()=>"?")));
   // #8 seed hidden + contrast
   await p.evaluate(lumJs);
   ok(P,"#8 footer seed hidden", (await p.textContent("#status-seed")).trim()==="" && !(await p.locator("#status-seed").isVisible()));
-  const crN=await p.evaluate(()=>window.__cr(document.getElementById("status-text"))); ok(P,"#8 status contrast night >= 4.5", crN>=4.5, `ratio ${crN}`);
-  await p.screenshot({path:`${SH}/${P}-04-08-klondike-night.png`});
-  await p.click("#btn-theme"); await p.waitForTimeout(200);
-  ok(P,"#4 classic: timer shown", await p.locator("#meter-time").isVisible());
   const crC=await p.evaluate(()=>window.__cr(document.getElementById("status-text"))); ok(P,"#8 status contrast classic >= 4.5", crC>=4.5, `ratio ${crC}`);
   await p.screenshot({path:`${SH}/${P}-04-08-klondike-classic.png`});
+  await p.click("#btn-theme"); await p.waitForTimeout(200);
+  ok(P,"#4 night: timer hidden", !(await p.locator("#meter-time").isVisible()));
+  const crN=await p.evaluate(()=>window.__cr(document.getElementById("status-text"))); ok(P,"#8 status contrast night >= 4.5", crN>=4.5, `ratio ${crN}`);
+  await p.screenshot({path:`${SH}/${P}-04-08-klondike-night.png`});
   ok(P,"no console errors (klondike)", !p.errs.length, p.errs.join("|")); await ctx.close();
   // #5 shake every rejection: tap + drag, Klondike + FreeCell, normal and reduced motion
   for (const reduce of [false,true]) for (const game of ["klondike","freecell"]) for (const how of ["tap","drag"]) {

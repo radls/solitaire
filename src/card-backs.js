@@ -149,10 +149,11 @@ export async function requestTiltPermission(DOE = globalThis.DeviceOrientationEv
   }
 }
 
-export function tiltToggleHTML(on) {
+export function tiltToggleHTML(on, env = {}) {
+  if (!tiltControlAvailable(env)) return "";
   const pressed = on ? "true" : "false";
   const label = on ? "Device tilt sheen on" : "Use device tilt for card backs";
-  return `<div class="modal-actions"><button type="button" class="btn" data-testid="tilt-sheen" aria-pressed="${pressed}">${label}</button></div>`;
+  return `<div class="help-tilt" data-testid="tilt-sheen-wrap"><p>Tilt the phone to slide the light across the card backs.</p><button type="button" class="btn" data-testid="tilt-sheen" aria-pressed="${pressed}">${label}</button></div>`;
 }
 
 function paintTiltButtons(doc, on) {
@@ -170,6 +171,27 @@ function motionReduced(root) {
 
 function isDragging(doc) {
   return doc?.documentElement?.classList?.contains?.("is-dragging") === true;
+}
+
+/**
+ * Device orientation is only useful on a phone. Desktop Chrome still exposes
+ * the API, so require a touch screen or a coarse pointer.
+ */
+export function tiltControlAvailable(env = {}) {
+  const win = env.window ?? globalThis.window;
+  const DOE = Object.prototype.hasOwnProperty.call(env, "DeviceOrientationEvent")
+    ? env.DeviceOrientationEvent
+    : (win?.DeviceOrientationEvent ?? globalThis.DeviceOrientationEvent);
+  if (!DOE) return false;
+  const nav = env.navigator ?? win?.navigator ?? globalThis.navigator;
+  const touch = Number(nav?.maxTouchPoints) > 0;
+  let coarse = false;
+  try {
+    coarse = win?.matchMedia?.("(pointer: coarse)")?.matches === true;
+  } catch {
+    coarse = false;
+  }
+  return touch || coarse;
 }
 
 /** Pause the idle shimmer when the tab is hidden. */

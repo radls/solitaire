@@ -725,8 +725,8 @@ export function mount(options = {}) {
       <p>The score on the board is the move score minus 2 points for every 10 seconds. That time cost shows beside the score as a time penalty. Bedtime mode does not charge for time. Turning the waste over costs 20 points in Draw 3 and 100 in Draw 1. The cost is already in the move score, and the status line names it.</p>
       <p>When no useful moves remain, a panel offers Undo, Replay this deal, or New deal.</p>
       ${kbdTipsHTML(shortcuts)}
-      <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
       ${tiltToggleHTML(tiltSheenPressed())}
+      <p>Won ${stats.won} of ${playedShown} games. Streak ${stats.streak}.</p>
       <div class="modal-actions">
         <button class="btn primary" data-act="close">Close</button>
       </div>

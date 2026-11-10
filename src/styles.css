@@ -1950,6 +1950,14 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   justify-content: flex-start;
 }
 
+.help-tilt {
+  margin: 0.7rem 0 0.35rem;
+}
+
+.help-tilt p {
+  margin: 0 0 0.4rem;
+}
+
 .tip-entry {
   appearance: none;
   display: inline-flex;

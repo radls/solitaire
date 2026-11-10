@@ -564,6 +564,7 @@ export function mount(options = {}) {
         <li>Side piles build down in alternating colors; an empty side takes one card, not a whole pile.</li>
         <li>Draw from the stock when stuck. Win by moving all 52 cards into the corners.</li>
       </ul>
+      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions help-deal">
         <p data-testid="deal-number">Seed ${session.state.seed}</p>
         <button type="button" class="btn" data-act="replay" data-testid="btn-replay">Replay this deal</button>
@@ -582,7 +583,6 @@ export function mount(options = {}) {
       <p>Tap the top card of a side to select it. Tap the bottom card of a longer side to select the whole pile. Tap a destination, or drag. Double-tap a card to send it to a corner when that is legal. A king goes to the first empty corner.</p>
       ${kbdTipsHTML(shortcuts)}
       </details>
-      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

@@ -482,8 +482,8 @@ export function mount(options = {}) {
       <p>Play the exposed card of a column onto the waste when it is one rank higher or one rank lower. Suit does not matter. Only that exposed card can be played.</p>
       <p>No wrap: nothing can be played on a King, and Aces take only a 2.</p>
       <p>Tap the stock to draw one card. The stock is a single pass and does not recycle. Clear the columns. Score is the number of cards left in the columns, or minus the cards still in the stock when you clear them. Lower is better.</p>
-      ${kbdTipsHTML(shortcuts)}
       ${tiltToggleHTML(tiltSheenPressed())}
+      ${kbdTipsHTML(shortcuts)}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

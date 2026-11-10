@@ -518,13 +518,13 @@ export function mount(options = {}) {
       ${touchTipsHTML(gestures)}
       <p>Microsoft deal numbers 1–32000. Eight cascades, all cards face up. Four free cells and four foundations.</p>
       <p>Build cascades down by alternating color. Any card or legal run may move to an empty cascade. Build foundations up by suit, ace through king. A free cell holds one card.</p>
+      ${tiltToggleHTML(tiltSheenPressed())}
       <p data-testid="deal-number">Deal #${session.state.dealNumber}</p>
       <form class="deal-form" data-deal-form>
         <input data-testid="deal-input" inputmode="numeric" type="text" autocomplete="off" value="${session.state.dealNumber}" aria-label="Deal number" style="font-size:16px" />
         <button type="submit" class="btn primary">Deal</button>
       </form>
       ${kbdTipsHTML(shortcuts)}
-      ${tiltToggleHTML(tiltSheenPressed())}
       <div class="modal-actions">
         <button type="button" class="btn primary" data-act="close">Close</button>
       </div>

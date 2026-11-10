@@ -18,6 +18,7 @@ import {
   tiltControlAvailable,
   tiltSheenPressed,
   tiltToggleHTML,
+  syncSheenVars,
   writeSheenVars,
 } from "../src/card-backs.js";
 import { motionPolicy } from "../src/motion.js";
@@ -73,6 +74,7 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false, permission =
   }
   const table = { id: "table", style: styleBag() };
   const layer = { id: "drag-layer", style: styleBag() };
+  const cards = [];
   const doc = {
     documentElement: root,
     hidden: false,
@@ -85,7 +87,8 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false, permission =
     addEventListener(type, fn) {
       listeners.push({ type, fn, target: "document" });
     },
-    querySelectorAll() {
+    querySelectorAll(sel) {
+      if (String(sel).includes("face-down")) return cards;
       return [];
     },
   };
@@ -126,6 +129,7 @@ function fakeEnv({ reduce = false, ios = false, tiltWanted = false, permission =
     doc,
     table,
     layer,
+    cards,
     DOE,
     calls: () => calls,
     listeners,
@@ -366,7 +370,37 @@ describe("sheen and tilt permission", () => {
     expect(env.doc.documentElement.dataset.sheen).toBe("idle");
   });
 
+  it("reapplies the last sheen point after face-down cards are replaced", () => {
+    const env = fakeEnv();
+    function card() {
+      return {
+        style: {
+          props: {},
+          setProperty(key, value) {
+            this.props[key] = value;
+          },
+        },
+      };
+    }
+    const first = card();
+    env.cards.push(first);
+    const written = writeSheenVars(env.doc, { x: 1, y: -1 });
+    expect(written).toEqual({ "--sheen-x": "70.0%", "--sheen-y": "-12.0%" });
+    expect(sheenStyleHosts(env.doc)).toEqual([first]);
+    expect(first.style.props["--sheen-x"]).toBe("70.0%");
+    expect(env.doc.documentElement.style.props["--sheen-x"]).toBeUndefined();
+
+    const next = card();
+    env.cards.splice(0, env.cards.length, next);
+    expect(syncSheenVars(env.doc)).toEqual(written);
+    expect(next.style.props["--sheen-x"]).toBe("70.0%");
+    expect(next.style.props["--sheen-y"]).toBe("-12.0%");
+    expect(env.table.style.props["--sheen-x"]).toBeUndefined();
+    expect(env.doc.documentElement.style.props["--sheen-x"]).toBeUndefined();
+  });
+
   it("writes sheen variables on the board hosts and skips them while dragging", () => {
+
     const env = fakeEnv();
     const written = writeSheenVars(env.doc, { x: 1, y: -1 });
     expect(written).toEqual({ "--sheen-x": "70.0%", "--sheen-y": "-12.0%" });

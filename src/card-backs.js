@@ -89,14 +89,32 @@ export function sheenStyleHosts(doc) {
   return hosts;
 }
 
+let lastSheenPoint = null;
+
 export function writeSheenVars(doc, point) {
-  const vars = sheenVars(point);
+  if (point) lastSheenPoint = { x: point.x, y: point.y };
+  const vars = sheenVars(point ?? lastSheenPoint);
   const hosts = sheenStyleHosts(doc);
   for (const host of hosts) {
     host.style?.setProperty?.("--sheen-x", vars["--sheen-x"]);
     host.style?.setProperty?.("--sheen-y", vars["--sheen-y"]);
   }
   return vars;
+}
+
+/** Stamp the last pointer/tilt point onto a newly rendered face-down card. */
+export function applyStoredSheen(el) {
+  if (!el || !lastSheenPoint) return null;
+  const vars = sheenVars(lastSheenPoint);
+  el.style?.setProperty?.("--sheen-x", vars["--sheen-x"]);
+  el.style?.setProperty?.("--sheen-y", vars["--sheen-y"]);
+  return vars;
+}
+
+/** Reapply the last sheen point to the current face-down cards. */
+export function syncSheenVars(doc, point = lastSheenPoint) {
+  if (!point) return null;
+  return writeSheenVars(doc, point);
 }
 
 let tiltOn = false;
@@ -214,6 +232,7 @@ export function bootCardMotion(env = {}) {
   if (!win || !doc?.documentElement) return;
 
   unlistenTilt();
+  lastSheenPoint = null;
   let reduce = false;
   try {
     reduce = win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;

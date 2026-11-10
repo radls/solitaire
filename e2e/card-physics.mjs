@@ -328,6 +328,38 @@ check("idle shimmer pauses when the tab is marked hidden", paused.length > 1 && 
 await page.evaluate(() => {
   delete document.documentElement.dataset.sheenPaused;
 });
+await page.mouse.move(240, 80);
+await page.waitForTimeout(40);
+const sheenBefore = await page.evaluate(() => {
+  const card = document.querySelector("#table .card.face-down");
+  return {
+    mode: document.documentElement.dataset.sheen,
+    x: getComputedStyle(card).getPropertyValue("--sheen-x").trim(),
+    y: getComputedStyle(card).getPropertyValue("--sheen-y").trim(),
+  };
+});
+await page.evaluate(() => {
+  window.__solitaire.setState(window.__solitaire.getState());
+});
+await page.waitForTimeout(50);
+const sheenAfter = await page.evaluate(() => {
+  const card = document.querySelector("#table .card.face-down");
+  return {
+    mode: document.documentElement.dataset.sheen,
+    x: getComputedStyle(card).getPropertyValue("--sheen-x").trim(),
+    y: getComputedStyle(card).getPropertyValue("--sheen-y").trim(),
+    id: card?.dataset.id || "",
+  };
+});
+check(
+  "sheen position survives a board render",
+  sheenBefore.mode === "pointer" &&
+    sheenBefore.x !== "" &&
+    sheenBefore.x !== "0%" &&
+    sheenAfter.x === sheenBefore.x &&
+    sheenAfter.y === sheenBefore.y,
+  JSON.stringify({ sheenBefore, sheenAfter }),
+);
 
 await page.locator("#btn-help").click();
 const desktopHelp = await page.evaluate(() => !!document.querySelector("[data-testid='tilt-sheen']"));

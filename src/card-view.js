@@ -1,5 +1,6 @@
 import { cardName, rankLabel, SUIT_GLYPH, suitColor } from "./game/cards.js";
 import { currentMotionPolicy } from "./motion.js";
+import { applyStoredSheen } from "./card-backs.js";
 import { applyPileSkew } from "./pile-skew.js";
 
 const PIP = {
@@ -193,6 +194,7 @@ export function makeCardElement(card, loc, count, playable, selected) {
     if (!currentMotionPolicy().reduce) armSettle(el, tilt);
   }
   applyPileSkew(el, card, loc);
+  if (!card.faceUp) applyStoredSheen(el);
   return el;
 }
 

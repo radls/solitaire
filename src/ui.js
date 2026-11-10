@@ -1037,7 +1037,7 @@ export function mount(options = {}) {
     const ghost = session.drag?.ghost;
     if (!ghost) return;
     ghost.style.transform = `translate(${x - 28}px, ${y - 20}px)`;
-    paintDragTilt(ghost, session.drag, x);
+    paintDragTilt(ghost, session.drag, x, undefined, y);
   }
 
   function endDrag(x, y) {

@@ -914,7 +914,7 @@ export function mount(options = {}) {
     if (!ghost) return;
     const cardW = ghost.querySelector(".card")?.offsetWidth || 36;
     ghost.style.transform = `translate(${x - cardW / 2}px, ${y - 18}px)`;
-    paintDragTilt(ghost, session.drag, x);
+    paintDragTilt(ghost, session.drag, x, undefined, y);
   }
 
   function endDrag(x, y) {

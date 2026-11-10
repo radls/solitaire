@@ -21,12 +21,36 @@ function slotForMove(scope, from) {
   return scope.querySelector(`[data-drop="${drop}"]`);
 }
 
-function prefersReducedMotion() {
+export function prefersReducedMotion() {
   try {
     return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
   } catch {
     return false;
   }
+}
+
+export function isBedtimeTheme() {
+  try {
+    return typeof document !== "undefined" && document.documentElement?.dataset?.theme !== "classic";
+  } catch {
+    return false;
+  }
+}
+
+/** What card motion is allowed. Bedtime stays quieter; reduced motion turns it off. */
+export function motionPolicy({ reduce = false, bedtime = false } = {}) {
+  return {
+    reduce: !!reduce,
+    bedtime: !!bedtime,
+    dragWobble: !reduce,
+    settleBounce: !reduce && !bedtime,
+    sheenMotion: !reduce,
+    sheenQuiet: !!reduce || !!bedtime,
+  };
+}
+
+export function currentMotionPolicy() {
+  return motionPolicy({ reduce: prefersReducedMotion(), bedtime: isBedtimeTheme() });
 }
 
 function snapshotFrom(from) {
@@ -72,14 +96,21 @@ export function shakeMoved(from, root) {
 
 const TILT_GAIN = 12;
 const TILT_EASE = 0.32;
+const VEL_SMOOTH = 0.42;
 
-/** Ease horizontal pointer velocity into a clamped rotateZ, in degrees. */
+/** Ease pointer velocity into a clamped angle, in degrees. */
 export function stepTilt(prev, vx, maxDeg) {
   const max = Math.abs(Number(maxDeg) || 0);
   const target = Math.max(-max, Math.min(max, (Number(vx) || 0) * TILT_GAIN));
   const from = Number(prev) || 0;
   const next = from + (target - from) * TILT_EASE;
   return Math.abs(next) < 0.04 ? 0 : next;
+}
+
+/** Low-pass a velocity sample so a stop eases out instead of snapping flat. */
+export function smoothAxis(prev, next, ease = VEL_SMOOTH) {
+  const v = (Number(prev) || 0) + ((Number(next) || 0) - (Number(prev) || 0)) * ease;
+  return Math.abs(v) < 0.0005 ? 0 : v;
 }
 
 export function dragTiltMax() {
@@ -92,18 +123,46 @@ export function dragTiltMax() {
   }
 }
 
-/** Write --card-tilt on the drag ghost from pointer x. Returns degrees. */
-export function paintDragTilt(ghost, drag, x, now = typeof performance !== "undefined" ? performance.now() : 0) {
+function writeDragPose(ghost, tilt, bend) {
+  ghost.style.setProperty("--card-tilt", `${tilt.toFixed(2)}deg`);
+  ghost.style.setProperty("--card-drag-ry", `${(tilt * 0.42).toFixed(2)}deg`);
+  ghost.style.setProperty("--card-drag-rx", `${bend.toFixed(2)}deg`);
+  ghost.dataset.tilt = tilt.toFixed(2);
+}
+
+/** Write drag pose on the ghost from pointer x (and optional y). Returns degrees of rotateZ. */
+export function paintDragTilt(ghost, drag, x, now = typeof performance !== "undefined" ? performance.now() : 0, y) {
   if (!ghost || !drag) return 0;
+  if (!currentMotionPolicy().dragWobble) {
+    drag.tilt = 0;
+    drag.bend = 0;
+    drag.vx = 0;
+    drag.vy = 0;
+    drag.tiltX = x;
+    if (y != null) drag.tiltY = y;
+    drag.tiltT = now;
+    writeDragPose(ghost, 0, 0);
+    return 0;
+  }
   const prevX = drag.tiltX ?? x;
   const prevT = drag.tiltT ?? now;
   const dt = Math.max(16, now - prevT);
-  const vx = (x - prevX) / dt;
-  const tilt = stepTilt(drag.tilt || 0, vx, dragTiltMax());
+  const vx = smoothAxis(drag.vx, (x - prevX) / dt);
+  const max = dragTiltMax();
+  const tilt = stepTilt(drag.tilt || 0, vx, max);
+  drag.vx = vx;
   drag.tiltX = x;
   drag.tiltT = now;
   drag.tilt = tilt;
-  ghost.style.setProperty("--card-tilt", `${tilt.toFixed(2)}deg`);
-  ghost.dataset.tilt = tilt.toFixed(2);
+  let bend = Number(drag.bend) || 0;
+  if (y != null && Number.isFinite(Number(y))) {
+    const prevY = drag.tiltY ?? y;
+    const vy = smoothAxis(drag.vy, (y - prevY) / dt);
+    bend = stepTilt(bend, vy, max * 0.55);
+    drag.vy = vy;
+    drag.bend = bend;
+    drag.tiltY = y;
+  }
+  writeDragPose(ghost, tilt, bend);
   return tilt;
 }

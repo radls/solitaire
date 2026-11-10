@@ -50,16 +50,17 @@ html[data-theme="night"] {
   --ui: "Outfit", system-ui, sans-serif;
   --display: "Fraunces", Georgia, serif;
   --card-font: "Cormorant Garamond", Georgia, serif;
-  --card-lift-scale: 1.04;
-  --card-lift-y: -3px;
+  --card-lift-scale: 1.05;
+  --card-lift-y: -6px;
   --card-tilt-max: 6deg;
-  --card-curl-rx: 4deg;
-  --card-curl-skew: 1.6deg;
+  --card-curl-rx: 7deg;
+  --card-curl-skew: 2.2deg;
   --card-motion-ms: 160ms;
   --card-flip-ms: 440ms;
-  --card-settle-ms: 280ms;
+  --card-settle-ms: 340ms;
   --card-perspective: 900px;
   --card-lift-shadow: 0 16px 28px rgba(0, 0, 0, 0.34), 0 4px 10px rgba(0, 0, 0, 0.24);
+  --card-drag-shadow: 0 26px 40px rgba(0, 0, 0, 0.48), 0 10px 16px rgba(0, 0, 0, 0.32);
   --card-stack-shadow:
     0 1px 0 var(--card-sheen) inset,
     0 1px 0 rgba(0, 0, 0, 0.22),
@@ -81,6 +82,7 @@ html[data-theme="night"] {
   --card-settle-ms: 0ms;
   --card-perspective: 1400px;
   --card-lift-shadow: 0 8px 14px rgba(0, 0, 0, 0.26), 0 2px 5px rgba(0, 0, 0, 0.18);
+  --card-drag-shadow: 0 12px 18px rgba(0, 0, 0, 0.3), 0 3px 6px rgba(0, 0, 0, 0.18);
   --card-stack-shadow:
     0 1px 0 var(--card-sheen) inset,
     0 1px 0 rgba(0, 0, 0, 0.16),
@@ -654,10 +656,15 @@ html[data-theme="night"] .pile {
 }
 
 .card.selected .card-lift,
+.pile .card.selected .card-lift,
 #drag-layer .ghost .card .card-lift {
-  transform: translateY(var(--card-lift-y)) rotateX(var(--card-curl-rx)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
+  transform: translateY(var(--card-lift-y)) rotateX(calc(var(--card-curl-rx) + var(--card-drag-rx, 0deg))) rotateY(var(--card-drag-ry, 0deg)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
   box-shadow: var(--card-lift-shadow);
   transition: transform var(--card-motion-ms, 160ms) ease-out, box-shadow var(--card-motion-ms, 160ms) ease-out;
+}
+
+#drag-layer .ghost .card .card-lift {
+  box-shadow: var(--card-drag-shadow, var(--card-lift-shadow));
 }
 
 .card.selected .card-lift::after,
@@ -953,13 +960,16 @@ html[data-theme="night"] #meter-time-wrap {
 
 @keyframes card-settle {
   0% {
-    transform: translateY(var(--card-lift-y)) rotateX(var(--card-curl-rx)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
+    transform: translateY(var(--card-lift-y)) rotateX(calc(var(--card-curl-rx) + var(--card-drag-rx, 0deg))) rotateY(var(--card-drag-ry, 0deg)) skewX(var(--card-curl-skew)) scale(var(--card-lift-scale)) rotateZ(var(--card-tilt, 0deg));
   }
-  62% {
-    transform: translateY(1.5px) rotateZ(0deg) scale(0.985);
+  46% {
+    transform: translate3d(0, 2.5px, 0) rotateZ(0deg) scale(0.978);
+  }
+  72% {
+    transform: translate3d(0, -4px, 0) rotateZ(0deg) scale(1.02);
   }
   100% {
-    transform: translateY(0) rotateZ(0deg) scale(1);
+    transform: translate3d(0, 0, 0) rotateZ(0deg) scale(1);
   }
 }
 

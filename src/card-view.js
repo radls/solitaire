@@ -1,4 +1,5 @@
 import { cardName, rankLabel, SUIT_GLYPH, suitColor } from "./game/cards.js";
+import { currentMotionPolicy } from "./motion.js";
 import { applyPileSkew } from "./pile-skew.js";
 
 const PIP = {
@@ -187,11 +188,36 @@ export function makeCardElement(card, loc, count, playable, selected) {
   el.innerHTML = `<div class="card-lift card-rotator"><div class="card-face front">${face}</div><div class="card-face back"></div></div>`;
   if (card.faceUp && prev === false) armFlip(el);
   if (settleIds.has(card.id)) {
-    el.classList.add("is-settling");
-    el.dataset.settling = "1";
-    el.style.setProperty("--card-tilt", `${settleTilt}deg`);
+    const tilt = settleTilt;
     settleIds.delete(card.id);
+    if (currentMotionPolicy().settleBounce) armSettle(el, tilt);
   }
   applyPileSkew(el, card, loc);
   return el;
+}
+
+function armSettle(el, tilt) {
+  el.classList.add("is-settling");
+  el.dataset.settling = "1";
+  el.style.setProperty("--card-tilt", `${tilt}deg`);
+  const clear = () => {
+    el.classList.remove("is-settling");
+    delete el.dataset.settling;
+  };
+  const onEnd = (event) => {
+    if (event.animationName !== "card-settle") return;
+    clear();
+  };
+  el.addEventListener("animationend", onEnd);
+  let ms = 340;
+  try {
+    ms = cssTimeMs(getComputedStyle(document.documentElement).getPropertyValue("--card-settle-ms"), 340);
+  } catch {
+    ms = 340;
+  }
+  if (!(ms > 0)) {
+    clear();
+    return;
+  }
+  window.setTimeout(clear, ms + 80);
 }

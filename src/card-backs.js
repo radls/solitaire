@@ -172,6 +172,16 @@ function isDragging(doc) {
   return doc?.documentElement?.classList?.contains?.("is-dragging") === true;
 }
 
+/** Pause the idle shimmer when the tab is hidden. */
+export function syncSheenPaused(doc) {
+  const hidden = doc?.visibilityState === "hidden" || doc?.hidden === true;
+  const root = doc?.documentElement;
+  if (!root?.dataset) return hidden;
+  if (hidden) root.dataset.sheenPaused = "1";
+  else delete root.dataset.sheenPaused;
+  return hidden;
+}
+
 /** Pointer sheen, optional device tilt, and the Help toggle. Does not request permission on load. */
 export function bootCardMotion(env = {}) {
   const win = env.window ?? globalThis.window;
@@ -231,6 +241,9 @@ export function bootCardMotion(env = {}) {
     schedule(sheenPointFromOrientation(event), "tilt");
   };
   win.addEventListener("pointermove", onPointer);
+
+  syncSheenPaused(doc);
+  doc.addEventListener("visibilitychange", () => syncSheenPaused(doc));
 
   const needsGesture = typeof DOE?.requestPermission === "function";
   if (env.tiltWanted == null) {

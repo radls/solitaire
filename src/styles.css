@@ -631,7 +631,16 @@ html[data-theme="night"] .pile {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
   opacity: var(--sheen-opacity, 0.4);
   transform: translate3d(-20%, 0, 0);
+}
+
+/* Only backs you can see shimmer. The hidden back face of a face-up card stays
+   still, and the shimmer pauses while the tab is hidden. */
+.card.face-down::before {
   animation: back-shimmer var(--sheen-ms, 8s) ease-in-out infinite;
+}
+
+html[data-sheen-paused="1"] .card.face-down::before {
+  animation-play-state: paused;
 }
 
 html[data-sheen="pointer"] .card.face-down::before,

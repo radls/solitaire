@@ -67,7 +67,7 @@ In-progress games and stats are stored in `localStorage`:
 | `grok-solitaire:golf` | Golf deal, undo history, and stats |
 | `grok-solitaire:kings` | King's Corners deal, undo history (capped at 200), and stats (`played`, `won`) |
 | `grok-solitaire:prefs` | `lastGame`, `theme` (`night` or `classic`), and `sound` (default `false`) |
-| `grok-solitaire:theme-migration` | One-time flag. `classic-1` means a saved Bedtime (`night`) pref was moved to Classic |
+| `grok-solitaire:theme-migration` | One-time flag. `classic-1` means the Bedtime-to-Classic migration has run (a saved `night` pref, if present, was moved to Classic) |
 | `grok-solitaire:tip` | Once-a-day tip reminder, `ctaDay` as a local `YYYY-MM-DD` |
 
 Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload with no `game`, `seed`, `draw`, or `daily` parameter returns to `lastGame` when that deal is unfinished and already has a move. Any other cold load opens the Games picker. `?game=`, `?seed=`, `?draw=`, and `?daily=1` still open a game directly.

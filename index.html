@@ -12,6 +12,22 @@
       (function () {
         var theme = "classic";
         try {
+          // Keep in sync with THEME_MIGRATION_KEY / THEME_MIGRATION_VERSION in src/storage.js
+          var flagKey = "grok-solitaire:theme-migration";
+          var flagVer = "classic-1";
+          if (localStorage.getItem(flagKey) !== flagVer) {
+            try {
+              var rawPrefs = localStorage.getItem("grok-solitaire:prefs");
+              if (rawPrefs) {
+                var parsed = JSON.parse(rawPrefs);
+                if (parsed && parsed.theme === "night") {
+                  parsed.theme = "classic";
+                  localStorage.setItem("grok-solitaire:prefs", JSON.stringify(parsed));
+                }
+              }
+            } catch (e1) {}
+            localStorage.setItem(flagKey, flagVer);
+          }
           var raw = localStorage.getItem("grok-solitaire:prefs");
           if (raw) {
             var prefs = JSON.parse(raw);

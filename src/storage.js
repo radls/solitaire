@@ -3,6 +3,8 @@ const FREECELL_KEY = "grok-solitaire:freecell";
 const GOLF_KEY = "grok-solitaire:golf";
 const KINGS_KEY = "grok-solitaire:kings";
 const PREFS_KEY = "grok-solitaire:prefs";
+export const THEME_MIGRATION_KEY = "grok-solitaire:theme-migration";
+export const THEME_MIGRATION_VERSION = "classic-1";
 const PICK_KEY = "grok-solitaire:groks-pick";
 
 const defaultData = () => ({
@@ -213,7 +215,28 @@ function normalizeInstallHint(value) {
   return value === "dismissed" || value === "installed" || value === "shown" ? value : null;
 }
 
+function migrateThemePrefs() {
+  try {
+    if (localStorage.getItem(THEME_MIGRATION_KEY) === THEME_MIGRATION_VERSION) return;
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.theme === "night") {
+          localStorage.setItem(PREFS_KEY, JSON.stringify({ ...parsed, theme: "classic" }));
+        }
+      }
+    } catch {
+      /* corrupt prefs / quota */
+    }
+    localStorage.setItem(THEME_MIGRATION_KEY, THEME_MIGRATION_VERSION);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 export function loadPrefs() {
+  migrateThemePrefs();
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return defaultPrefs();

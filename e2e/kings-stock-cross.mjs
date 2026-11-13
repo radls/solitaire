@@ -26,6 +26,8 @@ function pinBedtime() {
     const key = "grok-solitaire:prefs";
     const prev = JSON.parse(localStorage.getItem(key) || "{}");
     localStorage.setItem(key, JSON.stringify({ ...prev, theme: "night" }));
+    // Keep in sync with THEME_MIGRATION_KEY / THEME_MIGRATION_VERSION in src/storage.js
+    localStorage.setItem("grok-solitaire:theme-migration", "classic-1");
   } catch {
     /* private mode */
   }

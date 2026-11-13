@@ -147,21 +147,31 @@ const savedNight = await savedNightPage.evaluate(() => ({
   theme: document.documentElement.dataset.theme,
   color: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") || "",
   pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").theme,
+  flag: localStorage.getItem("grok-solitaire:theme-migration"),
 }));
 check(
-  "a saved night theme is still night after load",
-  savedNight.theme === "night" && savedNight.color === "#080c0b" && savedNight.pref === "night",
+  "a saved night theme with no flag migrates to Classic on first load",
+  savedNight.theme === "classic" && savedNight.color === "#0a3324" && savedNight.pref === "classic" && savedNight.flag === "classic-1",
   JSON.stringify(savedNight),
 );
+await savedNightPage.evaluate(() => {
+  try {
+    const prefs = JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}");
+    prefs.theme = "night";
+    localStorage.setItem("grok-solitaire:prefs", JSON.stringify(prefs));
+  } catch {}
+});
 await savedNightPage.reload({ waitUntil: "domcontentloaded" });
 await ready(savedNightPage);
 const savedNightReload = await savedNightPage.evaluate(() => ({
   theme: document.documentElement.dataset.theme,
+  color: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") || "",
   pref: JSON.parse(localStorage.getItem("grok-solitaire:prefs") || "{}").theme,
+  flag: localStorage.getItem("grok-solitaire:theme-migration"),
 }));
 check(
-  "a saved night theme stays night after reload",
-  savedNightReload.theme === "night" && savedNightReload.pref === "night",
+  "after the migration flag is set, a saved night theme stays night after reload",
+  savedNightReload.theme === "night" && savedNightReload.color === "#080c0b" && savedNightReload.pref === "night" && savedNightReload.flag === "classic-1",
   JSON.stringify(savedNightReload),
 );
 await savedNightCtx.close();

@@ -13,6 +13,7 @@ import { creditHTML, mountTipPanel, tipEntryHTML } from "./tip.js";
 import { tightenUntilFit } from "./phone-layout.js";
 import { bedtimeLine, bedtimeNoteHTML, syncPickerBedtimeNote } from "./bedtime-note.js";
 import { bootCardMotion } from "./card-backs.js";
+import { appVersionLabel } from "./app-version.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -236,6 +237,7 @@ function showPicker() {
       ${tipEntryHTML("picker-tip")}
       ${creditHTML("credit")}
       <a class="picker-changelog" href="changelog.html" data-testid="changelog-link">Changelog: reviews, fixes and QA passes</a>
+      <p class="picker-version" data-testid="app-version">${appVersionLabel()}</p>
     </div>`;
   syncHooks();
   fitPicker();

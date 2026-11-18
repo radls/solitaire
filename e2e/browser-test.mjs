@@ -177,6 +177,22 @@ async function common(page, P) {
   const wrap = await H(page, () => [...document.querySelectorAll('[data-testid^="daily-"]')].map(b => { const r = b.getBoundingClientRect(), tile = b.closest(".pick-tile")?.getBoundingClientRect(); return { over: b.scrollWidth > b.clientWidth + 1 || (tile && (r.right > tile.right + 1 || r.left < tile.left - 1)), h: r.height }; }));
   ok("shell", P, "Today buttons fit their card (no overflow, >= 44px)", wrap.every(w => !w.over && w.h >= 43.5), JSON.stringify(wrap));
   ok("shell", P, "picker says progress is saved on this device", /saved on this device/i.test(await page.locator("#status-text").textContent()));
+  const ver = await H(page, () => {
+    const el = document.querySelector('[data-testid="app-version"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const hits = [...document.querySelectorAll("a, button")].filter((b) => {
+      if (!b.getClientRects().length) return false;
+      const q = b.getBoundingClientRect();
+      return r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top;
+    }).map((b) => b.getAttribute("data-testid") || b.id || b.textContent.trim());
+    return {
+      text: el.textContent.trim(),
+      inView: r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.top >= -1,
+      overlap: hits,
+    };
+  });
+  ok("shell", P, "picker shows version and 7-char SHA", !!(ver && /^v\d+\.\d+\.\d+ · [0-9a-f]{7}$/.test(ver.text) && ver.inView && ver.overlap.length === 0), JSON.stringify(ver));
 }
 
 async function klondike(page, ctx, P, touch) {

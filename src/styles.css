@@ -2570,3 +2570,17 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   color: var(--status-ink, var(--muted));
 }
 
+.picker-version {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin: 0;
+  padding: 0 0.4rem 0.15rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-align: center;
+  pointer-events: none;
+}
+

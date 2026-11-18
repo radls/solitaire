@@ -2581,6 +2581,6 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   font-weight: 400;
   letter-spacing: 0.02em;
   text-align: center;
-  pointer-events: none;
+  user-select: text;
 }
 

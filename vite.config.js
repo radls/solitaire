@@ -1,8 +1,9 @@
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { resolveBuildSha } from "./scripts/resolve-build-sha.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -11,17 +12,8 @@ function appVersion() {
   return pkg.version;
 }
 
-/** 7-character SHA of the commit being built. Actions sets GITHUB_SHA; local builds use git. */
-function shortSha() {
-  const env = (process.env.GITHUB_SHA || "").trim();
-  if (/^[0-9a-f]{7,40}$/i.test(env)) return env.slice(0, 7).toLowerCase();
-  try {
-    const full = execSync("git rev-parse HEAD", { encoding: "utf8", cwd: root }).trim();
-    if (/^[0-9a-f]{7,40}$/i.test(full)) return full.slice(0, 7).toLowerCase();
-  } catch {
-    // Fall through to the error below.
-  }
-  throw new Error("Set GITHUB_SHA or run from a git checkout so the menu can show the build commit.");
+function gitExec(args) {
+  return execFileSync(args[0], args.slice(1), { encoding: "utf8" });
 }
 
 export default defineConfig({
@@ -43,7 +35,12 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion()),
-    __APP_SHA__: JSON.stringify(shortSha()),
+    __APP_SHA__: JSON.stringify(resolveBuildSha({
+      env: process.env,
+      root,
+      exec: gitExec,
+      realpath: realpathSync,
+    })),
   },
   test: {
     environment: "node",

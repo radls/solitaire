@@ -58,7 +58,7 @@ Every win screen has a Tip button. The first win, or the first time Klondike is 
 | `npm run build` | Production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
 
-The Games picker shows the app version and the short commit of the build, for example `v1.1.0 · da6d54b`. Bump `version` in `package.json` on every release. The SHA is injected at build time from `GITHUB_SHA` in GitHub Actions, or from `git rev-parse` locally.
+The Games picker shows the app version and the short commit of the build, for example `v1.1.0 · da6d54b`. Bump `version` in `package.json` on every release. The SHA is injected at build time from `GITHUB_SHA` in GitHub Actions, or from `git rev-parse` when this directory is its own repository. Otherwise the menu shows `local`.
 
 In-progress games and stats are stored in `localStorage`:
 

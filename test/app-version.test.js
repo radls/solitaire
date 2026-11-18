@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,7 +85,7 @@ describe("resolveBuildSha", () => {
     }
   });
 
-  it("uses HEAD when root is this repository", () => {
+  it.skipIf(!existsSync(join(root, ".git")))("uses HEAD when root is this repository", () => {
     const head = gitExec(["git", "-C", root, "rev-parse", "HEAD"]).trim().slice(0, 7).toLowerCase();
     expect(head).toMatch(/^[0-9a-f]{7}$/);
     expect(resolveBuildSha({

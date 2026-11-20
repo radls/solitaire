@@ -15,7 +15,18 @@ import { bedtimeLine, bedtimeNoteHTML, syncPickerBedtimeNote } from "./bedtime-n
 import { bootCardMotion } from "./card-backs.js";
 import { appVersionLabel } from "./app-version.js";
 import { stopWinEffects } from "./win-effects.js";
-import { applyTableTheme, DEFAULT_TABLE_ID, pickSessionTable, themeColorFor } from "./table-themes.js";
+import {
+  applyTableTheme,
+  DEFAULT_TABLE_ID,
+  dismissTableNote,
+  pickSessionTable,
+  readTablePreference,
+  tableSettingsHTML,
+  tableThemesNoteHTML,
+  themeColorFor,
+  writeTablePreference,
+  TABLE_RANDOM,
+} from "./table-themes.js";
 
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
 const SUN = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><path stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 3.2v2.2M12 18.6V20.8M3.2 12h2.2M18.6 12h2.2M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>`;
@@ -192,6 +203,7 @@ function showPicker() {
       <p class="picker-promise" data-testid="no-dead-deals">Each new deal is checked so the stock can come into play. A game can still run out of moves later.</p>
       ${dailyDone ? tomorrowDealHTML() : ""}
       ${bedtime}
+      ${tableThemesNoteHTML(localStorage)}
       ${groksPickCard({
         klondike: klondikeCasual?.state,
         freecell: freecellCasual?.state,
@@ -239,6 +251,7 @@ function showPicker() {
         savedAt: kingsCasual?.savedAt,
       })}
       ${tipEntryHTML("picker-tip")}
+      ${tableSettingsHTML(readTablePreference(localStorage), document.documentElement.getAttribute("data-table") || DEFAULT_TABLE_ID)}
       ${creditHTML("credit")}
       <a class="picker-changelog" href="changelog.html" data-testid="changelog-link">Changelog: reviews, fixes and QA passes</a>
       <p class="picker-version" data-testid="app-version">${appVersionLabel()}</p>
@@ -365,8 +378,42 @@ if (document.fonts?.ready) {
     if (document.body.dataset.game === "picker") fitPicker();
   });
 }
+document.getElementById("table").addEventListener("change", (event) => {
+  const select = event.target.closest?.("[data-testid='table-select']");
+  if (!select) return;
+  const value = writeTablePreference(select.value, localStorage);
+  const id = value === TABLE_RANDOM ? pickSessionTable() : value;
+  applyTableTheme(id);
+  const now = document.querySelector("[data-testid='table-current']");
+  if (now) now.textContent = document.documentElement.getAttribute("data-table") === id
+    ? select.selectedOptions?.[0]?.textContent || id
+    : id;
+  applyTheme(document.documentElement.dataset.theme);
+});
+
 document.getElementById("table").addEventListener("click", (event) => {
   if (mode !== "picker") return;
+  if (event.target.closest("[data-testid='table-themes-random']")) {
+    dismissTableNote(localStorage);
+    writeTablePreference(TABLE_RANDOM, localStorage);
+    applyTableTheme(pickSessionTable());
+    applyTheme(document.documentElement.dataset.theme);
+    event.target.closest("[data-testid='table-themes-note']")?.remove();
+    const select = document.querySelector("[data-testid='table-select']");
+    if (select) select.value = TABLE_RANDOM;
+    const now = document.querySelector("[data-testid='table-current']");
+    if (now) {
+      const id = document.documentElement.getAttribute("data-table");
+      const opt = select?.querySelector(`option[value="${id}"]`);
+      now.textContent = opt?.textContent || id;
+    }
+    return;
+  }
+  if (event.target.closest("[data-testid='table-themes-dismiss']")) {
+    dismissTableNote(localStorage);
+    event.target.closest("[data-testid='table-themes-note']")?.remove();
+    return;
+  }
   if (event.target.closest("[data-testid='picker-tip']")) {
     openPickerTip();
     return;

@@ -11,6 +11,7 @@
     <script>
       (function () {
         var theme = "classic";
+        var table = "classic-felt";
         try {
           // Keep in sync with THEME_MIGRATION_KEY / THEME_MIGRATION_VERSION in src/storage.js
           var flagKey = "grok-solitaire:theme-migration";
@@ -33,11 +34,54 @@
             var prefs = JSON.parse(raw);
             if (prefs.theme === "night") theme = "night";
           }
+          // Keep in sync with src/table-themes.js (ids, keys, themeColor).
+          var tableKey = "grok-solitaire:table";
+          var lastKey = "grok-solitaire:table-last";
+          var noteKey = "grok-solitaire:table-note";
+          var ids = ["classic-felt","pub-fire","coffee-shop","library-desk","train-dining","beach-cabana","midnight-casino"];
+          var known = {};
+          for (var i = 0; i < ids.length; i++) known[ids[i]] = 1;
+          var pref = localStorage.getItem(tableKey);
+          if (pref !== "random" && !known[pref]) {
+            var prior = localStorage.getItem("grok-solitaire:prefs")
+              || localStorage.getItem("grok-solitaire-v1")
+              || localStorage.getItem("grok-solitaire:freecell")
+              || localStorage.getItem("grok-solitaire:golf")
+              || localStorage.getItem("grok-solitaire:kings");
+            if (prior) {
+              pref = "classic-felt";
+              localStorage.setItem(tableKey, pref);
+              if (localStorage.getItem(noteKey) !== "dismissed") localStorage.setItem(noteKey, "pending");
+            } else {
+              pref = "random";
+              localStorage.setItem(tableKey, pref);
+            }
+          }
+          if (pref === "random") {
+            var last = localStorage.getItem(lastKey);
+            var pool = [];
+            for (var j = 0; j < ids.length; j++) if (ids[j] !== last) pool.push(ids[j]);
+            if (!pool.length) pool = ids;
+            table = pool[Math.floor(Math.random() * pool.length)];
+          } else {
+            table = pref;
+          }
+          localStorage.setItem(lastKey, table);
         } catch (e) {}
         document.documentElement.setAttribute("data-theme", theme);
-        document.documentElement.setAttribute("data-table", "classic-felt");
+        document.documentElement.setAttribute("data-table", table);
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", theme === "classic" ? "#0a3324" : "#080c0b");
+        var themeColors = {
+          "classic-felt": { classic: "#0a3324", night: "#080c0b" },
+          "pub-fire": { classic: "#24150d", night: "#160e09" },
+          "coffee-shop": { classic: "#2a1c14", night: "#160e0a" },
+          "library-desk": { classic: "#3c1414", night: "#1e0a0a" },
+          "train-dining": { classic: "#12182c", night: "#0c1020" },
+          "beach-cabana": { classic: "#3a2a18", night: "#141a20" },
+          "midnight-casino": { classic: "#2a0810", night: "#100406" }
+        };
+        var pair = themeColors[table] || themeColors["classic-felt"];
+        if (meta) meta.setAttribute("content", pair[theme] || pair.classic);
       })();
     </script>
     <title>Solitaire</title>

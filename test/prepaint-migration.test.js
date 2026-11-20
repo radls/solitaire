@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { THEME_MIGRATION_KEY, THEME_MIGRATION_VERSION } from "../src/storage.js";
+import { TABLE_THEMES, themeColorFor } from "../src/table-themes.js";
 
 const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
 const match = html.match(/<script>\s*(\(function \(\) \{[\s\S]*?\}\)\(\);)\s*<\/script>/);
@@ -86,22 +87,28 @@ describe("index.html pre-paint migration", () => {
     const store = {};
     const out = runPrepaint(store);
     expect(out.theme).toBe("classic");
-    expect(out.color).toBe("#0a3324");
     expect(store["grok-solitaire:prefs"]).toBeUndefined();
     expect(store[THEME_MIGRATION_KEY]).toBe(THEME_MIGRATION_VERSION);
+    expect(store["grok-solitaire:table"]).toBe("random");
+    expect(TABLE_THEMES.map((theme) => theme.id)).toContain(out.table);
+    expect(out.color).toBe(themeColorFor(out.table, "classic"));
   });
 
-  it("sets data-table to classic-felt before first paint", () => {
+  it("pins existing players to classic-felt and randomizes a first visit", () => {
     const htmlTag = html.match(/<html\b[^>]*>/)?.[0] ?? "";
     expect(htmlTag).toContain('data-table="classic-felt"');
-    const out = runPrepaint({});
-    expect(out.table).toBe("classic-felt");
+    const fresh = runPrepaint({});
+    expect(fresh.store["grok-solitaire:table"]).toBe("random");
+    expect(TABLE_THEMES.map((theme) => theme.id)).toContain(fresh.table);
     const night = runPrepaint({
       [THEME_MIGRATION_KEY]: THEME_MIGRATION_VERSION,
       "grok-solitaire:prefs": JSON.stringify({ theme: "night" }),
     });
     expect(night.theme).toBe("night");
     expect(night.table).toBe("classic-felt");
+    expect(night.color).toBe("#080c0b");
+    expect(night.store["grok-solitaire:table"]).toBe("classic-felt");
+    expect(night.store["grok-solitaire:table-note"]).toBe("pending");
   });
 
   it("is a no-op on an already-classic profile besides setting the flag", () => {

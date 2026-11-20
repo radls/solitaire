@@ -2947,3 +2947,63 @@ body[data-game="kings"] #drag-layer .ghost .card:first-child {
   user-select: text;
 }
 
+
+.table-pref,
+.table-themes-note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem 0.7rem;
+  margin: 0;
+  padding: 0.35rem 0.4rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--status-ink, var(--muted));
+}
+
+.table-pref label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: var(--gold);
+}
+
+.table-pref select {
+  font: inherit;
+  color: var(--text);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  min-height: 44px;
+}
+
+.table-pref-now {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.table-themes-note {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--gold-soft);
+  color: var(--text);
+  padding: 0.55rem 2.2rem 0.55rem 0.8rem;
+}
+
+.table-themes-note p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.table-themes-note .icon-btn {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  min-width: 44px;
+  min-height: 44px;
+}

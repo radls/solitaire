@@ -182,12 +182,133 @@ export function themeColorFor(id, scheme = "classic") {
   return theme.schemes[key].themeColor;
 }
 
+export const TABLE_RANDOM = "random";
+export const TABLE_LAST_KEY = "grok-solitaire:table-last";
+export const TABLE_NOTE_KEY = "grok-solitaire:table-note";
+export const TABLE_NOTE_PENDING = "pending";
+export const TABLE_NOTE_DISMISSED = "dismissed";
+
+/** Prefs or a saved game means this is a returning player, not a first visit. */
+export const TABLE_PRIOR_KEYS = [
+  "grok-solitaire:prefs",
+  "grok-solitaire-v1",
+  "grok-solitaire:freecell",
+  "grok-solitaire:golf",
+  "grok-solitaire:kings",
+];
+
+export function isTableId(id) {
+  return themesById.has(id);
+}
+
+export function hasPriorPlayerData(storage) {
+  if (!storage?.getItem) return false;
+  return TABLE_PRIOR_KEYS.some((key) => {
+    try {
+      return !!storage.getItem(key);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** `random`, a theme id, or null when the key has never been written. */
+export function readTablePreference(storage) {
+  if (!storage?.getItem) return null;
+  try {
+    const raw = storage.getItem(TABLE_STORAGE_KEY);
+    if (raw == null) return null;
+    if (raw === TABLE_RANDOM) return TABLE_RANDOM;
+    if (isTableId(raw)) return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTablePreference(value, storage) {
+  if (!storage?.setItem) return value;
+  const next = value === TABLE_RANDOM || isTableId(value) ? value : TABLE_RANDOM;
+  try {
+    storage.setItem(TABLE_STORAGE_KEY, next);
+  } catch {
+    /* quota / private mode */
+  }
+  return next;
+}
+
+function writeLastTable(id, storage) {
+  if (!storage?.setItem || !isTableId(id)) return;
+  try {
+    storage.setItem(TABLE_LAST_KEY, id);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function shouldShowTableNote(storage) {
+  try {
+    return storage?.getItem?.(TABLE_NOTE_KEY) === TABLE_NOTE_PENDING;
+  } catch {
+    return false;
+  }
+}
+
+export function dismissTableNote(storage) {
+  if (!storage?.setItem) return;
+  try {
+    storage.setItem(TABLE_NOTE_KEY, TABLE_NOTE_DISMISSED);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 /**
- * Phase 2 picker lives in a later commit. Until then this always returns
- * classic felt so existing visuals stay put.
+ * First visit after this feature: existing players are pinned to classic-felt
+ * and shown the opt-in note. New players default to Random.
  */
-export function pickSessionTable() {
-  return DEFAULT_TABLE_ID;
+export function ensureTablePreference(storage) {
+  const existing = readTablePreference(storage);
+  if (existing) return existing;
+  if (hasPriorPlayerData(storage)) {
+    try {
+      if (storage.getItem(TABLE_NOTE_KEY) !== TABLE_NOTE_DISMISSED) {
+        storage.setItem(TABLE_NOTE_KEY, TABLE_NOTE_PENDING);
+      }
+    } catch {
+      /* quota / private mode */
+    }
+    return writeTablePreference(DEFAULT_TABLE_ID, storage);
+  }
+  return writeTablePreference(TABLE_RANDOM, storage);
+}
+
+function pickRandomTable(storage, rng) {
+  let last = null;
+  try {
+    last = storage?.getItem?.(TABLE_LAST_KEY) ?? null;
+  } catch {
+    last = null;
+  }
+  const ids = TABLE_THEMES.map((theme) => theme.id);
+  const pool = ids.filter((id) => id !== last);
+  const choices = pool.length ? pool : ids;
+  let i = Math.floor(Number(rng()) * choices.length);
+  if (!Number.isFinite(i) || i < 0) i = 0;
+  if (i >= choices.length) i = choices.length - 1;
+  return choices[i];
+}
+
+/**
+ * One theme per page load. Random never repeats the last id. A pin always wins.
+ */
+export function pickSessionTable({ storage = globalThis.localStorage, rng = Math.random } = {}) {
+  if (!storage) return DEFAULT_TABLE_ID;
+  const pref = ensureTablePreference(storage);
+  const id = pref === TABLE_RANDOM ? pickRandomTable(storage, rng) : pref;
+  const theme = getTableTheme(id);
+  writeLastTable(theme.id, storage);
+  return theme.id;
 }
 
 export function applyTableTheme(id, root = globalThis.document?.documentElement) {
@@ -198,4 +319,30 @@ export function applyTableTheme(id, root = globalThis.document?.documentElement)
   const meta = doc?.querySelector?.('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", themeColorFor(theme.id, scheme));
   return theme.id;
+}
+
+export function tableSettingsHTML(pref, currentId) {
+  const selected = pref === TABLE_RANDOM || isTableId(pref) ? pref : TABLE_RANDOM;
+  const options = [
+    `<option value="${TABLE_RANDOM}"${selected === TABLE_RANDOM ? " selected" : ""}>Random</option>`,
+    ...TABLE_THEMES.map((theme) => {
+      const isOn = selected === theme.id;
+      return `<option value="${theme.id}"${isOn ? " selected" : ""}>${theme.name}</option>`;
+    }),
+  ];
+  const current = getTableTheme(currentId).name;
+  return `<div class="table-pref" data-testid="table-settings">
+      <label for="table-select">Table</label>
+      <select id="table-select" data-testid="table-select" aria-label="Table theme">${options.join("")}</select>
+      <span class="table-pref-now" data-testid="table-current">${current}</span>
+    </div>`;
+}
+
+export function tableThemesNoteHTML(storage) {
+  if (!shouldShowTableNote(storage)) return "";
+  return `<div class="table-themes-note" data-testid="table-themes-note">
+      <p>New: table themes</p>
+      <button type="button" class="btn" data-testid="table-themes-random">Try a random table</button>
+      <button type="button" class="icon-btn" data-testid="table-themes-dismiss" aria-label="Dismiss">×</button>
+    </div>`;
 }

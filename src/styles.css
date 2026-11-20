@@ -6,6 +6,7 @@ html[data-theme="night"] {
   --felt-ink: #080c0b;
   --header-bg: #080c0b;
   --gold: #9c8a5c;
+  --gold-rgb: 156, 138, 92;
   --gold-soft: rgba(156, 138, 92, 0.16);
   --outline: rgba(156, 138, 92, 0.7);
   --line: rgba(156, 138, 92, 0.28);
@@ -101,10 +102,6 @@ html[data-theme="night"] {
 
 html[data-theme="classic"] {
   color-scheme: dark;
-  --header-bg: linear-gradient(to bottom, rgba(7, 40, 28, 0.78), rgba(7, 40, 28, 0.32));
-  --gold-soft: rgba(212, 180, 106, 0.18);
-  --outline: rgba(212, 180, 106, 0.7);
-  --line: rgba(212, 180, 106, 0.28);
   --ivory: #fbf6ea;
   --ivory-top: #fffdf7;
   --ivory-edge: #e7dcc4;
@@ -117,16 +114,30 @@ html[data-theme="classic"] {
   --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   --card-sheen: rgba(255, 255, 255, 0.4);
   --btn-bg: rgba(255, 255, 255, 0.06);
-  --btn-hover: rgba(212, 180, 106, 0.16);
-  --btn-border: rgba(212, 180, 106, 0.28);
-  --btn-ink: #07281c;
   --segment-bg: rgba(0, 0, 0, 0.18);
-  --well-line: rgba(212, 180, 106, 0.35);
   --well-bg: rgba(0, 0, 0, 0.16);
-  --well-mark: rgba(212, 180, 106, 0.5);
   --tile-bg: rgba(0, 0, 0, 0.2);
   --modal-bg: linear-gradient(180deg, #173828, #10261c);
   --backdrop: rgba(5, 18, 12, 0.62);
+  --sheen-ms: 5.4s;
+  --sheen-opacity: 0.72;
+}
+
+html[data-table="classic-felt"] {
+  --felt: #14633f;
+  --felt-deep: #0a3324;
+  --felt-ink: #07281c;
+  --gold: #d4b46a;
+  --gold-rgb: 212, 180, 106;
+  --gold-soft: rgba(212, 180, 106, 0.18);
+  --outline: rgba(212, 180, 106, 0.7);
+  --line: rgba(212, 180, 106, 0.28);
+  --header-bg: linear-gradient(to bottom, rgba(7, 40, 28, 0.78), rgba(7, 40, 28, 0.32));
+  --btn-ink: #07281c;
+  --btn-hover: rgba(212, 180, 106, 0.16);
+  --btn-border: rgba(212, 180, 106, 0.28);
+  --well-line: rgba(212, 180, 106, 0.35);
+  --well-mark: rgba(212, 180, 106, 0.5);
   --back-border: #d4b46a;
   --back-border-width: 3px;
   --back-frame: rgba(212, 180, 106, 0.55);
@@ -137,15 +148,6 @@ html[data-theme="classic"] {
   --back-cross:
     linear-gradient(135deg, transparent 46%, rgba(212, 180, 106, 0.7) 49.5%, transparent 53%),
     linear-gradient(-135deg, transparent 46%, rgba(212, 180, 106, 0.7) 49.5%, transparent 53%);
-  --sheen-ms: 5.4s;
-  --sheen-opacity: 0.72;
-}
-
-html[data-table="classic-felt"] {
-  --felt: #14633f;
-  --felt-deep: #0a3324;
-  --felt-ink: #07281c;
-  --gold: #d4b46a;
   --table-bg:
     radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.07), transparent 55%),
     repeating-linear-gradient(
@@ -161,26 +163,46 @@ html[data-table="classic-felt"][data-theme="night"] {
   --felt-deep: #0c1110;
   --felt-ink: #080c0b;
   --gold: #9c8a5c;
+  --gold-rgb: 156, 138, 92;
+  --gold-soft: rgba(156, 138, 92, 0.16);
+  --outline: rgba(156, 138, 92, 0.7);
+  --line: rgba(156, 138, 92, 0.28);
+  --header-bg: #080c0b;
+  --btn-ink: #14120e;
+  --btn-hover: #222a27;
+  --btn-border: rgba(156, 138, 92, 0.32);
+  --well-line: rgba(156, 138, 92, 0.32);
+  --well-mark: rgba(156, 138, 92, 0.4);
+  --back-border: #3e4c49;
+  --back-border-width: 2px;
+  --back-frame: rgba(156, 138, 92, 0.18);
+  --back-image:
+    radial-gradient(circle at 50% 50%, rgba(156, 138, 92, 0.14) 0.8px, transparent 1.1px),
+    repeating-linear-gradient(45deg, rgba(156, 138, 92, 0.04) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #24383a, #142226);
+  --back-cross:
+    linear-gradient(135deg, transparent 47%, rgba(156, 138, 92, 0.16) 50%, transparent 53%),
+    linear-gradient(-135deg, transparent 47%, rgba(156, 138, 92, 0.16) 50%, transparent 53%);
   --table-bg: var(--felt);
 }
 
 /* Lattice keeps the theme back above. The other five are local gradients only. */
 html[data-card-back="diamond"] {
   --back-image:
-    linear-gradient(45deg, transparent 46%, rgba(212, 180, 106, 0.55) 50%, transparent 54%),
-    linear-gradient(-45deg, transparent 46%, rgba(212, 180, 106, 0.38) 50%, transparent 54%),
+    linear-gradient(45deg, transparent 46%, rgba(var(--gold-rgb), 0.55) 50%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, rgba(var(--gold-rgb), 0.38) 50%, transparent 54%),
     linear-gradient(160deg, #1b3358, #10192e);
   --back-size: 16px 16px, 16px 16px, 100% 100%;
   --back-position: 0 0, 0 0, 0 0;
   --back-cross:
-    linear-gradient(45deg, transparent 42%, rgba(212, 180, 106, 0.75) 49%, transparent 56%),
-    linear-gradient(-45deg, transparent 42%, rgba(212, 180, 106, 0.75) 49%, transparent 56%);
+    linear-gradient(45deg, transparent 42%, rgba(var(--gold-rgb), 0.75) 49%, transparent 56%),
+    linear-gradient(-45deg, transparent 42%, rgba(var(--gold-rgb), 0.75) 49%, transparent 56%);
 }
 
 html[data-card-back="waves"] {
   --back-image:
     radial-gradient(ellipse 130% 42% at 50% 18%, rgba(255, 255, 255, 0.16), transparent 58%),
-    radial-gradient(ellipse 130% 48% at 50% 52%, rgba(212, 180, 106, 0.2), transparent 60%),
+    radial-gradient(ellipse 130% 48% at 50% 52%, rgba(var(--gold-rgb), 0.2), transparent 60%),
     radial-gradient(ellipse 140% 42% at 50% 86%, rgba(255, 255, 255, 0.12), transparent 62%),
     linear-gradient(180deg, #16324f, #0c1c30);
   --back-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%;
@@ -190,9 +212,9 @@ html[data-card-back="waves"] {
 
 html[data-card-back="medallion"] {
   --back-image:
-    radial-gradient(circle at 50% 46%, rgba(212, 180, 106, 0.62) 0 7%, transparent 8.5%),
-    radial-gradient(circle at 50% 46%, transparent 26%, rgba(212, 180, 106, 0.75) 28.5% 31%, transparent 33%),
-    radial-gradient(circle at 50% 46%, transparent 40%, rgba(212, 180, 106, 0.45) 42% 44%, transparent 46%),
+    radial-gradient(circle at 50% 46%, rgba(var(--gold-rgb), 0.62) 0 7%, transparent 8.5%),
+    radial-gradient(circle at 50% 46%, transparent 26%, rgba(var(--gold-rgb), 0.75) 28.5% 31%, transparent 33%),
+    radial-gradient(circle at 50% 46%, transparent 40%, rgba(var(--gold-rgb), 0.45) 42% 44%, transparent 46%),
     linear-gradient(165deg, #243056, #141a30);
   --back-size: 100% 100%;
   --back-position: 0 0;
@@ -202,17 +224,17 @@ html[data-card-back="medallion"] {
 html[data-card-back="stars"] {
   --back-image:
     radial-gradient(circle, rgba(255, 248, 220, 0.95) 0.85px, transparent 1.35px),
-    radial-gradient(circle, rgba(212, 180, 106, 0.8) 0.7px, transparent 1.15px),
+    radial-gradient(circle, rgba(var(--gold-rgb), 0.8) 0.7px, transparent 1.15px),
     linear-gradient(180deg, #14243c, #0c1626);
   --back-size: 14px 18px, 14px 18px, 100% 100%;
   --back-position: 0 0, 7px 9px, 0 0;
   --back-cross:
-    radial-gradient(circle at 50% 48%, transparent 34%, rgba(212, 180, 106, 0.5) 36% 38%, transparent 40%);
+    radial-gradient(circle at 50% 48%, transparent 34%, rgba(var(--gold-rgb), 0.5) 36% 38%, transparent 40%);
 }
 
 html[data-card-back="herringbone"] {
   --back-image:
-    repeating-linear-gradient(135deg, rgba(212, 180, 106, 0.28) 0 3px, transparent 3px 9px),
+    repeating-linear-gradient(135deg, rgba(var(--gold-rgb), 0.28) 0 3px, transparent 3px 9px),
     repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0 3px, transparent 3px 9px),
     linear-gradient(160deg, #1e3048, #121a28);
   --back-size: 100% 100%;
@@ -985,14 +1007,14 @@ canvas[data-testid="win-fx"] {
 
 .modal.win.win-glow {
   box-shadow:
-    0 0 0 2px rgba(212, 180, 106, 0.65),
-    0 0 32px 6px rgba(212, 180, 106, 0.45);
+    0 0 0 2px rgba(var(--gold-rgb), 0.65),
+    0 0 32px 6px rgba(var(--gold-rgb), 0.45);
 }
 
 html[data-theme="night"] .modal.win.win-glow {
   box-shadow:
-    0 0 0 1px rgba(156, 138, 92, 0.45),
-    0 0 18px 2px rgba(156, 138, 92, 0.28);
+    0 0 0 1px rgba(var(--gold-rgb), 0.45),
+    0 0 18px 2px rgba(var(--gold-rgb), 0.28);
 }
 
 .modal {
@@ -1189,7 +1211,7 @@ html[data-theme="night"] .card.is-settling .card-lift {
 
   .slot.pile-glow,
   .celebrate[data-glow="1"] {
-    box-shadow: 0 0 0 2px rgba(156, 138, 92, 0.55), 0 0 14px rgba(156, 138, 92, 0.28);
+    box-shadow: 0 0 0 2px rgba(var(--gold-rgb), 0.55), 0 0 14px rgba(var(--gold-rgb), 0.28);
   }
 
   canvas[data-testid="win-fx"] {
@@ -1227,14 +1249,14 @@ html[data-motion="reduce"] .card-face.back::before {
 .slot.pile-glow {
   border-radius: var(--radius);
   box-shadow:
-    0 0 0 2px rgba(212, 180, 106, 0.72),
-    0 0 18px rgba(212, 180, 106, 0.4);
+    0 0 0 2px rgba(var(--gold-rgb), 0.72),
+    0 0 18px rgba(var(--gold-rgb), 0.4);
 }
 
 html[data-theme="night"] .slot.pile-glow {
   box-shadow:
-    0 0 0 1px rgba(156, 138, 92, 0.4),
-    0 0 10px rgba(156, 138, 92, 0.2);
+    0 0 0 1px rgba(var(--gold-rgb), 0.4),
+    0 0 10px rgba(var(--gold-rgb), 0.2);
 }
 
 .celebrate {
@@ -1251,11 +1273,11 @@ html[data-theme="night"] .slot.pile-glow {
 }
 
 .celebrate[data-glow="1"] {
-  box-shadow: inset 0 0 22px rgba(212, 180, 106, 0.28);
+  box-shadow: inset 0 0 22px rgba(var(--gold-rgb), 0.28);
 }
 
 html[data-theme="night"] .celebrate[data-glow="1"] {
-  box-shadow: inset 0 0 14px rgba(156, 138, 92, 0.16);
+  box-shadow: inset 0 0 14px rgba(var(--gold-rgb), 0.16);
 }
 
 .cascade-card {

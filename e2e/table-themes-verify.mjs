@@ -89,7 +89,25 @@ for (const id of IDS) {
   }
 }
 
-// Settings row, pin persistence, existing-player note, reduced motion.
+// Settings row evidence at both viewports, then pin persistence, note, reduced motion.
+for (const vp of VPS) {
+  const [ctx, page] = await contextWith(
+    {
+      "grok-solitaire:theme-migration": "classic-1",
+      "grok-solitaire:table": "random",
+      "grok-solitaire:table-last": "classic-felt",
+    },
+    vp.viewport,
+  );
+  await ready(page, BASE);
+  const visible = await page.locator('[data-testid="table-settings"]').isVisible();
+  const table = await page.evaluate(() => document.documentElement.getAttribute("data-table"));
+  const file = join(SH, `table-settings-classic-${vp.name}.png`);
+  await page.screenshot({ path: file, fullPage: false });
+  ok(`shot settings classic ${vp.name}`, visible && table && table !== "classic-felt", `${file} table=${table}`);
+  await ctx.close();
+}
+
 {
   const [ctx, page] = await contextWith(
     {
@@ -135,6 +153,9 @@ for (const id of IDS) {
   }));
   ok("existing player is pinned to classic-felt", state.table === "classic-felt" && state.pref === "classic-felt");
   ok("existing player sees the new-themes note", state.note);
+  const noteShot = join(SH, "table-settings-note-390x844.png");
+  await page.screenshot({ path: noteShot, fullPage: false });
+  ok("shot settings note 390x844", state.note, noteShot);
   await page.click('[data-testid="table-themes-random"]');
   await page.waitForTimeout(120);
   const after = await page.evaluate(() => ({

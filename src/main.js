@@ -50,7 +50,7 @@ bootInstallHint();
 wireShare();
 bootCardMotion();
 
-applyTableTheme(pickSessionTable());
+applyTableTheme(pickSessionTable({ painted: document.documentElement.getAttribute("data-table") }));
 applyTheme(loadPrefs().theme);
 document.getElementById("btn-theme")?.addEventListener("click", () => {
   const next = document.documentElement.dataset.theme === "classic" ? "night" : "classic";

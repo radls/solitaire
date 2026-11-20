@@ -302,10 +302,12 @@ function pickRandomTable(storage, rng) {
 /**
  * One theme per page load. Random never repeats the last id. A pin always wins.
  */
-export function pickSessionTable({ storage = globalThis.localStorage, rng = Math.random } = {}) {
-  if (!storage) return DEFAULT_TABLE_ID;
+export function pickSessionTable({ storage = globalThis.localStorage, rng = Math.random, painted } = {}) {
+  if (!storage) return isTableId(painted) ? painted : DEFAULT_TABLE_ID;
   const pref = ensureTablePreference(storage);
-  const id = pref === TABLE_RANDOM ? pickRandomTable(storage, rng) : pref;
+  const id = pref === TABLE_RANDOM
+    ? (isTableId(painted) ? painted : pickRandomTable(storage, rng))
+    : pref;
   const theme = getTableTheme(id);
   writeLastTable(theme.id, storage);
   return theme.id;

@@ -184,6 +184,13 @@ describe("table picker, pin and migration", () => {
     expect(storage.store[TABLE_LAST_KEY]).toBe("pub-fire");
     const again = pickSessionTable({ storage, rng: () => 0 });
     expect(again).toBe("classic-felt");
+    const storage2 = memoryStore({
+      [TABLE_STORAGE_KEY]: TABLE_RANDOM,
+      [TABLE_LAST_KEY]: "classic-felt",
+    });
+    const painted = pickSessionTable({ storage: storage2, rng: () => 0 });
+    expect(painted).toBe("pub-fire");
+    expect(pickSessionTable({ storage: storage2, rng: () => 0, painted })).toBe("pub-fire");
   });
 
   it("keeps a pinned theme", () => {

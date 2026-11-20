@@ -1,9 +1,12 @@
-// Win effects v1.2.0. Desktop 1280×800 and phone 390×844.
+// Win effects. Desktop 1280×800 and phone 390×844.
 // GITHUB_PAGES=true npx vite build && GITHUB_PAGES=true npx vite preview --host 127.0.0.1 --port 4173 --strictPort
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const BASE = process.env.BASE || "http://127.0.0.1:4173/solitaire/";
+const APP_VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8")).version;
 const SH = "/workspace/sol-wineffects/evidence";
 mkdirSync(SH, { recursive: true });
 
@@ -197,7 +200,7 @@ for (const P of ["desktop", "phone"]) {
     await page.goto(BASE);
     await page.waitForSelector("[data-testid='app-version']");
     const ver = (await page.locator("[data-testid='app-version']").textContent())?.trim() || "";
-    ok("i menu shows v1.2.0", ver.startsWith("v1.2.0 · "), ver);
+    ok(`i menu shows v${APP_VERSION}`, ver.startsWith(`v${APP_VERSION} · `), ver);
   }
   await openGame(page, "klondike");
   await setTheme(page, false);

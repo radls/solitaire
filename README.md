@@ -38,7 +38,8 @@ GitHub Pages builds with `GITHUB_PAGES=true` so asset URLs use the `/solitaire/`
 | Undo | Button, or <kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>Z</kbd> |
 | Hint | Button, or <kbd>H</kbd>, in every game |
 | Draw 1 / 3 | Toggle in the header (starts a new game) |
-| Theme | Moon / sun button in the header. Night is the default; Classic is the green felt |
+| Theme | Moon / sun button in the header. Classic is the green felt; Bedtime (night) layers on top |
+| Table | Games picker Settings row. Random (default for new players) or pin a surface. Returning players stay on Classic felt until they opt in |
 | Sound | Speaker button. Off until you turn it on |
 
 FreeCell uses the same tap-then-tap and drag controls. Golf plays on tap, and a drag onto the waste plays that card. The header stays within two rows of buttons on a phone, with 44px tap targets. Deal number, seed, and Replay live in Help.
@@ -58,7 +59,7 @@ Every win screen has a Tip button. The first win, or the first time Klondike is 
 | `npm run build` | Production bundle in `dist/` |
 | `npm run preview` | Serve the production build |
 
-The Games picker shows the app version and the short commit of the build, for example `v1.2.0 · da6d54b`. Bump `version` in `package.json` on every release. The SHA is injected at build time from `GITHUB_SHA` in GitHub Actions, or from `git rev-parse` when this directory is its own repository. Otherwise the menu shows `local`.
+The Games picker shows the app version and the short commit of the build, for example `v1.3.0 · da6d54b`. Bump `version` in `package.json` on every release. The SHA is injected at build time from `GITHUB_SHA` in GitHub Actions, or from `git rev-parse` when this directory is its own repository. Otherwise the menu shows `local`.
 
 In-progress games and stats are stored in `localStorage`:
 
@@ -70,13 +71,16 @@ In-progress games and stats are stored in `localStorage`:
 | `grok-solitaire:kings` | King's Corners deal, undo history (capped at 200), and stats (`played`, `won`) |
 | `grok-solitaire:prefs` | `lastGame`, `theme` (`night` or `classic`), and `sound` (default `false`) |
 | `grok-solitaire:theme-migration` | One-time flag. `classic-1` means the Bedtime-to-Classic migration has run (a saved `night` pref, if present, was moved to Classic) |
+| `grok-solitaire:table` | `random` or a table id (`classic-felt`, `pub-fire`, `coffee-shop`, `library-desk`, `train-dining`, `beach-cabana`, `midnight-casino`) |
+| `grok-solitaire:table-last` | Last session table, so Random does not repeat immediately |
+| `grok-solitaire:table-note` | `pending` or `dismissed` for the "New: table themes" opt-in note |
 | `grok-solitaire:tip` | Once-a-day tip reminder, `ctaDay` as a local `YYYY-MM-DD` |
 
 Each move, undo, and new deal is written immediately. Opening a game resumes its saved deal. A reload with no `game`, `seed`, `draw`, or `daily` parameter returns to `lastGame` when that deal is unfinished and already has a move. Any other cold load opens the Games picker. `?game=`, `?seed=`, `?draw=`, and `?daily=1` still open a game directly.
 
 Deal a specific shuffle with `?seed=2` (and `?draw=3` if you want draw-three). Useful when reproducing a game. Open FreeCell directly with `?game=freecell`, or Golf with `?game=golf` (add `&seed=2` for a known deal). Open King's Corners with `?game=kings` or `?game=kings&seed=2`.
 
-Night is the default theme (dark table, dim gold, muted suits). Classic keeps the green felt. The choice is applied before first paint. Sound stays off until the speaker button is turned on, and that choice is shared by every game.
+Classic and Bedtime are the color schemes (ivory cards, gold, chrome). The table surface is separate: new players get a random table each visit, never the same one twice in a row, and can pin one from the Games picker. Players who already had a save or settings stay on Classic felt and see a short opt-in note. The table and the Classic/Bedtime choice are applied before first paint. Sound stays off until the speaker button is turned on, and that choice is shared by every game.
 
 ## Rules (FreeCell)
 

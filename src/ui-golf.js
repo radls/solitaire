@@ -27,6 +27,7 @@ import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, roundEndTipHTML, tipEntryHTML, toggleTipPanel } from "./tip.js";
 import { canResume, creditDailyWin, dailyDoneText, dailySeed, golfClearedLabel, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
+import { dismissWinEffects, presentWinEffects } from "./win-effects.js";
 import { bumpWinStreak, coerceStreak, noteGolfRoundBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
@@ -403,6 +404,7 @@ export function mount(options = {}) {
 
   function hideOverlay() {
     const celebrate = session.modal === "win" && isCleared(session.state);
+    dismissWinEffects(session);
     session.modal = null;
     if (!root.overlay) {
       if (celebrate) offerInstallHint();
@@ -441,7 +443,7 @@ export function mount(options = {}) {
       ? `<button type="button" class="btn primary" data-act="new" data-testid="try-again">Try again</button>`
       : `<button type="button" class="btn primary" data-act="new">New deal</button>`;
     root.overlay.hidden = false;
-    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+    root.overlay.innerHTML = `<div class="modal${cleared ? " win" : ""}" data-testid="win-modal">
       <h2>${near || (cleared ? "Course cleared" : "Round over")}</h2>
       ${cleared ? winCelebrateHTML() : ""}
       <p>Score ${value} (lower is better)</p>
@@ -463,9 +465,12 @@ export function mount(options = {}) {
       </div>
     </div>`;
     syncPlayClock();
+    if (cleared) presentWinEffects(session, "golf", state);
+    else dismissWinEffects(session);
   }
 
   function showHelp() {
+    dismissWinEffects(session);
     session.modal = "help";
     root.overlay.hidden = false;
     const gestures = `<p>Tap the exposed card of a column to play it onto the waste.</p><p>Drag that card onto the waste to choose it. Tap the stock to draw.</p>`;
@@ -498,6 +503,7 @@ export function mount(options = {}) {
 
   function confirmNewDeal(extra = {}) {
     interruptMotion();
+    dismissWinEffects(session);
     if (extra.daily || (isDailyBoard(session.state) && !extra.pick)) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -527,6 +533,7 @@ export function mount(options = {}) {
   }
 
   function confirmReplay() {
+    dismissWinEffects(session);
     if (!gameInProgress()) {
       replay();
       return;

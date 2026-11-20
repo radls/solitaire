@@ -965,6 +965,27 @@ html[data-theme="night"] #meter-time-wrap {
   display: none;
 }
 
+canvas[data-testid="win-fx"] {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.modal.win.win-glow {
+  box-shadow:
+    0 0 0 2px rgba(212, 180, 106, 0.65),
+    0 0 32px 6px rgba(212, 180, 106, 0.45);
+}
+
+html[data-theme="night"] .modal.win.win-glow {
+  box-shadow:
+    0 0 0 1px rgba(156, 138, 92, 0.45),
+    0 0 18px 2px rgba(156, 138, 92, 0.28);
+}
+
 .modal {
   width: min(32rem, 100%);
   min-width: 0;
@@ -1161,6 +1182,15 @@ html[data-theme="night"] .card.is-settling .card-lift {
   .celebrate[data-glow="1"] {
     box-shadow: 0 0 0 2px rgba(156, 138, 92, 0.55), 0 0 14px rgba(156, 138, 92, 0.28);
   }
+
+  canvas[data-testid="win-fx"] {
+    display: none;
+  }
+}
+
+html.reduce-motion canvas[data-testid="win-fx"],
+html[data-motion="reduce"] canvas[data-testid="win-fx"] {
+  display: none;
 }
 
 html.reduce-motion .card.face-down::before,

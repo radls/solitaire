@@ -25,6 +25,7 @@ import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { canResume, creditDailyWin, dailyDoneText, dailySeed, KINGS_BUILD_STATUS, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
+import { dismissWinEffects, presentWinEffects } from "./win-effects.js";
 import { hintFromSelector } from "./hint-target.js";
 import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
@@ -487,6 +488,7 @@ export function mount(options = {}) {
 
   function hideOverlay() {
     const celebrate = session.modal === "win" && !!(session.state?.won || (session.state && isWon(session.state)));
+    dismissWinEffects(session);
     session.modal = null;
     if (!root.overlay) {
       if (celebrate) offerInstallHint();
@@ -513,7 +515,7 @@ export function mount(options = {}) {
     const state = session.state;
     session.modal = "win";
     root.overlay.hidden = false;
-    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+    root.overlay.innerHTML = `<div class="modal win" data-testid="win-modal">
       <h2>Four kings home</h2>
       ${winCelebrateHTML()}
       <ul class="stats-line">
@@ -533,9 +535,11 @@ export function mount(options = {}) {
       </div>
     </div>`;
     syncPlayClock();
+    presentWinEffects(session, "kings", state);
   }
 
   function showStuck() {
+    dismissWinEffects(session);
     session.modal = "stuck";
     root.overlay.hidden = false;
     root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
@@ -552,6 +556,7 @@ export function mount(options = {}) {
   }
 
   function showHelp() {
+    dismissWinEffects(session);
     session.modal = "help";
     root.overlay.hidden = false;
     const gestures = `<p>Tap a card, then tap a side or a corner. Drag to choose the spot.</p><p>Double-tap a card to move it to a corner. Tap the bottom card of a side pile to take the whole pile.</p><p>Tap the stock to draw. When the stock is empty, tap it to turn the waste over.</p>`;
@@ -597,6 +602,7 @@ export function mount(options = {}) {
 
   function confirmNewDeal(extra = {}) {
     interruptMotion();
+    dismissWinEffects(session);
     if (extra.daily || (session.state && isDailyBoard(session.state) && !extra.pick)) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();
@@ -626,6 +632,7 @@ export function mount(options = {}) {
   }
 
   function confirmReplay() {
+    dismissWinEffects(session);
     if (!gameInProgress()) {
       replay();
       return;

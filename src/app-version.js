@@ -3,7 +3,7 @@
 export const APP_VERSION = __APP_VERSION__;
 export const APP_SHA = __APP_SHA__;
 
-/** Label shown on the Games picker, e.g. "v1.1.0 · da6d54b". */
+/** Label shown on the Games picker, e.g. "v1.2.0 · da6d54b". */
 export function appVersionLabel(version = APP_VERSION, sha = APP_SHA) {
   return `v${version} · ${sha}`;
 }

@@ -37,6 +37,7 @@ import { createSlides, stockPress } from "./slide.js";
 import { creditHTML, stuckTipHTML, tipEntryHTML, toggleTipPanel, winScreenTipHTML } from "./tip.js";
 import { canResume, creditDailyWin, dailyDoneText, dailySeed, seedStatusText, todayKey, tomorrowDealHTML } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
+import { dismissWinEffects, presentWinEffects } from "./win-effects.js";
 import { hintFromSelector } from "./hint-target.js";
 import { scheduleGlowClear, stopBoardPaint } from "./board-timers.js";
 import { bumpWinStreak, notePersonalBest, personalBestHTML } from "./records.js";
@@ -635,15 +636,18 @@ export function mount(options = {}) {
 
   function showOverlay(html, { win = false, modal = null } = {}) {
     session.modal = modal;
+    if (!win) dismissWinEffects(session);
     root.overlay.hidden = false;
     root.overlay.innerHTML = html;
     root.overlay.querySelector(".modal")?.classList.toggle("win", win);
+    if (win) presentWinEffects(session, "klondike", session.state);
     syncPlayClock();
   }
 
   function hideOverlay() {
     const celebrate = session.modal === "win" && !!session.state?.won;
     const wasStuck = session.modal === "stuck";
+    dismissWinEffects(session);
     session.modal = null;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";

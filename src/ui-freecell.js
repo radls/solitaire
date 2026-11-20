@@ -35,6 +35,7 @@ import {
   tomorrowDealHTML,
 } from "./daily.js";
 import { winCelebrateHTML } from "./celebrate.js";
+import { dismissWinEffects, presentWinEffects } from "./win-effects.js";
 import { bumpWinStreak, coerceStreak, notePersonalBest, personalBestHTML } from "./records.js";
 import { abandonsStreak, dailyAlongsidePlan, flattenSlots, isDailyBoard, placeBoard, takeSlots } from "./slots.js";
 import { formatPickResult, pickForDate, pickOpenPlan } from "./groks-pick.js";
@@ -468,6 +469,7 @@ export function mount(options = {}) {
 
   function hideOverlay() {
     const celebrate = session.modal === "win" && !!session.state && !!(session.state.won || isWon(session.state));
+    dismissWinEffects(session);
     session.modal = null;
     root.overlay.hidden = true;
     root.overlay.innerHTML = "";
@@ -490,7 +492,7 @@ export function mount(options = {}) {
     session.winShown = true;
     session.modal = "win";
     root.overlay.hidden = false;
-    root.overlay.innerHTML = `<div class="modal" data-testid="win-modal">
+    root.overlay.innerHTML = `<div class="modal win" data-testid="win-modal">
       <p class="big">Well played</p>
       ${winCelebrateHTML()}
       <p>${state.moves} moves · ${formatTime(elapsedMs(state))}</p>
@@ -505,9 +507,11 @@ export function mount(options = {}) {
       </div>
     </div>`;
     syncPlayClock();
+    presentWinEffects(session, "freecell", state);
   }
 
   function showHelp() {
+    dismissWinEffects(session);
     session.modal = "help";
     root.overlay.hidden = false;
     const gestures = `<p>Tap a card, then tap a free cell, cascade, or foundation.</p><p>Drag to choose the spot. Double-tap sends one card to a foundation, or into an open free cell.</p>`;
@@ -540,6 +544,7 @@ export function mount(options = {}) {
   // dealNumber is set when the player asked for a specific deal (Help → Deal form); otherwise a random deal.
   function confirmNewDeal(dealNumber, extra = {}) {
     interruptMotion();
+    dismissWinEffects(session);
     if (extra.daily || (isDailyBoard(session.state) && !extra.pick)) {
       if (extra.pick) startPick();
       else if (extra.daily) startDaily();

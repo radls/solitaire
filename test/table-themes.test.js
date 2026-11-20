@@ -10,6 +10,7 @@ import {
   getTableTheme,
   listTableThemes,
   pickSessionTable,
+  themeColorFor,
 } from "../src/table-themes.js";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/styles.css"), "utf8");
@@ -61,7 +62,15 @@ describe("table theme registry", () => {
     expect(DEFAULT_TABLE_ID).toBe("classic-felt");
     expect(TABLE_STORAGE_KEY).toBe("grok-solitaire:table");
     expect(pickSessionTable()).toBe("classic-felt");
-    expect(listTableThemes().map((t) => t.id)).toEqual(["classic-felt"]);
+    expect(listTableThemes().map((t) => t.id)).toEqual([
+      "classic-felt",
+      "pub-fire",
+      "coffee-shop",
+      "library-desk",
+      "train-dining",
+      "beach-cabana",
+      "midnight-casino",
+    ]);
     expect(getTableTheme("missing").id).toBe("classic-felt");
   });
 
@@ -76,6 +85,9 @@ describe("table theme registry", () => {
     expect(attrs["data-table"]).toBe("classic-felt");
     expect(applyTableTheme("nope", root)).toBe("classic-felt");
     expect(attrs["data-table"]).toBe("classic-felt");
+    expect(themeColorFor("classic-felt", "classic")).toBe("#0a3324");
+    expect(themeColorFor("classic-felt", "night")).toBe("#080c0b");
+    expect(themeColorFor("midnight-casino", "classic")).toBe("#2a0810");
   });
 });
 
@@ -99,24 +111,25 @@ describe("table theme contrast", () => {
   });
 });
 
-describe("classic-felt CSS", () => {
-  it("matches the registry and defines --table-bg", () => {
-    const classic = getTableTheme("classic-felt").schemes.classic;
-    const night = getTableTheme("classic-felt").schemes.night;
-    const classicBody = ruleBody('html[data-table="classic-felt"]');
-    const nightBody = ruleBody('html[data-table="classic-felt"][data-theme="night"]');
-    for (const [body, tokens] of [
-      [classicBody, classic],
-      [nightBody, night],
-    ]) {
-      expect(cssVar(body, "--felt")).toBe(tokens.felt);
-      expect(cssVar(body, "--felt-deep")).toBe(tokens.feltDeep);
-      expect(cssVar(body, "--felt-ink")).toBe(tokens.feltInk);
-      expect(cssVar(body, "--gold")).toBe(tokens.gold);
-      expect(cssVar(body, "--table-bg")).toBeTruthy();
+describe("table theme CSS", () => {
+  it("matches the registry and defines --table-bg for every theme", () => {
+    expect(TABLE_THEMES.length).toBe(7);
+    for (const theme of TABLE_THEMES) {
+      const classicBody = ruleBody(`html[data-table="${theme.id}"]`);
+      const nightBody = ruleBody(`html[data-table="${theme.id}"][data-theme="night"]`);
+      for (const [body, tokens] of [
+        [classicBody, theme.schemes.classic],
+        [nightBody, theme.schemes.night],
+      ]) {
+        expect(cssVar(body, "--felt"), `${theme.id} felt`).toBe(tokens.felt);
+        expect(cssVar(body, "--felt-deep"), `${theme.id} felt-deep`).toBe(tokens.feltDeep);
+        expect(cssVar(body, "--felt-ink"), `${theme.id} felt-ink`).toBe(tokens.feltInk);
+        expect(cssVar(body, "--gold"), `${theme.id} gold`).toBe(tokens.gold);
+        expect(cssVar(body, "--table-bg"), `${theme.id} table-bg`).toBeTruthy();
+      }
     }
-    expect(cssVar(classicBody, "--table-bg")).toMatch(/radial-gradient/);
-    expect(cssVar(nightBody, "--table-bg")).toBe("var(--felt)");
+    expect(cssVar(ruleBody('html[data-table="classic-felt"]'), "--table-bg")).toMatch(/radial-gradient/);
+    expect(cssVar(ruleBody('html[data-table="classic-felt"][data-theme="night"]'), "--table-bg")).toBe("var(--felt)");
     expect(css).toMatch(/#app\s*\{[^}]*background:\s*var\(--table-bg\)/s);
   });
 });

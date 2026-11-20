@@ -186,6 +186,306 @@ html[data-table="classic-felt"][data-theme="night"] {
   --table-bg: var(--felt);
 }
 
+/* Shared derived chrome for tables other than classic-felt (which keeps shipped literals). */
+html[data-table]:not([data-table="classic-felt"]) {
+  --gold-soft: rgba(var(--gold-rgb), 0.18);
+  --outline: rgba(var(--gold-rgb), 0.7);
+  --line: rgba(var(--gold-rgb), 0.28);
+  --header-bg: linear-gradient(to bottom, rgba(var(--felt-ink-rgb), 0.78), rgba(var(--felt-ink-rgb), 0.32));
+  --btn-ink: var(--felt-ink);
+  --btn-hover: rgba(var(--gold-rgb), 0.16);
+  --btn-border: rgba(var(--gold-rgb), 0.28);
+  --well-line: rgba(var(--gold-rgb), 0.35);
+  --well-mark: rgba(var(--gold-rgb), 0.5);
+  --back-border: var(--gold);
+  --back-border-width: 3px;
+  --back-frame: rgba(var(--gold-rgb), 0.55);
+  --back-image:
+    radial-gradient(circle at 50% 50%, rgba(var(--gold-rgb), 0.4) 0.9px, transparent 1.15px),
+    repeating-linear-gradient(45deg, rgba(var(--gold-rgb), 0.09) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #223564, #121c38);
+  --back-cross:
+    linear-gradient(135deg, transparent 46%, rgba(var(--gold-rgb), 0.7) 49.5%, transparent 53%),
+    linear-gradient(-135deg, transparent 46%, rgba(var(--gold-rgb), 0.7) 49.5%, transparent 53%);
+}
+
+html[data-table]:not([data-table="classic-felt"])[data-theme="night"] {
+  --gold-soft: rgba(var(--gold-rgb), 0.16);
+  --header-bg: var(--felt-ink);
+  --btn-ink: var(--felt-ink);
+  --btn-hover: #222a27;
+  --btn-border: rgba(var(--gold-rgb), 0.32);
+  --well-line: rgba(var(--gold-rgb), 0.32);
+  --well-mark: rgba(var(--gold-rgb), 0.4);
+  --back-border: #3e4c49;
+  --back-border-width: 2px;
+  --back-frame: rgba(var(--gold-rgb), 0.18);
+  --back-image:
+    radial-gradient(circle at 50% 50%, rgba(var(--gold-rgb), 0.14) 0.8px, transparent 1.1px),
+    repeating-linear-gradient(45deg, rgba(var(--gold-rgb), 0.04) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #24383a, #142226);
+  --back-cross:
+    linear-gradient(135deg, transparent 47%, rgba(var(--gold-rgb), 0.16) 50%, transparent 53%),
+    linear-gradient(-135deg, transparent 47%, rgba(var(--gold-rgb), 0.16) 50%, transparent 53%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: var(--table-fx, none);
+  background-repeat: no-repeat;
+  opacity: var(--table-fx-opacity, 0);
+  animation: var(--table-fx-anim, none);
+  transform-origin: 80% 90%;
+}
+
+@keyframes table-flicker {
+  0%, 100% { opacity: 0.2; }
+  35% { opacity: 0.12; }
+  58% { opacity: 0.26; }
+  82% { opacity: 0.15; }
+}
+
+@keyframes table-steam {
+  0% { transform: translateY(0) scale(1); opacity: 0.2; }
+  55% { transform: translateY(-18px) scale(1.08); opacity: 0.1; }
+  100% { transform: translateY(-36px) scale(1.14); opacity: 0; }
+}
+
+@keyframes table-band {
+  from { transform: translateX(-35%); }
+  to { transform: translateX(135%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none !important;
+    opacity: var(--table-fx-still, 0) !important;
+    transform: none !important;
+  }
+}
+
+html.reduce-motion body::before,
+html[data-motion="reduce"] body::before,
+html[data-theme="night"] body::before {
+  animation: none !important;
+  opacity: var(--table-fx-still, 0) !important;
+  transform: none !important;
+}
+
+html[data-table="pub-fire"] {
+  --felt: #3b2416;
+  --felt-deep: #24150d;
+  --felt-ink: #160e08;
+  --felt-ink-rgb: 22, 14, 8;
+  --gold: #c98a3c;
+  --gold-rgb: 201, 138, 60;
+  --table-bg:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22128%22%20height%3D%22128%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23n%29%22%20opacity%3D%22.28%22%2F%3E%3C%2Fsvg%3E") 0 0 / 128px 128px,
+    repeating-linear-gradient(90deg, rgba(80, 48, 24, 0.18) 0 2px, transparent 2px 11px),
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 7px),
+    radial-gradient(900px 520px at 12% 110%, rgba(201, 138, 60, 0.28), transparent 58%),
+    radial-gradient(circle at 50% 42%, #3b2416, #24150d 74%);
+  --table-fx: radial-gradient(620px 420px at 10% 92%, rgba(201, 138, 60, 0.4), transparent 68%);
+  --table-fx-anim: table-flicker 6s ease-in-out infinite;
+  --table-fx-opacity: 1;
+  --table-fx-still: 0.2;
+}
+
+html[data-table="pub-fire"][data-theme="night"] {
+  --felt: #24160e;
+  --felt-deep: #160e09;
+  --felt-ink: #0e0906;
+  --felt-ink-rgb: 14, 9, 6;
+  --gold: #b18043;
+  --gold-rgb: 177, 128, 67;
+  --table-bg:
+    repeating-linear-gradient(90deg, rgba(80, 40, 16, 0.1) 0 2px, transparent 2px 11px),
+    radial-gradient(700px 380px at 8% 100%, rgba(177, 128, 67, 0.2), transparent 62%),
+    var(--felt);
+  --table-fx: radial-gradient(520px 340px at 10% 94%, rgba(177, 128, 67, 0.35), transparent 70%);
+  --table-fx-anim: none;
+  --table-fx-opacity: 0.2;
+  --table-fx-still: 0.2;
+}
+
+html[data-table="coffee-shop"] {
+  --felt: #3e2a1d;
+  --felt-deep: #2a1c14;
+  --felt-ink: #1c120c;
+  --felt-ink-rgb: 28, 18, 12;
+  --gold: #d4c4a0;
+  --gold-rgb: 212, 196, 160;
+  --table-bg:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%22160%22%3E%3Cellipse%20cx%3D%22126%22%20cy%3D%22128%22%20rx%3D%2228%22%20ry%3D%2223%22%20fill%3D%22none%22%20stroke%3D%22%232a1a10%22%20stroke-width%3D%223%22%20opacity%3D%22.2%22%2F%3E%3Cellipse%20cx%3D%22128%22%20cy%3D%22129%22%20rx%3D%2216%22%20ry%3D%2213%22%20fill%3D%22none%22%20stroke%3D%22%232a1a10%22%20stroke-width%3D%222%22%20opacity%3D%22.12%22%2F%3E%3C%2Fsvg%3E") 100% 100% / 160px 160px no-repeat,
+    radial-gradient(900px 400px at 50% -8%, rgba(255, 244, 220, 0.14), transparent 55%),
+    radial-gradient(circle at 50% 38%, #3e2a1d, #2a1c14 76%),
+    linear-gradient(180deg, #6b4a33 0%, #4a3222 38%, #3e2a1d 58%);
+  --table-fx: radial-gradient(140px 180px at 86% 90%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 42%, transparent 70%);
+  --table-fx-anim: table-steam 8s ease-in-out infinite;
+  --table-fx-opacity: 1;
+  --table-fx-still: 0;
+}
+
+html[data-table="coffee-shop"][data-theme="night"] {
+  --felt: #20140e;
+  --felt-deep: #160e0a;
+  --felt-ink: #0e0906;
+  --felt-ink-rgb: 14, 9, 6;
+  --gold: #b19043;
+  --gold-rgb: 177, 144, 67;
+  --table-bg:
+    radial-gradient(circle at 50% 36%, #20140e, #160e0a 78%);
+  --table-fx: none;
+  --table-fx-anim: none;
+  --table-fx-opacity: 0;
+  --table-fx-still: 0;
+}
+
+html[data-table="coffee-shop"] .card.face-up,
+html[data-table="coffee-shop"] .card-face.front {
+  border-color: #2a1c14;
+}
+
+html[data-table="library-desk"] {
+  --felt: #5a1f1f;
+  --felt-deep: #3c1414;
+  --felt-ink: #2a0c0c;
+  --felt-ink-rgb: 42, 12, 12;
+  --gold: #b8954a;
+  --gold-rgb: 184, 149, 74;
+  --table-bg:
+    radial-gradient(800px 480px at 18% 0%, rgba(47, 93, 68, 0.35), transparent 58%),
+    radial-gradient(circle at 50% 36%, #5a1f1f, #3c1414 74%);
+  --table-rail: rgba(var(--gold-rgb), 0.85);
+  --table-rail-soft: rgba(var(--gold-rgb), 0.4);
+}
+
+html[data-table="library-desk"][data-theme="night"] {
+  --felt: #2e1010;
+  --felt-deep: #1e0a0a;
+  --felt-ink: #140606;
+  --felt-ink-rgb: 20, 6, 6;
+  --gold: #a58541;
+  --gold-rgb: 165, 133, 65;
+  --table-bg:
+    radial-gradient(700px 420px at 16% 0%, rgba(47, 93, 68, 0.14), transparent 58%),
+    var(--felt);
+  --table-rail: rgba(var(--gold-rgb), 0.4);
+  --table-rail-soft: rgba(var(--gold-rgb), 0.16);
+}
+
+html[data-table="library-desk"] .board {
+  box-shadow:
+    0 0 0 2px var(--table-rail),
+    0 0 0 5px var(--felt-deep),
+    0 0 0 6px var(--table-rail-soft);
+  border-radius: 0.35rem;
+}
+
+html[data-table="train-dining"] {
+  --felt: #1d2a44;
+  --felt-deep: #12182c;
+  --felt-ink: #0c101c;
+  --felt-ink-rgb: 12, 16, 28;
+  --gold: #b08d57;
+  --gold-rgb: 176, 141, 87;
+  --table-bg:
+    linear-gradient(180deg, rgba(176, 141, 87, 0.22), transparent 8px),
+    linear-gradient(0deg, rgba(176, 141, 87, 0.18), transparent 8px),
+    radial-gradient(circle at 50% 40%, #1d2a44, #12182c 76%);
+  --table-fx: linear-gradient(90deg, transparent 0%, rgba(255, 248, 220, 0.08) 45%, transparent 70%);
+  --table-fx-anim: table-band 22s linear infinite;
+  --table-fx-opacity: 1;
+  --table-fx-still: 0;
+}
+
+html[data-table="train-dining"][data-theme="night"] {
+  --felt: #12182c;
+  --felt-deep: #0c1020;
+  --felt-ink: #080a14;
+  --felt-ink-rgb: 8, 10, 20;
+  --gold: #b18643;
+  --gold-rgb: 177, 134, 67;
+  --table-bg:
+    radial-gradient(500px 280px at 50% 0%, rgba(177, 134, 67, 0.16), transparent 55%),
+    var(--felt);
+  --table-fx: none;
+  --table-fx-anim: none;
+  --table-fx-opacity: 0;
+  --table-fx-still: 0;
+}
+
+html[data-table="train-dining"]:not([data-theme="night"]) body::before {
+  background-size: 42% 48%;
+  background-position: 0 100%;
+}
+
+html[data-table="beach-cabana"] {
+  --felt: #4f3922;
+  --felt-deep: #3a2a18;
+  --felt-ink: #241a10;
+  --felt-ink-rgb: 36, 26, 16;
+  --gold: #c9b07a;
+  --gold-rgb: 201, 176, 122;
+  --table-bg:
+    repeating-linear-gradient(90deg, #7a5634 0 18px, #00000022 18px 22px, #6a4a2c 22px 40px),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.08) 18%, transparent 42%),
+    radial-gradient(circle at 50% 40%, #4f3922, #3a2a18 78%);
+  --card-stack-shadow:
+    0 1px 0 var(--card-sheen) inset,
+    0 1px 0 rgba(0, 0, 0, 0.22),
+    0 8px 16px rgba(0, 0, 0, 0.38);
+}
+
+html[data-table="beach-cabana"][data-theme="night"] {
+  --felt: #1e262c;
+  --felt-deep: #141a20;
+  --felt-ink: #0c1014;
+  --felt-ink-rgb: 12, 16, 20;
+  --gold: #a38542;
+  --gold-rgb: 163, 133, 66;
+  --table-bg:
+    repeating-linear-gradient(90deg, #2a343c 0 18px, #00000044 18px 22px, #232c34 22px 40px),
+    radial-gradient(circle at 50% 38%, #1e262c, #141a20 78%);
+  --card-stack-shadow:
+    0 1px 0 var(--card-sheen) inset,
+    0 1px 0 rgba(0, 0, 0, 0.16),
+    0 6px 12px rgba(0, 0, 0, 0.32);
+}
+
+html[data-table="beach-cabana"] .card.face-up {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.32);
+}
+
+html[data-table="midnight-casino"] {
+  --felt: #4a0f1c;
+  --felt-deep: #2a0810;
+  --felt-ink: #1a0508;
+  --felt-ink-rgb: 26, 5, 8;
+  --gold: #d4b46a;
+  --gold-rgb: 212, 180, 106;
+  --table-bg:
+    linear-gradient(180deg, rgba(212, 180, 106, 0.22), transparent 7px),
+    linear-gradient(0deg, rgba(212, 180, 106, 0.16), transparent 7px),
+    linear-gradient(90deg, rgba(212, 180, 106, 0.16), transparent 7px),
+    linear-gradient(270deg, rgba(212, 180, 106, 0.16), transparent 7px),
+    radial-gradient(circle at 50% 42%, #4a0f1c, #2a0810 72%);
+}
+
+html[data-table="midnight-casino"][data-theme="night"] {
+  --felt: #1a060a;
+  --felt-deep: #100406;
+  --felt-ink: #0a0204;
+  --felt-ink-rgb: 10, 2, 4;
+  --gold: #b18f43;
+  --gold-rgb: 177, 143, 67;
+  --table-bg: radial-gradient(circle at 50% 40%, #1a060a, #100406 76%);
+}
+
 /* Lattice keeps the theme back above. The other five are local gradients only. */
 html[data-card-back="diamond"] {
   --back-image:
@@ -302,6 +602,8 @@ html.is-dragging .slot {
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   min-height: 100%;
   min-width: 0;
   max-width: 100%;

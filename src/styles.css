@@ -432,7 +432,7 @@ html[data-table="beach-cabana"] {
   --gold: #c9b07a;
   --gold-rgb: 201, 176, 122;
   --table-bg:
-    repeating-linear-gradient(90deg, #7a5634 0 18px, #00000022 18px 22px, #6a4a2c 22px 40px),
+    repeating-linear-gradient(90deg, #604428 0 18px, #00000022 18px 22px, #553b23 22px 40px),
     linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.08) 18%, transparent 42%),
     radial-gradient(circle at 50% 40%, #4f3922, #3a2a18 78%);
   --card-stack-shadow:
@@ -449,7 +449,7 @@ html[data-table="beach-cabana"][data-theme="night"] {
   --gold: #a38542;
   --gold-rgb: 163, 133, 66;
   --table-bg:
-    repeating-linear-gradient(90deg, #2a343c 0 18px, #00000044 18px 22px, #232c34 22px 40px),
+    repeating-linear-gradient(90deg, #20282e 0 18px, #00000044 18px 22px, #1b2228 22px 40px),
     radial-gradient(circle at 50% 38%, #1e262c, #141a20 78%);
   --card-stack-shadow:
     0 1px 0 var(--card-sheen) inset,

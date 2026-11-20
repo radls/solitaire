@@ -125,6 +125,28 @@ describe("table theme contrast", () => {
   });
 });
 
+describe("table background layers", () => {
+  // Every opaque colour painted in a new table's --table-bg must stay dark enough
+  // that the ivory cards read at least 7:1 against it (classic felt keeps its floor).
+  it("keeps the brightest opaque --table-bg colour at 7:1 vs ivory", () => {
+    for (const theme of TABLE_THEMES) {
+      if (theme.id === "classic-felt") continue;
+      for (const [selector, scheme] of [
+        [`html[data-table="${theme.id}"]`, "classic"],
+        [`html[data-table="${theme.id}"][data-theme="night"]`, "night"],
+      ]) {
+        const bg = cssVar(ruleBody(selector), "--table-bg") || "";
+        const hexes = bg.match(/#[0-9a-fA-F]{6}(?![0-9a-fA-F])/g) || [];
+        const ivory = theme.schemes[scheme].ivory;
+        for (const hex of hexes) {
+          const ratio = contrastRatio(hex, ivory);
+          expect(ratio, `${theme.id} ${scheme} ${hex} vs ivory (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(7);
+        }
+      }
+    }
+  });
+});
+
 describe("table theme CSS", () => {
   it("matches the registry and defines --table-bg for every theme", () => {
     expect(TABLE_THEMES.length).toBe(7);

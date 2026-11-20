@@ -261,10 +261,11 @@ function showPicker() {
 }
 
 const PICKER_STEPS = [
-  { gap: "", padTop: "", padBottom: "" },
-  { gap: "0.36rem", padTop: "", padBottom: "" },
-  { gap: "0.24rem", padTop: "", padBottom: "" },
-  { gap: "0.12rem", padTop: "0px", padBottom: "0px" },
+  { gap: "", padTop: "", padBottom: "", compact: "" },
+  { gap: "0.36rem", padTop: "", padBottom: "", compact: "" },
+  { gap: "0.24rem", padTop: "", padBottom: "", compact: "" },
+  { gap: "0.12rem", padTop: "0px", padBottom: "0px", compact: "" },
+  { gap: "0", padTop: "0px", padBottom: "0px", compact: "1" },
 ];
 
 function applyPickerStep(step) {
@@ -275,6 +276,8 @@ function applyPickerStep(step) {
   else style.removeProperty("--picker-pad-top");
   if (step.padBottom) style.setProperty("--picker-pad-bottom", step.padBottom);
   else style.removeProperty("--picker-pad-bottom");
+  if (step.compact) document.body.dataset.pickerCompact = "1";
+  else delete document.body.dataset.pickerCompact;
 }
 
 /** The page scrolls on the body (overflow-x: hidden computes overflow-y to auto). */

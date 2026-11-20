@@ -32,6 +32,10 @@ const VPS = {
 
 async function newPage(P, extra = {}) {
   const ctx = await browser.newContext({ ...VPS[P], ...extra });
+  await ctx.addInitScript(() => {
+    localStorage.setItem("grok-solitaire:theme-migration", "classic-1");
+    localStorage.setItem("grok-solitaire:table", "classic-felt");
+  });
   const page = await ctx.newPage();
   page.errs = [];
   page.on("pageerror", (e) => page.errs.push(e.message));
@@ -720,10 +724,16 @@ async function verifyReducedClear(engine, page) {
 const iphone = { ...devices["iPhone 13"] };
 delete iphone.defaultBrowserType;
 
+const pinClassicTable = (ctx) => ctx.addInitScript(() => {
+  localStorage.setItem("grok-solitaire:theme-migration", "classic-1");
+  localStorage.setItem("grok-solitaire:table", "classic-felt");
+});
+
 if (ENGINES.has("chromium")) {
   const flipChrome = await chromium.launch({ executablePath: CHROME_PATH, args: ["--no-sandbox"] });
   {
     const ctx = await flipChrome.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    await pinClassicTable(ctx);
     const page = await ctx.newPage();
     await verifyFlip("chromium", page);
     await ctx.close();
@@ -734,6 +744,7 @@ if (ENGINES.has("chromium")) {
       deviceScaleFactor: 2,
       reducedMotion: "reduce",
     });
+    await pinClassicTable(rctx);
     const rpage = await rctx.newPage();
     await verifyReducedClear("chromium", rpage);
     await rctx.close();
@@ -745,10 +756,12 @@ if (ENGINES.has("webkit")) {
   const flipWebkit = await webkit.launch();
   {
     const ctx = await flipWebkit.newContext(iphone);
+    await pinClassicTable(ctx);
     const page = await ctx.newPage();
     await verifyFlip("webkit", page);
     await ctx.close();
     const rctx = await flipWebkit.newContext({ ...iphone, reducedMotion: "reduce" });
+    await pinClassicTable(rctx);
     const rpage = await rctx.newPage();
     await verifyReducedClear("webkit", rpage);
     await rctx.close();

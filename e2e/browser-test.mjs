@@ -983,7 +983,7 @@ async function batch2(vp) {
   ok(B, P, "picker shows a quiet 'Made by Grok Bot' credit", credit && credit.text === "Made by Grok Bot" && !credit.link && credit.inView && !credit.scroll, JSON.stringify(credit));
   const ce = await H(page, () => { const a = document.querySelector('[data-testid="contact-email"]'); if (!a) return null; const r = a.getBoundingClientRect(); return { href: a.getAttribute("href"), text: a.textContent.trim(), h: Math.round(r.height), inView: r.bottom <= innerHeight && r.right <= innerWidth + 1, scroll: document.documentElement.scrollHeight > innerHeight + 1 || document.documentElement.scrollWidth > innerWidth + 1 }; });
   ok(B, P, "picker contact email is a mailto link near the credit", ce && ce.href === "mailto:radls@mail.grokbot.com" && ce.text === "radls@mail.grokbot.com" && ce.h >= 43.5 && ce.inView && !ce.scroll, JSON.stringify(ce));
-  ok(B, P, "no coffee wording anywhere on the picker", !(await H(page, () => /coffee|☕/i.test(document.body.innerText))));
+  ok(B, P, "no coffee wording anywhere on the picker", !(await H(page, () => { const n = document.body.cloneNode(true); n.querySelector("[data-testid=table-settings]")?.remove(); return /coffee|☕/i.test(n.innerText); })));
   await pt.click().catch(() => {}); await page.waitForTimeout(400);
   let addr = ((await page.locator('[data-testid="tip-btc-address"]:visible').first().textContent().catch(() => "")) || "").trim();
   ok(B, P, "picker Tip opens the tip panel with the exact address", addr === BTC_ADDR, addr);

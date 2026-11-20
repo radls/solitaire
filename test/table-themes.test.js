@@ -4,13 +4,27 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TABLE_ID,
+  TABLE_LAST_KEY,
+  TABLE_NOTE_DISMISSED,
+  TABLE_NOTE_KEY,
+  TABLE_NOTE_PENDING,
+  TABLE_PRIOR_KEYS,
+  TABLE_RANDOM,
   TABLE_STORAGE_KEY,
   TABLE_THEMES,
   applyTableTheme,
+  dismissTableNote,
+  ensureTablePreference,
   getTableTheme,
+  hasPriorPlayerData,
   listTableThemes,
   pickSessionTable,
+  readTablePreference,
+  shouldShowTableNote,
+  tableSettingsHTML,
+  tableThemesNoteHTML,
   themeColorFor,
+  writeTablePreference,
 } from "../src/table-themes.js";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/styles.css"), "utf8");
@@ -131,5 +145,98 @@ describe("table theme CSS", () => {
     expect(cssVar(ruleBody('html[data-table="classic-felt"]'), "--table-bg")).toMatch(/radial-gradient/);
     expect(cssVar(ruleBody('html[data-table="classic-felt"][data-theme="night"]'), "--table-bg")).toBe("var(--felt)");
     expect(css).toMatch(/#app\s*\{[^}]*background:\s*var\(--table-bg\)/s);
+  });
+});
+
+
+function memoryStore(init = {}) {
+  const store = { ...init };
+  return {
+    store,
+    getItem(key) {
+      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+    },
+    setItem(key, value) {
+      store[key] = String(value);
+    },
+  };
+}
+
+describe("table picker, pin and migration", () => {
+  it("defaults a new player to Random and remembers the pick", () => {
+    const storage = memoryStore();
+    expect(hasPriorPlayerData(storage)).toBe(false);
+    const id = pickSessionTable({ storage, rng: () => 0 });
+    expect(storage.store[TABLE_STORAGE_KEY]).toBe(TABLE_RANDOM);
+    expect(id).toBe("classic-felt");
+    expect(storage.store[TABLE_LAST_KEY]).toBe("classic-felt");
+    expect(shouldShowTableNote(storage)).toBe(false);
+  });
+
+  it("does not pick the last theme again under Random", () => {
+    const storage = memoryStore({
+      [TABLE_STORAGE_KEY]: TABLE_RANDOM,
+      [TABLE_LAST_KEY]: "classic-felt",
+    });
+    const id = pickSessionTable({ storage, rng: () => 0 });
+    expect(id).toBe("pub-fire");
+    expect(id).not.toBe("classic-felt");
+    expect(storage.store[TABLE_LAST_KEY]).toBe("pub-fire");
+    const again = pickSessionTable({ storage, rng: () => 0 });
+    expect(again).toBe("classic-felt");
+  });
+
+  it("keeps a pinned theme", () => {
+    const storage = memoryStore({ [TABLE_STORAGE_KEY]: "library-desk" });
+    expect(pickSessionTable({ storage, rng: () => 0 })).toBe("library-desk");
+    expect(pickSessionTable({ storage, rng: () => 0.99 })).toBe("library-desk");
+    expect(writeTablePreference("beach-cabana", storage)).toBe("beach-cabana");
+    expect(readTablePreference(storage)).toBe("beach-cabana");
+    expect(pickSessionTable({ storage })).toBe("beach-cabana");
+  });
+
+  it("pins returning players to classic-felt and shows the opt-in note", () => {
+    expect(TABLE_PRIOR_KEYS.length).toBe(5);
+    const viaPrefs = memoryStore({ "grok-solitaire:prefs": JSON.stringify({ theme: "classic" }) });
+    expect(hasPriorPlayerData(viaPrefs)).toBe(true);
+    expect(ensureTablePreference(viaPrefs)).toBe("classic-felt");
+    expect(viaPrefs.store[TABLE_STORAGE_KEY]).toBe("classic-felt");
+    expect(shouldShowTableNote(viaPrefs)).toBe(true);
+    expect(tableThemesNoteHTML(viaPrefs)).toContain("New: table themes");
+    expect(tableThemesNoteHTML(viaPrefs)).toContain("table-themes-random");
+
+    const viaSave = memoryStore({ "grok-solitaire-v1": "{}" });
+    expect(pickSessionTable({ storage: viaSave })).toBe("classic-felt");
+    expect(shouldShowTableNote(viaSave)).toBe(true);
+
+    dismissTableNote(viaPrefs);
+    expect(shouldShowTableNote(viaPrefs)).toBe(false);
+    expect(tableThemesNoteHTML(viaPrefs)).toBe("");
+    expect(ensureTablePreference(viaPrefs)).toBe("classic-felt");
+    expect(viaPrefs.store[TABLE_NOTE_KEY]).toBe(TABLE_NOTE_DISMISSED);
+  });
+
+  it("does not revive a dismissed note or overwrite an existing pref", () => {
+    const storage = memoryStore({
+      "grok-solitaire:prefs": JSON.stringify({ theme: "night" }),
+      [TABLE_STORAGE_KEY]: TABLE_RANDOM,
+      [TABLE_NOTE_KEY]: TABLE_NOTE_DISMISSED,
+    });
+    expect(ensureTablePreference(storage)).toBe(TABLE_RANDOM);
+    expect(shouldShowTableNote(storage)).toBe(false);
+  });
+
+  it("renders a Settings row with Random and every theme", () => {
+    const html = tableSettingsHTML(TABLE_RANDOM, "pub-fire");
+    expect(html).toContain("data-testid=\"table-settings\"");
+    expect(html).toContain("Table");
+    expect(html).toContain('value="random" selected');
+    expect(html).toContain("Pub table by the fire");
+    expect(html).toContain('data-testid="table-current">Pub table by the fire');
+    for (const theme of TABLE_THEMES) {
+      expect(html).toContain(`value="${theme.id}"`);
+    }
+    const pinned = tableSettingsHTML("train-dining", "train-dining");
+    expect(pinned).toContain('value="train-dining" selected');
   });
 });

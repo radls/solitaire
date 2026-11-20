@@ -71,6 +71,7 @@ html[data-theme="night"] {
   --slide-ease: cubic-bezier(0.16, 0.84, 0.3, 1.12);
   --sheen-ms: 12s;
   --sheen-opacity: 0.22;
+  --table-bg: var(--felt);
 }
 
 html[data-theme="night"] {
@@ -100,11 +101,7 @@ html[data-theme="night"] {
 
 html[data-theme="classic"] {
   color-scheme: dark;
-  --felt: #14633f;
-  --felt-deep: #0a3324;
-  --felt-ink: #07281c;
   --header-bg: linear-gradient(to bottom, rgba(7, 40, 28, 0.78), rgba(7, 40, 28, 0.32));
-  --gold: #d4b46a;
   --gold-soft: rgba(212, 180, 106, 0.18);
   --outline: rgba(212, 180, 106, 0.7);
   --line: rgba(212, 180, 106, 0.28);
@@ -142,6 +139,29 @@ html[data-theme="classic"] {
     linear-gradient(-135deg, transparent 46%, rgba(212, 180, 106, 0.7) 49.5%, transparent 53%);
   --sheen-ms: 5.4s;
   --sheen-opacity: 0.72;
+}
+
+html[data-table="classic-felt"] {
+  --felt: #14633f;
+  --felt-deep: #0a3324;
+  --felt-ink: #07281c;
+  --gold: #d4b46a;
+  --table-bg:
+    radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.07), transparent 55%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.015) 0 2px,
+      transparent 2px 8px
+    ),
+    radial-gradient(circle at 50% 30%, var(--felt), var(--felt-deep) 72%);
+}
+
+html[data-table="classic-felt"][data-theme="night"] {
+  --felt: #121a17;
+  --felt-deep: #0c1110;
+  --felt-ink: #080c0b;
+  --gold: #9c8a5c;
+  --table-bg: var(--felt);
 }
 
 /* Lattice keeps the theme back above. The other five are local gradients only. */
@@ -265,18 +285,7 @@ html.is-dragging .slot {
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--felt);
-}
-
-html[data-theme="classic"] #app {
-  background:
-    radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.07), transparent 55%),
-    repeating-linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.015) 0 2px,
-      transparent 2px 8px
-    ),
-    radial-gradient(circle at 50% 30%, var(--felt), var(--felt-deep) 72%);
+  background: var(--table-bg);
 }
 
 .topbar {

@@ -15,6 +15,7 @@ import { bedtimeLine, bedtimeNoteHTML, syncPickerBedtimeNote } from "./bedtime-n
 import { bootCardMotion } from "./card-backs.js";
 import { appVersionLabel } from "./app-version.js";
 import { stopWinEffects } from "./win-effects.js";
+import { applyTableTheme, pickSessionTable } from "./table-themes.js";
 
 const THEME_COLOR = { night: "#080c0b", classic: "#0a3324" };
 const MOON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14.6 2.6a8.2 8.2 0 1 0 6.8 12.2A7 7 0 0 1 14.6 2.6z"/></svg>`;
@@ -38,6 +39,7 @@ bootInstallHint();
 wireShare();
 bootCardMotion();
 
+applyTableTheme(pickSessionTable());
 applyTheme(loadPrefs().theme);
 document.getElementById("btn-theme")?.addEventListener("click", () => {
   const next = document.documentElement.dataset.theme === "classic" ? "night" : "classic";

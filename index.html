@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="classic">
+<html lang="en" data-theme="classic" data-table="classic-felt">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -35,6 +35,7 @@
           }
         } catch (e) {}
         document.documentElement.setAttribute("data-theme", theme);
+        document.documentElement.setAttribute("data-table", "classic-felt");
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute("content", theme === "classic" ? "#0a3324" : "#080c0b");
       })();

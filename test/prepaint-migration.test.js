@@ -43,7 +43,7 @@ function runPrepaint(store = {}) {
     },
   };
   new Function("document", "localStorage", PREPAINT)(document, localStorage);
-  return { theme: htmlEl.attrs["data-theme"], color: meta.content, store };
+  return { theme: htmlEl.attrs["data-theme"], table: htmlEl.attrs["data-table"], color: meta.content, store };
 }
 
 describe("index.html pre-paint migration", () => {
@@ -89,6 +89,19 @@ describe("index.html pre-paint migration", () => {
     expect(out.color).toBe("#0a3324");
     expect(store["grok-solitaire:prefs"]).toBeUndefined();
     expect(store[THEME_MIGRATION_KEY]).toBe(THEME_MIGRATION_VERSION);
+  });
+
+  it("sets data-table to classic-felt before first paint", () => {
+    const htmlTag = html.match(/<html\b[^>]*>/)?.[0] ?? "";
+    expect(htmlTag).toContain('data-table="classic-felt"');
+    const out = runPrepaint({});
+    expect(out.table).toBe("classic-felt");
+    const night = runPrepaint({
+      [THEME_MIGRATION_KEY]: THEME_MIGRATION_VERSION,
+      "grok-solitaire:prefs": JSON.stringify({ theme: "night" }),
+    });
+    expect(night.theme).toBe("night");
+    expect(night.table).toBe("classic-felt");
   });
 
   it("is a no-op on an already-classic profile besides setting the flag", () => {
